@@ -42,6 +42,12 @@ That's it. A JSON file in your project. Your agent reads it at the start of ever
 pip install rememb
 ```
 
+For semantic search support:
+
+```bash
+pip install rememb[semantic]
+```
+
 ---
 
 ## Quickstart

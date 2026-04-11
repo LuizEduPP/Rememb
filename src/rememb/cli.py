@@ -191,8 +191,9 @@ def import_cmd(
             skipped += 1
             continue
 
-        # Truncate to 500 chars max per entry
+        # Truncate to 500 chars max per entry, strip surrogates
         summary = content.strip()[:500].replace("\n", " ").strip()
+        summary = summary.encode("utf-8", errors="ignore").decode("utf-8")
         entry_section = section
 
         if dry_run:

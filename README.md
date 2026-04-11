@@ -48,6 +48,12 @@ For semantic search support:
 pip install rememb[semantic]
 ```
 
+For PDF import support:
+
+```bash
+pip install rememb[pdf]
+```
+
 ---
 
 ## Quickstart

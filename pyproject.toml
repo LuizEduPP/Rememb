@@ -44,3 +44,9 @@ Issues = "https://github.com/LuizEduPP/rememb/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.json", "*.gif"]
+
+[tool.setuptools]
+include-package-data = true

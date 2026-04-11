@@ -281,7 +281,7 @@ def _build_rules() -> dict:
         "Available sections: project | actions | systems | requests | user | context\n\n"
         "## Rules\n"
         "- Always read memory at the start of a new session\n"
-        "- Save important context after learning it — don't wait\n"
+        "- Save important context after learning it — do not wait\n"
         "- Keep entries short (1-3 sentences)\n"
         "- Use --tags to categorize: `rememb write \"...\" --section project --tags tag1,tag2`\n"
         "\n## Importing files\n"

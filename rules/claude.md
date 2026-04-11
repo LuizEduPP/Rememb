@@ -17,12 +17,12 @@ Available sections: project | actions | systems | requests | user | context
 - Keep entries short (1-3 sentences)
 - Use --tags to categorize: `rememb write "..." --section project --tags tag1,tag2`
 
-# Where to place (Claude Code)
-- CLAUDE.md at project root (auto-read every session)
-
 ## Importing files
 If the user asks to import notes or files into rememb:
-1. Read each file content
-2. Summarize and classify the section based on content (project/actions/systems/requests/user/context)
-3. Run: `rememb write "<filename>: <summary>" --section <section> --tags <tag>`
-Do NOT use `rememb import` for this — classify with your own judgment.
+1. Run `rememb import <folder> --dry-run` to preview files
+2. Decide which section fits the content
+3. Run `rememb import <folder> --section <section>` to save
+4. For mixed content, read individual files and use `rememb write` instead
+
+# Where to place (Claude Code)
+- CLAUDE.md at project root (auto-read every session)

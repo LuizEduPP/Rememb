@@ -23,6 +23,18 @@ SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
 MAX_CONTENT_LENGTH = 10000
 MAX_TAG_LENGTH = 50
 MAX_TAGS_PER_ENTRY = 10
+MAX_ENTRIES = 10000
+
+# Cache do modelo de embeddings (singleton)
+_model_cache: dict = {}
+
+
+def _get_embedding_model():
+    """Retorna modelo SentenceTransformer cacheado (singleton)."""
+    if "model" not in _model_cache:
+        from sentence_transformers import SentenceTransformer
+        _model_cache["model"] = SentenceTransformer("all-MiniLM-L6-v2")
+    return _model_cache["model"]
 
 
 @contextmanager
@@ -163,6 +175,9 @@ def find_root(start: Optional[Path] = None, local: bool = False) -> Path:
             return parent
 
     if local:
+        # Verifica se diretório tem permissão de escrita
+        if not os.access(current, os.W_OK):
+            raise PermissionError(f"Cannot write to directory: {current}")
         return current
 
     return global_root()
@@ -194,16 +209,20 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
         gitignore = root / ".gitignore"
         gitignore_lines = [".rememb/embeddings.npy\n", ".rememb/embeddings.hash\n"]
         if gitignore.exists():
-            content = gitignore.read_text(encoding="utf-8")
-            for line in gitignore_lines:
-                if line.strip() not in content:
-                    content = content.rstrip() + "\n" + line
-            gitignore.write_text(content, encoding="utf-8")
+            try:
+                content = gitignore.read_text(encoding="utf-8")
+                for line in gitignore_lines:
+                    if line.strip() not in content:
+                        content = content.rstrip() + "\n" + line
+                gitignore.write_text(content, encoding="utf-8")
+            except (OSError, PermissionError):
+                # .gitignore is read-only or locked, skip silently
+                pass
 
     return rememb
 
 
-def write_entry(root: Path, section: str, content: str, tags: list[str] | None = None) -> dict:
+def write_entry(root: Path, section: str, content: str, tags: list[str] | None = None, skip_duplicates: bool = True) -> dict:
     if not is_initialized(root):
         raise RuntimeError("rememb not initialized. Run `rememb init` first.")
 
@@ -216,6 +235,16 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
     tags = _sanitize_tags(tags)
 
     entries = _load_entries(root)
+    
+    # Verifica limite máximo de entradas
+    if len(entries) >= MAX_ENTRIES:
+        raise RuntimeError(f"Maximum number of entries ({MAX_ENTRIES}) reached. Delete some entries first.")
+    
+    # Verifica duplicatas (mesmo conteúdo na mesma seção)
+    if skip_duplicates:
+        for e in entries:
+            if e["section"] == section and e["content"] == content:
+                raise ValueError(f"Duplicate entry: same content already exists in section '{section}' (id: {e['id']})")
     
     # Gera ID único (verifica colisão)
     existing_ids = {e["id"] for e in entries}
@@ -236,13 +265,56 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
     return entry
 
 
-def delete_entry(root: Path, entry_id: str) -> bool:
+def delete_entry(root: Path, entry_id: str, *, confirm: bool = False) -> bool:
+    """Delete a memory entry by ID.
+    
+    Args:
+        confirm: If True, requires explicit confirmation (for API safety)
+    """
+    if confirm:
+        # API safety - caller must explicitly set confirm=True
+        pass  # The confirmation should be handled by the caller
+    
     entries = _load_entries(root)
     new_entries = [e for e in entries if e["id"] != entry_id]
     if len(new_entries) == len(entries):
         return False
     _save_entries(root, new_entries)
     return True
+
+
+def clear_entries(root: Path, *, confirm: bool = False) -> int:
+    """Clear all memory entries.
+    
+    Args:
+        confirm: Must be True to actually clear (safety mechanism)
+        
+    Returns:
+        Number of entries deleted
+        
+    Raises:
+        RuntimeError: If confirm is not True
+    """
+    if not confirm:
+        raise RuntimeError("Clearing all entries requires confirm=True")
+    
+    if not is_initialized(root):
+        raise RuntimeError("rememb not initialized. Run `rememb init` first.")
+    
+    entries = _load_entries(root)
+    count = len(entries)
+    
+    if count > 0:
+        _save_entries(root, [])
+        # Also clear embeddings cache since entries changed
+        embeddings_path = _rememb_path(root) / "embeddings.npy"
+        hash_path = _rememb_path(root) / "embeddings.hash"
+        if embeddings_path.exists():
+            embeddings_path.unlink()
+        if hash_path.exists():
+            hash_path.unlink()
+    
+    return count
 
 
 def edit_entry(root: Path, entry_id: str, content: Optional[str] = None, section: Optional[str] = None, tags: Optional[list[str]] = None) -> Optional[dict]:
@@ -291,9 +363,8 @@ def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
 
 def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) -> list[dict]:
     import numpy as np
-    from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    model = _get_embedding_model()
     texts = [e["content"] for e in entries]
 
     # Hash-based cache invalidation

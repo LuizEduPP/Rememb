@@ -17,6 +17,7 @@ from rich import box
 from rememb import __version__
 from rememb.store import (
     SECTIONS,
+    clear_entries,
     delete_entry,
     edit_entry,
     find_root,
@@ -221,6 +222,36 @@ def edit(
         _print_table([result])
     else:
         console.print(f"[red]Not found:[/red] {entry_id}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def clear(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm clearing all entries"),
+):
+    """Clear all memory entries. Use with --yes to confirm."""
+    root = _root()
+    
+    # First show what will be deleted
+    entries = read_entries(root)
+    if not entries:
+        console.print("[dim]No entries to clear.[/dim]")
+        raise typer.Exit()
+    
+    console.print(f"[yellow]⚠ This will delete {len(entries)} entries:[/yellow]")
+    _print_table(entries[:5])  # Show first 5
+    if len(entries) > 5:
+        console.print(f"[dim]... and {len(entries) - 5} more[/dim]")
+    
+    if not yes:
+        console.print("\n[dim]Use --yes to confirm[/dim]")
+        raise typer.Exit(1)
+    
+    try:
+        count = clear_entries(root, confirm=True)
+        console.print(f"[green]✓ Cleared {count} entries[/green]")
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
 

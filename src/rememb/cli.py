@@ -423,6 +423,19 @@ def rules(
     print(_rules[key])
 
 
+@app.command()
+def mcp():
+    """Run MCP server for native IDE integration."""
+    import asyncio
+    try:
+        from rememb.mcp_server import run_server as mcp_run_server
+        asyncio.run(mcp_run_server())
+    except ImportError as e:
+        console.print(f"[red]MCP support requires:[/red] pip install rememb[mcp]")
+        console.print(f"[dim]Details: {e}[/dim]")
+        raise typer.Exit(1)
+
+
 def _build_rules() -> dict:
     base = (
         "# rememb\n\n"

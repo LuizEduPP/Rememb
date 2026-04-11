@@ -126,10 +126,78 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 
 ---
 
+## MCP Server (Native IDE Integration)
+
+For **zero-friction** integration, use the MCP server. No CLI commands required.
+
+```bash
+# Install with MCP support
+pip install rememb[mcp]
+
+# Run the server
+rememb mcp
+```
+
+The MCP server provides native tools that agents can call directly:
+
+| Tool | Purpose |
+|------|---------|
+| `rememb_read` | Load all memory at session start |
+| `rememb_search` | Find relevant context |
+| `rememb_write` | Save new memories |
+| `rememb_edit` | Update existing entries |
+| `rememb_delete` | Remove entries |
+| `rememb_clear` | Delete all (with confirmation) |
+
+### Configure your IDE
+
+**Windsurf / Cascade:**
+Add to `~/.codeium/windsurf/mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "rememb": {
+      "command": "rememb",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Claude Desktop:**
+Add to `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "rememb": {
+      "command": "rememb",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Cursor:**
+Add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "rememb": {
+      "command": "rememb",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+---
+
 ## Roadmap
 
+### Done ✓
+- [x] MCP server (`rememb mcp`) — native IDE integration, no CLI required
+
 ### Planned
-- [ ] MCP server (`rememb mcp`) — native IDE integration, no CLI required
 - [ ] `rememb sync` — sync `~/.rememb/` across machines via private git
 - [ ] `rememb web` — local browser UI to manage memories visually
 - [ ] VS Code / Windsurf extension

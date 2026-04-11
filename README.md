@@ -65,6 +65,7 @@ rememb search "authentication"
 rememb rules windsurf
 rememb rules cursor
 rememb rules claude
+rememb rules continue
 rememb rules vscode
 ```
 
@@ -82,6 +83,7 @@ rememb rules windsurf
 rememb rules cursor
 rememb rules claude
 rememb rules continue
+rememb rules vscode
 ```
 
 | Editor | Where to paste |

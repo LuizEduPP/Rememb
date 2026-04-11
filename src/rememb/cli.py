@@ -336,7 +336,7 @@ def _build_rules() -> dict:
 
 
 def _print_table(entries: list[dict]) -> None:
-    table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan")
+    table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", show_lines=True)
     table.add_column("ID", style="dim", width=10)
     table.add_column("Section", style="bold", width=12)
     table.add_column("Content")

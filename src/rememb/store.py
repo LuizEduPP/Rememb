@@ -1,4 +1,4 @@
-"""Core storage engine for .memdir/"""
+"""Core storage engine for .rememb/"""
 
 from __future__ import annotations
 
@@ -8,30 +8,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-MEMDIR_DIR = ".memdir"
+REMEMB_DIR = ".rememb"
 ENTRIES_FILE = "entries.json"
 META_FILE = "meta.json"
 
 SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
 
 
-def _memdir_path(root: Path) -> Path:
-    return root / MEMDIR_DIR
+def _rememb_path(root: Path) -> Path:
+    return root / REMEMB_DIR
 
 
 def _entries_path(root: Path) -> Path:
-    return _memdir_path(root) / ENTRIES_FILE
+    return _rememb_path(root) / ENTRIES_FILE
 
 
 def _meta_path(root: Path) -> Path:
-    return _memdir_path(root) / META_FILE
+    return _rememb_path(root) / META_FILE
 
 
 def find_root(start: Optional[Path] = None) -> Path:
-    """Walk up from start until we find .memdir/ or reach filesystem root."""
+    """Walk up from start until we find .rememb/ or reach filesystem root."""
     current = (start or Path.cwd()).resolve()
     for parent in [current, *current.parents]:
-        if (parent / MEMDIR_DIR).is_dir():
+        if (parent / REMEMB_DIR).is_dir():
             return parent
     return current
 
@@ -41,8 +41,8 @@ def is_initialized(root: Path) -> bool:
 
 
 def init(root: Path, project_name: str = "") -> Path:
-    memdir = _memdir_path(root)
-    memdir.mkdir(exist_ok=True)
+    rememb = _rememb_path(root)
+    rememb.mkdir(exist_ok=True)
 
     entries_file = _entries_path(root)
     if not entries_file.exists():
@@ -59,18 +59,18 @@ def init(root: Path, project_name: str = "") -> Path:
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     gitignore = root / ".gitignore"
-    gitignore_line = ".memdir/embeddings.npy\n"
+    gitignore_line = ".rememb/embeddings.npy\n"
     if gitignore.exists():
         content = gitignore.read_text(encoding="utf-8")
         if gitignore_line.strip() not in content:
             gitignore.write_text(content.rstrip() + "\n" + gitignore_line, encoding="utf-8")
 
-    return memdir
+    return rememb
 
 
 def write_entry(root: Path, section: str, content: str, tags: list[str] | None = None) -> dict:
     if not is_initialized(root):
-        raise RuntimeError("memdir not initialized. Run `memdir init` first.")
+        raise RuntimeError("rememb not initialized. Run `rememb init` first.")
 
     section = section.lower()
     if section not in SECTIONS:
@@ -91,7 +91,7 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
 
 def read_entries(root: Path, section: Optional[str] = None) -> list[dict]:
     if not is_initialized(root):
-        raise RuntimeError("memdir not initialized. Run `memdir init` first.")
+        raise RuntimeError("rememb not initialized. Run `rememb init` first.")
     entries = _load_entries(root)
     if section:
         entries = [e for e in entries if e["section"] == section.lower()]
@@ -117,7 +117,7 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) ->
     model = SentenceTransformer("all-MiniLM-L6-v2")
     texts = [e["content"] for e in entries]
 
-    embeddings_path = _memdir_path(root) / "embeddings.npy"
+    embeddings_path = _rememb_path(root) / "embeddings.npy"
     if embeddings_path.exists():
         embeddings = np.load(str(embeddings_path))
         if len(embeddings) != len(texts):

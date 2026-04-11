@@ -1,4 +1,4 @@
-"""memdir CLI — persistent memory for AI agents."""
+"""rememb CLI — persistent memory for AI agents."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
-from memdir import __version__
-from memdir.store import (
+from rememb import __version__
+from rememb.store import (
     SECTIONS,
     find_root,
     init,
@@ -24,7 +24,7 @@ from memdir.store import (
 )
 
 app = typer.Typer(
-    name="memdir",
+    name="rememb",
     help="Persistent memory for AI agents — local, portable, zero config.",
     no_args_is_help=True,
     rich_markup_mode="rich",
@@ -38,8 +38,8 @@ def _root() -> Path:
 
 @app.command()
 def version():
-    """Show memdir version."""
-    console.print(f"memdir v{__version__}")
+    """Show rememb version."""
+    console.print(f"rememb v{__version__}")
 
 
 @app.command()
@@ -47,22 +47,22 @@ def init_cmd(
     path: Optional[Path] = typer.Argument(None, help="Project root (default: current dir)"),
     name: str = typer.Option("", "--name", "-n", help="Project name"),
 ):
-    """Initialize .memdir/ in the current project."""
+    """Initialize .rememb/ in the current project."""
     root = (path or Path.cwd()).resolve()
 
     if is_initialized(root):
-        console.print(f"[yellow]Already initialized at {root / '.memdir'}[/yellow]")
+        console.print(f"[yellow]Already initialized at {root / '.rememb'}[/yellow]")
         raise typer.Exit()
 
-    memdir = init(root, project_name=name)
+    rememb = init(root, project_name=name)
     console.print(Panel(
-        f"[green]✓[/green] Initialized [bold].memdir/[/bold] at [dim]{memdir}[/dim]\n\n"
+        f"[green]✓[/green] Initialized [bold].rememb/[/bold] at [dim]{rememb}[/dim]\n\n"
         f"[dim]Sections:[/dim] {', '.join(SECTIONS)}\n\n"
         f"Next steps:\n"
-        f"  [bold]memdir write[/bold] --section project \"My project does X\"\n"
-        f"  [bold]memdir read[/bold]\n"
-        f"  [bold]memdir rules[/bold]  ← copy rules for your AI editor",
-        title="memdir",
+        f"  [bold]rememb write[/bold] --section project \"My project does X\"\n"
+        f"  [bold]rememb read[/bold]\n"
+        f"  [bold]rememb rules[/bold]  ← copy rules for your AI editor",
+        title="rememb",
         border_style="green",
     ))
 
@@ -176,12 +176,12 @@ def rules(
 
 def _build_rules() -> dict:
     base = (
-        "# memdir — Agent Memory Rules\n\n"
+        "# rememb — Agent Memory Rules\n\n"
         "At the START of every conversation:\n"
-        "1. Run: `memdir read --agent` and absorb the memory context\n"
-        "2. If searching for specific context: `memdir search \"<topic>\" --agent`\n\n"
+        "1. Run: `rememb read --agent` and absorb the memory context\n"
+        "2. If searching for specific context: `rememb search \"<topic>\" --agent`\n\n"
         "At the END of every conversation (or when significant context is established):\n"
-        "1. Run: `memdir write \"<summary>\" --section <section>`\n"
+        "1. Run: `rememb write \"<summary>\" --section <section>`\n"
         "   Sections: project | actions | systems | requests | user | context\n\n"
         "Rules:\n"
         "- Always read memory before acting on a new session\n"
@@ -252,7 +252,7 @@ def _print_agent_format(entries: list[dict]) -> None:
     for e in entries:
         by_section.setdefault(e["section"], []).append(e)
 
-    output = ["# Memory Context (memdir)\n"]
+    output = ["# Memory Context (rememb)\n"]
     for section, items in by_section.items():
         output.append(f"## {section.capitalize()}")
         for item in items:

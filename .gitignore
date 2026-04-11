@@ -6,4 +6,4 @@ build/
 .venv/
 venv/
 *.egg
-.memdir/embeddings.npy
+.rememb/embeddings.npy

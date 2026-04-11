@@ -1,11 +1,11 @@
-# memdir — Agent Memory Rules (Windsurf / Cascade)
+# rememb — Agent Memory Rules (Windsurf / Cascade)
 
 At the START of every conversation:
-1. Run: `memdir read --agent` and absorb the memory context
-2. If searching for specific context: `memdir search "<topic>" --agent`
+1. Run: `rememb read --agent` and absorb the memory context
+2. If searching for specific context: `rememb search "<topic>" --agent`
 
 At the END of every conversation (or when significant context is established):
-1. Run: `memdir write "<summary>" --section <section>`
+1. Run: `rememb write "<summary>" --section <section>`
    Sections: project | actions | systems | requests | user | context
 
 Rules:

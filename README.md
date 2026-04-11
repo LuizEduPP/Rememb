@@ -1,11 +1,11 @@
-# memdir
+# rememb
 
 > **Persistent memory for AI agents — local, portable, zero config.**
 
-![memdir demo](demo/demo.gif)
+![rememb demo](demo/demo.gif)
 
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
-`memdir` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
+`rememb` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
 
 ---
 
@@ -27,7 +27,7 @@ You just want the agent to **remember your project**.
 ## The solution
 
 ```
-.memdir/
+.rememb/
   entries.json   ← structured memory (project, actions, systems, user, context)
   meta.json      ← project metadata
 ```
@@ -39,7 +39,7 @@ That's it. A JSON file in your project. Your agent reads it at the start of ever
 ## Install
 
 ```bash
-pip install memdir
+pip install rememb
 ```
 
 ---
@@ -48,23 +48,23 @@ pip install memdir
 
 ```bash
 # Initialize in your project
-memdir init
+rememb init
 
 # Write memories
-memdir write "Project uses FastAPI + PostgreSQL + async patterns" --section project
-memdir write "User prefers direct answers, no filler text" --section user
-memdir write "Auth module lives at src/auth/, JWT-based" --section systems
+rememb write "Project uses FastAPI + PostgreSQL + async patterns" --section project
+rememb write "User prefers direct answers, no filler text" --section user
+rememb write "Auth module lives at src/auth/, JWT-based" --section systems
 
 # Read everything (for the agent)
-memdir read --agent
+rememb read --agent
 
 # Search semantically
-memdir search "authentication"
+rememb search "authentication"
 
 # Get ready-to-use rules for your editor
-memdir rules windsurf
-memdir rules cursor
-memdir rules claude
+rememb rules windsurf
+rememb rules cursor
+rememb rules claude
 ```
 
 ---
@@ -77,14 +77,14 @@ Add to `.windsurfrules` in your project root:
 
 ```
 At the START of every conversation:
-1. Run: `memdir read --agent` and absorb the memory context
+1. Run: `rememb read --agent` and absorb the memory context
 
 At the END of every conversation:
-1. Run: `memdir write "<summary>" --section <section>`
+1. Run: `rememb write "<summary>" --section <section>`
    Sections: project | actions | systems | requests | user | context
 ```
 
-Or run `memdir rules windsurf` to get the full rules.
+Or run `rememb rules windsurf` to get the full rules.
 
 ### Cursor
 
@@ -92,19 +92,19 @@ Add to `.cursorrules`:
 
 ```
 At the START of every conversation:
-1. Run: `memdir read --agent` and absorb the memory context
+1. Run: `rememb read --agent` and absorb the memory context
 ...
 ```
 
-Run `memdir rules cursor` for the full text.
+Run `rememb rules cursor` for the full text.
 
 ### Claude Code
 
-Add to `CLAUDE.md` at your project root. Run `memdir rules claude`.
+Add to `CLAUDE.md` at your project root. Run `rememb rules claude`.
 
 ### Continue.dev
 
-Run `memdir rules continue` and paste into your config.
+Run `rememb rules continue` and paste into your config.
 
 ---
 
@@ -124,18 +124,18 @@ Run `memdir rules continue` and paste into your config.
 ## Commands
 
 ```
-memdir init              Initialize .memdir/ in current project
-memdir write <text>      Write a memory entry (--section, --tags)
-memdir read              Read all entries (--section, --agent, --raw)
-memdir search <query>    Semantic search (falls back to keyword)
-memdir rules [editor]    Print agent rules for windsurf/cursor/claude/continue
+rememb init              Initialize .rememb/ in current project
+rememb write <text>      Write a memory entry (--section, --tags)
+rememb read              Read all entries (--section, --agent, --raw)
+rememb search <query>    Semantic search (falls back to keyword)
+rememb rules [editor]    Print agent rules for windsurf/cursor/claude/continue
 ```
 
 ---
 
 ## How search works
 
-`memdir search` uses `sentence-transformers` for semantic similarity search locally.  
+`rememb search` uses `sentence-transformers` for semantic similarity search locally.  
 No API calls. No embeddings sent to the cloud. Falls back to keyword search if the model isn't available.
 
 ---
@@ -143,18 +143,18 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 ## Design principles
 
 - **Local first** — everything is a JSON file in your project
-- **Portable** — copy `.memdir/` and it works anywhere
+- **Portable** — copy `.rememb/` and it works anywhere
 - **Agnostic** — works with any agent that can run CLI commands
-- **Zero config** — `pip install memdir && memdir init` and you're done
+- **Zero config** — `pip install rememb && rememb init` and you're done
 - **No lock-in** — plain JSON, read it with anything
 
 ---
 
 ## Roadmap
 
-- [ ] MCP server (`memdir mcp`) for native IDE integration
-- [ ] `memdir sync` — optional encrypted remote backup
-- [ ] `memdir export` — export to Markdown, Obsidian, Notion
+- [ ] MCP server (`rememb mcp`) for native IDE integration
+- [ ] `rememb sync` — optional encrypted remote backup
+- [ ] `rememb export` — export to Markdown, Obsidian, Notion
 - [ ] VS Code / Windsurf extension
 
 ---
@@ -162,8 +162,8 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 ## Contributing
 
 ```bash
-git clone https://github.com/yourusername/memdir
-cd memdir
+git clone https://github.com/yourusername/rememb
+cd rememb
 pip install -e ".[dev]"
 ```
 

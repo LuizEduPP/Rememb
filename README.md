@@ -145,9 +145,16 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 
 ## Roadmap
 
-- [ ] MCP server (`rememb mcp`) for native IDE integration
-- [ ] `rememb sync` — optional encrypted remote backup
-- [ ] `rememb export` — export to Markdown, Obsidian, Notion
+### Coming soon
+- [ ] `rememb import <folder>` — bulk import `.md` files into memory (auto-detect section by filename)
+- [ ] `rememb delete <id>` — remove a memory entry
+- [ ] `rememb edit <id>` — update an existing entry
+- [ ] `rememb export` — export memory to Markdown / Obsidian / Notion
+
+### Planned
+- [ ] MCP server (`rememb mcp`) — native IDE integration, no CLI required
+- [ ] `rememb sync` — sync `~/.rememb/` across machines via private git
+- [ ] `rememb web` — local browser UI to manage memories visually
 - [ ] VS Code / Windsurf extension
 
 ---

@@ -11,6 +11,11 @@ Run `rememb search "<topic>" --agent` to find specific information.
 Run `rememb write "<summary>" --section <section>` when you learn something worth remembering.
 Available sections: project | actions | systems | requests | user | context
 
+## Editing memory
+Run `rememb edit <id> --content "<new content>"` to update an entry.
+Run `rememb edit <id> --section <section>` to move an entry to another section.
+Run `rememb delete <id> --yes` to remove an entry.
+
 ## Rules
 - Always read memory at the start of a new session
 - Save important context after learning it — do not wait

@@ -105,6 +105,33 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
     return entry
 
 
+def delete_entry(root: Path, entry_id: str) -> bool:
+    entries = _load_entries(root)
+    new_entries = [e for e in entries if e["id"] != entry_id]
+    if len(new_entries) == len(entries):
+        return False
+    _save_entries(root, new_entries)
+    return True
+
+
+def edit_entry(root: Path, entry_id: str, content: Optional[str] = None, section: Optional[str] = None, tags: Optional[list[str]] = None) -> Optional[dict]:
+    entries = _load_entries(root)
+    for e in entries:
+        if e["id"] == entry_id:
+            if content is not None:
+                e["content"] = content.encode("utf-8", errors="ignore").decode("utf-8")
+            if section is not None:
+                if section not in SECTIONS:
+                    raise ValueError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
+                e["section"] = section
+            if tags is not None:
+                e["tags"] = tags
+            e["updated_at"] = _now()
+            _save_entries(root, entries)
+            return e
+    return None
+
+
 def read_entries(root: Path, section: Optional[str] = None) -> list[dict]:
     if not is_initialized(root):
         raise RuntimeError("rememb not initialized. Run `rememb init` first.")

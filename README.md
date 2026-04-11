@@ -82,6 +82,13 @@ rememb import ~/notes/ --section context --dry-run   # preview first
 rememb import ~/notes/ --section context             # then import
 rememb import ~/notes/ --recursive --section context # include subfolders
 
+# Edit and delete entries
+rememb read --section actions                       # find the ID
+rememb edit a1b2c3d4 --section systems              # move to another section
+rememb edit a1b2c3d4 --content "Updated text"       # update content
+rememb delete a1b2c3d4                              # delete (asks confirmation)
+rememb delete a1b2c3d4 --yes                        # delete without confirmation
+
 # Get ready-to-use rules for your editor
 rememb rules          # list available editors
 rememb rules windsurf
@@ -137,6 +144,8 @@ rememb init              Initialize .rememb/ in current project
 rememb write <text>      Write a memory entry (--section, --tags)
 rememb read              Read all entries (--section, --agent, --raw)
 rememb search <query>    Semantic search (falls back to keyword)
+rememb delete <id>       Delete a memory entry by ID (--yes to skip confirmation)
+rememb edit <id>         Edit a memory entry (--content, --section, --tags)
 rememb import <folder>   Import .md/.txt/.pdf files into memory (--section, --recursive, --dry-run)
 rememb rules [editor]    Print agent rules for windsurf/cursor/claude/continue/vscode
 ```
@@ -162,17 +171,12 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 
 ## Roadmap
 
-### Coming soon
-- [x] `rememb import <folder>` — import `.md`, `.txt`, `.pdf` files into memory (`--section`, `--recursive`, `--dry-run`)
-- [ ] `rememb delete <id>` — remove a memory entry
-- [ ] `rememb edit <id>` — update an existing entry
-- [ ] `rememb export` — export memory to Markdown / Obsidian / Notion
-
 ### Planned
 - [ ] MCP server (`rememb mcp`) — native IDE integration, no CLI required
 - [ ] `rememb sync` — sync `~/.rememb/` across machines via private git
 - [ ] `rememb web` — local browser UI to manage memories visually
 - [ ] VS Code / Windsurf extension
+- [ ] `rememb export` — export memory to Markdown / Obsidian / Notion
 
 ---
 

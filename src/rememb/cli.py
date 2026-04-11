@@ -15,6 +15,8 @@ from rich import box
 from rememb import __version__
 from rememb.store import (
     SECTIONS,
+    delete_entry,
+    edit_entry,
     find_root,
     global_root,
     init,
@@ -157,6 +159,41 @@ def search(
     _print_table(results)
 
 
+@app.command()
+def delete(
+    entry_id: str = typer.Argument(..., help="Entry ID to delete (8-char)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+):
+    """Delete a memory entry by ID."""
+    root = _root()
+    if not yes:
+        typer.confirm(f"Delete entry {entry_id}?", abort=True)
+    if delete_entry(root, entry_id):
+        console.print(f"[green]✓ Deleted[/green] {entry_id}")
+    else:
+        console.print(f"[red]Not found:[/red] {entry_id}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def edit(
+    entry_id: str = typer.Argument(..., help="Entry ID to edit (8-char)"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="New content"),
+    section: Optional[str] = typer.Option(None, "--section", "-s", help=f"New section: {', '.join(SECTIONS)}"),
+    tags: Optional[str] = typer.Option(None, "--tags", "-t", help="New tags (comma-separated)"),
+):
+    """Edit a memory entry by ID."""
+    root = _root()
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    result = edit_entry(root, entry_id, content=content, section=section, tags=tag_list)
+    if result:
+        console.print(f"[green]✓ Updated[/green] {entry_id}")
+        _print_table([result])
+    else:
+        console.print(f"[red]Not found:[/red] {entry_id}")
+        raise typer.Exit(1)
+
+
 @app.command("import")
 def import_cmd(
     folder: Path = typer.Argument(..., help="Folder to import files from"),
@@ -285,6 +322,10 @@ def _build_rules() -> dict:
         "- Save important context after learning it — do not wait\n"
         "- Keep entries short (1-3 sentences)\n"
         "- Use --tags to categorize: `rememb write \"...\" --section project --tags tag1,tag2`\n"
+        "\n## Editing memory\n"
+        "Run `rememb edit <id> --content \"<new content>\"` to update an entry.\n"
+        "Run `rememb edit <id> --section <section>` to move an entry to another section.\n"
+        "Run `rememb delete <id> --yes` to remove an entry.\n"
         "\n## Importing files\n"
         "If the user asks to import notes or files into rememb:\n"
         "1. Run `rememb import <folder> --dry-run` to preview the files\n"

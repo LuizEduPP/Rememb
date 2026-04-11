@@ -1,3 +1,3 @@
 """rememb — Persistent memory standard for AI agents."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.4"

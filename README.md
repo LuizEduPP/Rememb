@@ -66,11 +66,24 @@ pip install rememb[mcp]
 
 ### 2. Add to your IDE config
 
-| Editor | Config file | Add this |
-|--------|-------------|----------|
-| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `{"mcpServers": {"rememb": {"command": "rememb", "args": ["mcp"]}}}` |
-| **Cursor** | `.cursor/mcp.json` | `{"mcpServers": {"rememb": {"command": "rememb", "args": ["mcp"]}}}` |
-| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | `{"mcpServers": {"rememb": {"command": "rememb", "args": ["mcp"]}}}` |
+Add this to your IDE's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "rememb": {
+      "command": "rememb",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+| Editor | Config file |
+|--------|-------------|
+| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` |
+| **Cursor** | `.cursor/mcp.json` |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 
 ### 3. Restart your IDE
 

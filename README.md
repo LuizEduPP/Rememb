@@ -65,6 +65,7 @@ rememb search "authentication"
 rememb rules windsurf
 rememb rules cursor
 rememb rules claude
+rememb rules vscode
 ```
 
 ---

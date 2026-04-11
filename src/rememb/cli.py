@@ -152,7 +152,7 @@ def search(
 
 @app.command()
 def rules(
-    editor: Optional[str] = typer.Argument(None, help="Editor: windsurf, cursor, claude, continue, all"),
+    editor: Optional[str] = typer.Argument(None, help="Editor: windsurf, cursor, claude, continue, vscode, all"),
 ):
     """Print ready-to-use agent rules/instructions for your editor."""
     _rules = _build_rules()
@@ -162,6 +162,7 @@ def rules(
         "cursor": ("Cursor", "cursor_rules"),
         "claude": ("Claude / Claude.md", "claude_rules"),
         "continue": ("Continue.dev", "continue_rules"),
+        "vscode": ("VS Code + Copilot", "vscode_rules"),
     }
 
     if editor and editor.lower() != "all" and editor.lower() in editors:
@@ -218,11 +219,19 @@ def _build_rules() -> dict:
         "- Or in: config.json → models[].systemMessage\n"
     )
 
+    vscode = (
+        base +
+        "\n# VS Code + Copilot specific:\n"
+        "- Place this in: .github/copilot-instructions.md at project root\n"
+        "- Copilot Chat automatically reads this file in every session\n"
+    )
+
     return {
         "windsurf_rules": windsurf,
         "cursor_rules": cursor,
         "claude_rules": claude,
         "continue_rules": continue_dev,
+        "vscode_rules": vscode,
     }
 
 

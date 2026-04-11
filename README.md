@@ -71,40 +71,27 @@ rememb rules claude
 
 ## Agent integration
 
-### Windsurf / Cascade
+**Configure once. Works forever.**
 
-Add to `.windsurfrules` in your project root:
+You don't add anything to each conversation. You set up the rules **once** in your editor and the agent automatically reads and writes memory on every session from that point on.
 
-```
-At the START of every conversation:
-1. Run: `rememb read --agent` and absorb the memory context
-
-At the END of every conversation:
-1. Run: `rememb write "<summary>" --section <section>`
-   Sections: project | actions | systems | requests | user | context
-```
-
-Or run `rememb rules windsurf` to get the full rules.
-
-### Cursor
-
-Add to `.cursorrules`:
-
-```
-At the START of every conversation:
-1. Run: `rememb read --agent` and absorb the memory context
-...
+```bash
+# Get the rules for your editor (copy and paste once)
+rememb rules windsurf
+rememb rules cursor
+rememb rules claude
+rememb rules continue
 ```
 
-Run `rememb rules cursor` for the full text.
+| Editor | Where to paste |
+|--------|---------------|
+| **Windsurf / Cascade** | `.windsurfrules` at project root — or Settings → Cascade → Custom Instructions |
+| **Cursor** | `.cursorrules` at project root — or Settings → Rules for AI |
+| **Claude Code** | `CLAUDE.md` at project root (auto-read every session) |
+| **Continue.dev** | `config.json` → `models[].systemMessage` |
+| **VS Code + Copilot** | `.github/copilot-instructions.md` at project root (auto-read by Copilot) |
 
-### Claude Code
-
-Add to `CLAUDE.md` at your project root. Run `rememb rules claude`.
-
-### Continue.dev
-
-Run `rememb rules continue` and paste into your config.
+That's it. From that point on, every new session with your agent starts with full memory context — automatically.
 
 ---
 

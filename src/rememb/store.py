@@ -9,10 +9,16 @@ from pathlib import Path
 from typing import Optional
 
 REMEMB_DIR = ".rememb"
+GLOBAL_REMEMB_DIR = Path.home() / ".rememb"
 ENTRIES_FILE = "entries.json"
 META_FILE = "meta.json"
 
 SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
+
+
+def global_root() -> Path:
+    """Returns the global memory root: ~/.rememb/"""
+    return Path.home()
 
 
 def _rememb_path(root: Path) -> Path:
@@ -27,22 +33,31 @@ def _meta_path(root: Path) -> Path:
     return _rememb_path(root) / META_FILE
 
 
-def find_root(start: Optional[Path] = None) -> Path:
-    """Walk up from start until we find .rememb/ or reach filesystem root."""
+def find_root(start: Optional[Path] = None, local: bool = False) -> Path:
+    """Find .rememb/ root.
+
+    Priority:
+    1. Walk up from start looking for a local .rememb/ (if --local or found naturally)
+    2. Fall back to global ~/.rememb/
+    """
     current = (start or Path.cwd()).resolve()
     for parent in [current, *current.parents]:
         if (parent / REMEMB_DIR).is_dir():
             return parent
-    return current
+
+    if local:
+        return current
+
+    return global_root()
 
 
 def is_initialized(root: Path) -> bool:
     return _entries_path(root).exists()
 
 
-def init(root: Path, project_name: str = "") -> Path:
+def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     rememb = _rememb_path(root)
-    rememb.mkdir(exist_ok=True)
+    rememb.mkdir(parents=True, exist_ok=True)
 
     entries_file = _entries_path(root)
     if not entries_file.exists():
@@ -52,18 +67,19 @@ def init(root: Path, project_name: str = "") -> Path:
     if not meta_file.exists():
         meta = {
             "version": "1",
-            "project": project_name or root.name,
+            "project": project_name or ("global" if global_mode else root.name),
             "created_at": _now(),
             "sections": SECTIONS,
         }
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
-    gitignore = root / ".gitignore"
-    gitignore_line = ".rememb/embeddings.npy\n"
-    if gitignore.exists():
-        content = gitignore.read_text(encoding="utf-8")
-        if gitignore_line.strip() not in content:
-            gitignore.write_text(content.rstrip() + "\n" + gitignore_line, encoding="utf-8")
+    if not global_mode:
+        gitignore = root / ".gitignore"
+        gitignore_line = ".rememb/embeddings.npy\n"
+        if gitignore.exists():
+            content = gitignore.read_text(encoding="utf-8")
+            if gitignore_line.strip() not in content:
+                gitignore.write_text(content.rstrip() + "\n" + gitignore_line, encoding="utf-8")
 
     return rememb
 

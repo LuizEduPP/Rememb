@@ -1,19 +1,22 @@
-# rememb — Agent Memory Rules (Continue.dev)
+# rememb
 
-At the START of every conversation:
-1. Run: `rememb read --agent` and absorb the memory context
-2. If searching for specific context: `rememb search "<topic>" --agent`
+You have access to `rememb`, a CLI tool for persistent memory across sessions.
+Use it to remember and retrieve context about this project and user.
 
-At the END of every conversation (or when significant context is established):
-1. Run: `rememb write "<summary>" --section <section>`
-   Sections: project | actions | systems | requests | user | context
+## Reading memory
+Run `rememb read --agent` to load all stored context before responding.
+Run `rememb search "<topic>" --agent` to find specific information.
 
-Rules:
-- Always read memory before acting on a new session
-- Always write memory after learning something important about the project or user
-- Keep entries concise (1-3 sentences max per entry)
-- Tag entries when relevant: `--tags tag1,tag2`
+## Writing memory
+Run `rememb write "<summary>" --section <section>` when you learn something worth remembering.
+Available sections: project | actions | systems | requests | user | context
 
-# Continue.dev specific:
-- Paste into: .continuerc.json → systemMessage field
-- Or into: config.json → models[].systemMessage
+## Rules
+- Always read memory at the start of a new session
+- Save important context after learning it — do not wait
+- Keep entries short (1-3 sentences)
+- Use --tags to categorize: `rememb write "..." --section project --tags tag1,tag2`
+
+# Where to place (Continue.dev)
+- config.json → models[].systemMessage
+- Or: .continuerc.json → systemMessage

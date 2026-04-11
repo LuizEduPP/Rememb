@@ -77,15 +77,14 @@ rememb rules vscode
 
 **Configure once. Works forever.**
 
-You don't add anything to each conversation. You set up the rules **once** in your editor and the agent automatically reads and writes memory on every session from that point on.
+Run `rememb rules <editor>` to get the instructions for your editor, then paste them once. From that point on, your agent automatically reads and writes memory on every session.
 
 ```bash
-# Get the rules for your editor (copy and paste once)
-rememb rules windsurf
-rememb rules cursor
-rememb rules claude
-rememb rules continue
-rememb rules vscode
+rememb rules windsurf   # Windsurf / Cascade
+rememb rules cursor     # Cursor
+rememb rules claude     # Claude Code
+rememb rules continue   # Continue.dev
+rememb rules vscode     # VS Code + Copilot
 ```
 
 | Editor | Where to paste |
@@ -95,8 +94,6 @@ rememb rules vscode
 | **Claude Code** | `CLAUDE.md` at project root (auto-read every session) |
 | **Continue.dev** | `config.json` → `models[].systemMessage` |
 | **VS Code + Copilot** | `.github/copilot-instructions.md` at project root (auto-read by Copilot) |
-
-That's it. From that point on, every new session with your agent starts with full memory context — automatically.
 
 ---
 

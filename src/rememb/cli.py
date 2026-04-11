@@ -16,6 +16,7 @@ from rememb import __version__
 from rememb.store import (
     SECTIONS,
     find_root,
+    global_root,
     init,
     is_initialized,
     read_entries,
@@ -33,7 +34,12 @@ console = Console()
 
 
 def _root() -> Path:
-    return find_root()
+    """Returns memory root. Auto-initializes global ~/.rememb/ if nothing found."""
+    root = find_root()
+    if not is_initialized(root):
+        root = global_root()
+        init(root, project_name="global", global_mode=True)
+    return root
 
 
 @app.command()
@@ -42,19 +48,19 @@ def version():
     console.print(f"rememb v{__version__}")
 
 
-@app.command()
 def init_cmd(
     path: Optional[Path] = typer.Argument(None, help="Project root (default: current dir)"),
     name: str = typer.Option("", "--name", "-n", help="Project name"),
 ):
-    """Initialize .rememb/ in the current project."""
+    """Initialize .rememb/ in the current project (or globally with --global)."""
     root = (path or Path.cwd()).resolve()
 
     if is_initialized(root):
         console.print(f"[yellow]Already initialized at {root / '.rememb'}[/yellow]")
         raise typer.Exit()
 
-    rememb = init(root, project_name=name)
+    global_mode = root == global_root()
+    rememb = init(root, project_name=name, global_mode=global_mode)
     console.print(Panel(
         f"[green]✓[/green] Initialized [bold].rememb/[/bold] at [dim]{rememb}[/dim]\n\n"
         f"[dim]Sections:[/dim] {', '.join(SECTIONS)}\n\n"
@@ -68,6 +74,7 @@ def init_cmd(
 
 
 app.command("init")(init_cmd)
+
 
 
 @app.command()
@@ -165,65 +172,76 @@ def rules(
         "vscode": ("VS Code + Copilot", "vscode_rules"),
     }
 
-    if editor and editor.lower() != "all" and editor.lower() in editors:
-        label, key = editors[editor.lower()]
-        console.print(Panel(_rules[key], title=f"Rules for {label}", border_style="cyan"))
+    if not editor:
+        console.print("\n[bold]Available editors:[/bold]\n")
+        for key, (label, _) in editors.items():
+            console.print(f"  [cyan]rememb rules {key}[/cyan]  [dim]→ {label}[/dim]")
+        console.print()
         return
 
-    for key, (label, rule_key) in editors.items():
-        console.print(Panel(_rules[rule_key], title=f"Rules for {label}", border_style="cyan"))
-        console.print()
+    if editor.lower() == "all":
+        for key, (label, rule_key) in editors.items():
+            print(_rules[rule_key])
+            print()
+        return
+
+    if editor.lower() not in editors:
+        console.print(f"[red]Unknown editor:[/red] {editor}. Choose from: {', '.join(editors)}")
+        raise typer.Exit(1)
+
+    label, key = editors[editor.lower()]
+    print(_rules[key])
 
 
 def _build_rules() -> dict:
     base = (
-        "# rememb — Agent Memory Rules\n\n"
-        "At the START of every conversation:\n"
-        "1. Run: `rememb read --agent` and absorb the memory context\n"
-        "2. If searching for specific context: `rememb search \"<topic>\" --agent`\n\n"
-        "At the END of every conversation (or when significant context is established):\n"
-        "1. Run: `rememb write \"<summary>\" --section <section>`\n"
-        "   Sections: project | actions | systems | requests | user | context\n\n"
-        "Rules:\n"
-        "- Always read memory before acting on a new session\n"
-        "- Always write memory after learning something important about the project or user\n"
-        "- Keep entries concise (1-3 sentences max per entry)\n"
-        "- Tag entries when relevant: `--tags tag1,tag2`\n"
+        "# rememb\n\n"
+        "You have access to `rememb`, a CLI tool for persistent memory across sessions.\n"
+        "Use it to remember and retrieve context about this project and user.\n\n"
+        "## Reading memory\n"
+        "Run `rememb read --agent` to load all stored context before responding.\n"
+        "Run `rememb search \"<topic>\" --agent` to find specific information.\n\n"
+        "## Writing memory\n"
+        "Run `rememb write \"<summary>\" --section <section>` when you learn something worth remembering.\n"
+        "Available sections: project | actions | systems | requests | user | context\n\n"
+        "## Rules\n"
+        "- Always read memory at the start of a new session\n"
+        "- Save important context after learning it — don't wait\n"
+        "- Keep entries short (1-3 sentences)\n"
+        "- Use --tags to categorize: `rememb write \"...\" --section project --tags tag1,tag2`\n"
     )
 
     windsurf = (
         base +
-        "\n# Windsurf specific:\n"
-        "- Place this in: Settings → Cascade → Custom Instructions\n"
-        "- Or in: .windsurfrules file at project root\n"
+        "\n# Where to place (Windsurf / Cascade)\n"
+        "- Settings → Cascade → Custom Instructions\n"
+        "- Or: .windsurfrules at project root\n"
     )
 
     cursor = (
         base +
-        "\n# Cursor specific:\n"
-        "- Place this in: .cursorrules file at project root\n"
-        "- Or in: Settings → Rules for AI\n"
+        "\n# Where to place (Cursor)\n"
+        "- .cursorrules at project root\n"
+        "- Or: Settings → Rules for AI\n"
     )
 
     claude = (
         base +
-        "\n# Claude / CLAUDE.md specific:\n"
-        "- Place this in: CLAUDE.md file at project root\n"
-        "- Claude Code will automatically read CLAUDE.md\n"
+        "\n# Where to place (Claude Code)\n"
+        "- CLAUDE.md at project root (auto-read every session)\n"
     )
 
     continue_dev = (
         base +
-        "\n# Continue.dev specific:\n"
-        "- Place this in: .continuerc.json → systemMessage field\n"
-        "- Or in: config.json → models[].systemMessage\n"
+        "\n# Where to place (Continue.dev)\n"
+        "- config.json → models[].systemMessage\n"
+        "- Or: .continuerc.json → systemMessage\n"
     )
 
     vscode = (
         base +
-        "\n# VS Code + Copilot specific:\n"
-        "- Place this in: .github/copilot-instructions.md at project root\n"
-        "- Copilot Chat automatically reads this file in every session\n"
+        "\n# Where to place (VS Code + Copilot)\n"
+        "- .github/copilot-instructions.md at project root (auto-read by Copilot)\n"
     )
 
     return {

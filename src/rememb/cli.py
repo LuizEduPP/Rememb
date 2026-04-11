@@ -8,6 +8,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
@@ -388,8 +389,8 @@ def _print_table(entries: list[dict]) -> None:
         table.add_row(
             e["id"],
             e["section"],
-            e["content"],
-            ", ".join(e.get("tags", [])) or "-",
+            escape(e["content"]),
+            escape(", ".join(e.get("tags", [])) or "-"),
             e["created_at"],
         )
 

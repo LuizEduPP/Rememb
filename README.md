@@ -59,21 +59,31 @@ pip install rememb[pdf]
 ## Quickstart
 
 ```bash
-# Initialize in your project
-rememb init
+# Memory is global by default (~/.rememb/) — no init needed
+# Use --local to keep memory in the current project
 
 # Write memories
 rememb write "Project uses FastAPI + PostgreSQL + async patterns" --section project
 rememb write "User prefers direct answers, no filler text" --section user
-rememb write "Auth module lives at src/auth/, JWT-based" --section systems
+rememb write "Auth module lives at src/auth/, JWT-based" --section systems --tags auth,jwt
 
 # Read everything (for the agent)
 rememb read --agent
 
+# Filter by section
+rememb read --section project
+
 # Search semantically
 rememb search "authentication"
+rememb search "authentication" --agent   # agent-friendly output
+
+# Import files into memory
+rememb import ~/notes/ --section context --dry-run   # preview first
+rememb import ~/notes/ --section context             # then import
+rememb import ~/notes/ --recursive --section context # include subfolders
 
 # Get ready-to-use rules for your editor
+rememb rules          # list available editors
 rememb rules windsurf
 rememb rules cursor
 rememb rules claude

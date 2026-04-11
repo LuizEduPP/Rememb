@@ -19,3 +19,10 @@ Available sections: project | actions | systems | requests | user | context
 
 # Where to place (Claude Code)
 - CLAUDE.md at project root (auto-read every session)
+
+## Importing files
+If the user asks to import notes or files into rememb:
+1. Read each file content
+2. Summarize and classify the section based on content (project/actions/systems/requests/user/context)
+3. Run: `rememb write "<filename>: <summary>" --section <section> --tags <tag>`
+Do NOT use `rememb import` for this — classify with your own judgment.

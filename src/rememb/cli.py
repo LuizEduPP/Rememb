@@ -157,6 +157,81 @@ def search(
     _print_table(results)
 
 
+@app.command("import")
+def import_cmd(
+    folder: Path = typer.Argument(..., help="Folder to import files from"),
+    section: str = typer.Option("context", "--section", "-s", help=f"Default section: {', '.join(SECTIONS)}"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Search subfolders recursively"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without saving"),
+):
+    """Import .md, .txt, and .pdf files into memory."""
+    root = _root()
+    folder = folder.expanduser().resolve()
+
+    if not folder.exists():
+        console.print(f"[red]Folder not found:[/red] {folder}")
+        raise typer.Exit(1)
+
+    pattern = "**/*" if recursive else "*"
+    supported = {".md", ".txt", ".pdf"}
+    files = [f for f in folder.glob(pattern) if f.is_file() and f.suffix.lower() in supported]
+
+    if not files:
+        console.print(f"[yellow]No supported files found in {folder}[/yellow]")
+        raise typer.Exit()
+
+    console.print(f"\n[bold]Found {len(files)} files[/bold] in [dim]{folder}[/dim]\n")
+
+    imported = 0
+    skipped = 0
+
+    for f in files:
+        content = _read_file_content(f)
+        if not content or len(content.strip()) < 10:
+            skipped += 1
+            continue
+
+        # Truncate to 500 chars max per entry
+        summary = content.strip()[:500].replace("\n", " ").strip()
+        entry_section = section
+
+        if dry_run:
+            console.print(f"  [dim]{f.name}[/dim] → [cyan]{entry_section}[/cyan]  {summary[:80]}...")
+        else:
+            try:
+                write_entry(root, entry_section, f"{f.stem}: {summary}", tags=[f.suffix.lstrip(".")])
+                console.print(f"  [green]✓[/green] {f.name} → [{entry_section}]")
+                imported += 1
+            except Exception as e:
+                console.print(f"  [red]✗[/red] {f.name}: {e}")
+                skipped += 1
+
+    if not dry_run:
+        console.print(f"\n[green]Imported {imported} files[/green], skipped {skipped}")
+    else:
+        console.print(f"\n[dim]Dry run — nothing saved. Remove --dry-run to import.[/dim]")
+
+
+def _read_file_content(path: Path) -> str:
+    if path.suffix.lower() in {".md", ".txt"}:
+        try:
+            return path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return ""
+    if path.suffix.lower() == ".pdf":
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(str(path))
+            return " ".join(page.extract_text() or "" for page in reader.pages)
+        except ImportError:
+            console.print(f"[yellow]PDF support requires: pip install rememb[pdf][/yellow]")
+            return ""
+        except Exception:
+            return ""
+    return ""
+
+
+
 @app.command()
 def rules(
     editor: Optional[str] = typer.Argument(None, help="Editor: windsurf, cursor, claude, continue, vscode, all"),
@@ -209,6 +284,12 @@ def _build_rules() -> dict:
         "- Save important context after learning it — don't wait\n"
         "- Keep entries short (1-3 sentences)\n"
         "- Use --tags to categorize: `rememb write \"...\" --section project --tags tag1,tag2`\n"
+        "\n## Importing files\n"
+        "If the user asks to import notes or files into rememb:\n"
+        "1. Run `rememb import <folder> --dry-run` to preview the files\n"
+        "2. Read the content and decide which section fits each batch\n"
+        "3. Run `rememb import <folder> --section <section>` to save\n"
+        "4. For individual files with mixed content, use `rememb write` instead\n"
     )
 
     windsurf = (

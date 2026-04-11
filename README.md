@@ -121,7 +121,8 @@ rememb init              Initialize .rememb/ in current project
 rememb write <text>      Write a memory entry (--section, --tags)
 rememb read              Read all entries (--section, --agent, --raw)
 rememb search <query>    Semantic search (falls back to keyword)
-rememb rules [editor]    Print agent rules for windsurf/cursor/claude/continue
+rememb import <folder>   Import .md/.txt/.pdf files into memory (--section, --recursive, --dry-run)
+rememb rules [editor]    Print agent rules for windsurf/cursor/claude/continue/vscode
 ```
 
 ---
@@ -146,7 +147,7 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 ## Roadmap
 
 ### Coming soon
-- [ ] `rememb import <folder>` — bulk import `.md` files into memory (auto-detect section by filename)
+- [x] `rememb import <folder>` — import `.md`, `.txt`, `.pdf` files into memory (`--section`, `--recursive`, `--dry-run`)
 - [ ] `rememb delete <id>` — remove a memory entry
 - [ ] `rememb edit <id>` — update an existing entry
 - [ ] `rememb export` — export memory to Markdown / Obsidian / Notion

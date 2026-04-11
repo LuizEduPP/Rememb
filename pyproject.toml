@@ -34,6 +34,7 @@ rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
 semantic = ["sentence-transformers>=3.0.0", "numpy>=1.24.0"]
+pdf = ["pypdf>=4.0.0"]
 dev = ["build", "twine"]
 
 [project.urls]

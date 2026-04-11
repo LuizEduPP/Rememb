@@ -2,6 +2,8 @@
 
 > **Persistent memory for AI agents — local, portable, zero config.**
 
+![memdir demo](demo/demo.gif)
+
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
 `memdir` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
 

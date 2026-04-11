@@ -229,13 +229,13 @@ def import_cmd(
             skipped += 1
             continue
 
-        # Truncate to 500 chars max per entry, strip surrogates
-        summary = content.strip()[:500].replace("\n", " ").strip()
+        # Extract summary from frontmatter or first meaningful paragraph
+        summary = _extract_summary(content)
         summary = summary.encode("utf-8", errors="ignore").decode("utf-8")
         entry_section = section
 
         if dry_run:
-            console.print(f"  [dim]{f.name}[/dim] → [cyan]{entry_section}[/cyan]  {summary[:80]}...")
+            console.print(f"  [dim]{escape(f.name)}[/dim] → [cyan]{entry_section}[/cyan]  {escape(summary[:80])}...")
         else:
             try:
                 write_entry(root, entry_section, f"{f.stem}: {summary}", tags=[f.suffix.lstrip(".")])
@@ -249,6 +249,49 @@ def import_cmd(
         console.print(f"\n[green]Imported {imported} files[/green], skipped {skipped}")
     else:
         console.print(f"\n[dim]Dry run — nothing saved. Remove --dry-run to import.[/dim]")
+
+
+def _extract_summary(content: str) -> str:
+    """Extract the best summary from file content.
+
+    Priority:
+    1. First frontmatter field with a descriptive sentence value (>20 chars, has spaces)
+    2. First meaningful paragraph after skipping structural/metadata lines
+    3. First 500 chars as fallback
+    Language-agnostic — no hardcoded field names or keywords.
+    """
+    import re
+    # 1. Try to find a descriptive value in YAML frontmatter
+    # Heuristic: a field whose value is a non-trivial sentence (>20 chars, contains a space)
+    # This is language-agnostic — no hardcoded field names
+    fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if fm_match:
+        for line in fm_match.group(1).splitlines():
+            key, sep, value = line.partition(":")
+            if not sep:
+                continue
+            v = value.strip()
+            if len(v) > 20 and " " in v:
+                return v
+        content = content[fm_match.end():].strip()
+
+    # 2. First meaningful paragraph — language-agnostic structural skipping
+    # Skips: headings, list markers, blockquotes, code fences, blank lines,
+    # and single-word "key: value" metadata lines (e.g. "status: active", "date: 2025")
+    skip = re.compile(r"^(#+\s|[-*+]\s|>\s|```|\s*$|\S+:\s)", re.IGNORECASE)
+    lines = []
+    for line in content.splitlines():
+        if skip.match(line):
+            if lines:
+                break
+            continue
+        lines.append(line.strip())
+        if len(" ".join(lines)) >= 300:
+            break
+
+    if lines:
+        return " ".join(lines)[:500]
+    return content.strip()[:500].replace("\n", " ").strip()
 
 
 def _read_file_content(path: Path) -> str:

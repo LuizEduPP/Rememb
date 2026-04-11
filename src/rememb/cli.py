@@ -58,7 +58,7 @@ def _root() -> Path:
 
 @app.command()
 def version():
-    """Show rememb version."""
+    """Show version."""
     console.print(f"rememb v{__version__}")
 
 
@@ -66,7 +66,7 @@ def init_cmd(
     path: Optional[Path] = typer.Argument(None, help="Project root (default: current dir)"),
     name: str = typer.Option("", "--name", "-n", help="Project name"),
 ):
-    """Initialize .rememb/ in the current project (or globally with --global)."""
+    """Initialize memory store."""
     root = (path or Path.cwd()).resolve()
 
     if is_initialized(root):
@@ -93,11 +93,11 @@ app.command("init")(init_cmd)
 
 @app.command()
 def write(
-    content: str = typer.Argument(..., help="Memory content to store"),
+    content: str = typer.Argument(..., help="Content to store"),
     section: str = typer.Option("context", "--section", "-s", help=f"Section: {', '.join(SECTIONS)}"),
     tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ):
-    """Write a new memory entry."""
+    """Add a new memory entry."""
     root = _root()
     tag_list = [t.strip() for t in tags.split(",")] if tags else []
 
@@ -116,10 +116,10 @@ def write(
 @app.command()
 def read(
     section: Optional[str] = typer.Option(None, "--section", "-s", help="Filter by section"),
-    raw: bool = typer.Option(False, "--raw", help="Output raw JSON"),
-    agent: bool = typer.Option(False, "--agent", help="Output optimized for agent consumption"),
+    raw: bool = typer.Option(False, "--raw", help="Output as JSON"),
+    agent: bool = typer.Option(False, "--agent", help="Format for AI agents"),
 ):
-    """Read memory entries."""
+    """List all memory entries."""
     root = _root()
 
     try:
@@ -146,11 +146,11 @@ def read(
 
 @app.command()
 def search(
-    query: str = typer.Argument(..., help="Search query"),
-    top_k: int = typer.Option(5, "--top", "-k", help="Number of results"),
-    agent: bool = typer.Option(False, "--agent", help="Output optimized for agent consumption"),
+    query: str = typer.Argument(..., help="Search terms"),
+    top_k: int = typer.Option(5, "--top", "-k", help="Max results"),
+    agent: bool = typer.Option(False, "--agent", help="Format for AI agents"),
 ):
-    """Search memory entries semantically (falls back to keyword)."""
+    """Search entries by content or tags."""
     root = _root()
 
     try:
@@ -178,10 +178,10 @@ def _validate_entry_id(entry_id: str) -> bool:
 
 @app.command()
 def delete(
-    entry_id: str = typer.Argument(..., help="Entry ID to delete (8-char)"),
+    entry_id: str = typer.Argument(..., help="Entry ID (8 hex chars)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete a memory entry by ID."""
+    """Remove a single entry."""
     if not _validate_entry_id(entry_id):
         console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
         console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
@@ -199,12 +199,12 @@ def delete(
 
 @app.command()
 def edit(
-    entry_id: str = typer.Argument(..., help="Entry ID to edit (8-char)"),
-    content: Optional[str] = typer.Option(None, "--content", "-c", help="New content"),
-    section: Optional[str] = typer.Option(None, "--section", "-s", help=f"New section: {', '.join(SECTIONS)}"),
-    tags: Optional[str] = typer.Option(None, "--tags", "-t", help="New tags (comma-separated)"),
+    entry_id: str = typer.Argument(..., help="Entry ID (8 hex chars)"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="Update content"),
+    section: Optional[str] = typer.Option(None, "--section", "-s", help=f"Move to section: {', '.join(SECTIONS)}"),
+    tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Replace tags (comma-separated)"),
 ):
-    """Edit a memory entry by ID."""
+    """Modify an existing entry."""
     if not _validate_entry_id(entry_id):
         console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
         console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
@@ -227,9 +227,9 @@ def edit(
 
 @app.command()
 def clear(
-    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm clearing all entries"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm deletion"),
 ):
-    """Clear all memory entries. Use with --yes to confirm."""
+    """Delete ALL entries (requires --yes)."""
     root = _root()
     
     # First show what will be deleted
@@ -257,12 +257,12 @@ def clear(
 
 @app.command("import")
 def import_cmd(
-    folder: Path = typer.Argument(..., help="Folder to import files from"),
-    section: str = typer.Option("context", "--section", "-s", help=f"Default section: {', '.join(SECTIONS)}"),
-    recursive: bool = typer.Option(False, "--recursive", "-r", help="Search subfolders recursively"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without saving"),
+    folder: Path = typer.Argument(..., help="Source folder"),
+    section: str = typer.Option("context", "--section", "-s", help=f"Target section: {', '.join(SECTIONS)}"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Include subfolders"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
 ):
-    """Import .md, .txt, and .pdf files into memory."""
+    """Import .md/.txt/.pdf files."""
     root = _root()
     folder = folder.expanduser().resolve()
 
@@ -389,9 +389,9 @@ def _read_file_content(path: Path) -> str:
 
 @app.command()
 def rules(
-    editor: Optional[str] = typer.Argument(None, help="Editor: windsurf, cursor, claude, continue, vscode, all"),
+    editor: Optional[str] = typer.Argument(None, help="Editor name (windsurf, cursor, claude, continue, vscode, all)"),
 ):
-    """Print ready-to-use agent rules/instructions for your editor."""
+    """Show AI editor integration rules."""
     _rules = _build_rules()
 
     editors = {

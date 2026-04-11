@@ -96,15 +96,15 @@ rememb rules vscode     # VS Code + Copilot
 ## Commands
 
 ```
-rememb init              Initialize .rememb/ in current project
-rememb write <text>      Write a memory entry (--section, --tags)
-rememb read              Read all entries (--section, --agent, --raw)
-rememb search <query>    Semantic search (falls back to keyword)
-rememb delete <id>       Delete a memory entry by ID (--yes to skip confirmation)
-rememb edit <id>         Edit a memory entry (--content, --section, --tags)
-rememb clear             Clear all entries (--yes to confirm)
-rememb import <folder>   Import .md/.txt/.pdf files into memory (--section, --recursive, --dry-run)
-rememb rules [editor]    Print agent rules for windsurf/cursor/claude/continue/vscode
+rememb init              Initialize memory store
+rememb write <text>      Add new entry (--section, --tags)
+rememb read              List all entries (--section, --raw, --agent)
+rememb search <query>    Search by content or tags (--top, --agent)
+rememb delete <id>       Remove single entry (--yes)
+rememb edit <id>         Modify existing entry (--content, --section, --tags)
+rememb clear             Delete ALL entries (requires --yes)
+rememb import <folder>   Import .md/.txt/.pdf files (--section, --recursive, --dry-run)
+rememb rules [editor]    Show AI editor integration rules
 ```
 
 ---

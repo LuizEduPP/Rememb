@@ -2,7 +2,7 @@
 
 > **Persistent memory for AI agents — local, portable, zero config.**
 
-![rememb demo](demo/demo.gif)
+![rememb demo](https://raw.githubusercontent.com/LuizEduPP/rememb/main/demo/demo.gif)
 
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
 `rememb` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
@@ -39,9 +39,7 @@ That's it. A JSON file in your project. Your agent reads it at the start of ever
 ## Install
 
 ```bash
-git clone https://github.com/LuizEduPP/rememb.git
-cd rememb
-pip install -e .
+pip install rememb
 ```
 
 ---

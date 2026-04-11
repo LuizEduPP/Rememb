@@ -38,45 +38,60 @@ That's it. A JSON file in your project. Your agent reads it at the start of ever
 
 ## Install
 
+**Recommended (with MCP support):**
+```bash
+pip install rememb[mcp]
+```
+
+**Minimal (CLI only):**
 ```bash
 pip install rememb
 ```
 
-For semantic search support:
-
+**All features:**
 ```bash
-pip install rememb[semantic]
-```
-
-For PDF import support:
-
-```bash
-pip install rememb[pdf]
+pip install rememb[mcp,semantic,pdf]
 ```
 
 ---
 
-## Agent integration
+## Quick Start (MCP — Recommended)
 
-**Configure once. Works forever.**
+**Zero friction. No CLI commands. Native IDE integration.**
 
-Run `rememb rules <editor>` to get the instructions for your editor, then paste them once. From that point on, your agent automatically reads and writes memory on every session.
-
+### 1. Install with MCP
 ```bash
-rememb rules windsurf   # Windsurf / Cascade
-rememb rules cursor     # Cursor
-rememb rules claude     # Claude Code
-rememb rules continue   # Continue.dev
-rememb rules vscode     # VS Code + Copilot
+pip install rememb[mcp]
 ```
 
-| Editor | Where to paste |
-|--------|---------------|
-| **Windsurf / Cascade** | `.windsurfrules` at project root — or Settings → Cascade → Custom Instructions |
-| **Cursor** | `.cursorrules` at project root — or Settings → Rules for AI |
-| **Claude Code** | `CLAUDE.md` at project root (auto-read every session) |
-| **Continue.dev** | `config.json` → `models[].systemMessage` |
-| **VS Code + Copilot** | `.github/copilot-instructions.md` at project root (auto-read by Copilot) |
+### 2. Add to your IDE config
+
+| Editor | Config file | Add this |
+|--------|-------------|----------|
+| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `{"mcpServers": {"rememb": {"command": "rememb", "args": ["mcp"]}}}` |
+| **Cursor** | `.cursor/mcp.json` | `{"mcpServers": {"rememb": {"command": "rememb", "args": ["mcp"]}}}` |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | `{"mcpServers": {"rememb": {"command": "rememb", "args": ["mcp"]}}}` |
+
+### 3. Restart your IDE
+
+The agent now automatically:
+- **Reads** memory at session start
+- **Writes** memories when learning something new
+- **Searches** context when needed
+
+No configuration needed. No commands to remember.
+
+---
+
+## Alternative: CLI Integration
+
+If your editor doesn't support MCP yet, use CLI-based integration:
+
+```bash
+rememb rules windsurf   # Get rules for your editor
+```
+
+Copy the output to your editor's rules file. See `rememb rules --help` for all options.
 
 ---
 
@@ -109,10 +124,22 @@ rememb rules [editor]    Show AI editor integration rules
 
 ---
 
-## How search works
+## How it works
 
-`rememb search` uses `sentence-transformers` for semantic similarity search locally.  
-No API calls. No embeddings sent to the cloud. Falls back to keyword search if the model isn't available.
+With MCP enabled, the agent automatically manages memory:
+
+```
+User: "We're using PostgreSQL, auth at src/auth/, async patterns"
+Agent: [calls rememb_write] → Saved to memory
+
+[New session starts]
+Agent: [calls rememb_read]  → Loads all context automatically
+Agent: "I see you're using PostgreSQL with auth at src/auth/..."
+```
+
+### Search
+
+`rememb search` uses local semantic search (no API calls, no cloud). Falls back to keyword search if embeddings aren't available.
 
 ---
 
@@ -120,74 +147,25 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 
 - **Local first** — everything is a JSON file in your project
 - **Portable** — copy `.rememb/` and it works anywhere
-- **Agnostic** — works with any agent that can run CLI commands
-- **Zero config** — `pip install rememb && rememb init` and you're done
+- **Agnostic** — works with any agent (MCP or CLI)
+- **Zero config** — `pip install rememb[mcp]` and add to IDE
 - **No lock-in** — plain JSON, read it with anything
 
 ---
 
-## MCP Server (Native IDE Integration)
+## CLI Reference
 
-For **zero-friction** integration, use the MCP server. No CLI commands required.
+For scripting or manual management:
 
 ```bash
-# Install with MCP support
-pip install rememb[mcp]
-
-# Run the server
-rememb mcp
-```
-
-The MCP server provides native tools that agents can call directly:
-
-| Tool | Purpose |
-|------|---------|
-| `rememb_read` | Load all memory at session start |
-| `rememb_search` | Find relevant context |
-| `rememb_write` | Save new memories |
-| `rememb_edit` | Update existing entries |
-| `rememb_delete` | Remove entries |
-| `rememb_clear` | Delete all (with confirmation) |
-
-### Configure your IDE
-
-**Windsurf / Cascade:**
-Add to `~/.codeium/windsurf/mcp_config.json`:
-```json
-{
-  "mcpServers": {
-    "rememb": {
-      "command": "rememb",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-**Claude Desktop:**
-Add to `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "rememb": {
-      "command": "rememb",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-**Cursor:**
-Add to `.cursor/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "rememb": {
-      "command": "rememb",
-      "args": ["mcp"]
-    }
-  }
-}
+rememb init                    # Initialize memory store
+rememb write "text"            # Add memory (--section, --tags)
+rememb read                    # List all entries
+rememb search "query"          # Semantic search
+rememb delete <id>             # Remove entry
+rememb edit <id> --content "x" # Update entry
+rememb clear --yes             # Delete all
+rememb import <folder>         # Import .md/.txt/.pdf
 ```
 
 ---

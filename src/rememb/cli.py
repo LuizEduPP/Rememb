@@ -443,6 +443,7 @@ def _build_rules() -> dict:
         "Run `rememb edit <id> --content \"<new content>\"` to update an entry.\n"
         "Run `rememb edit <id> --section <section>` to move an entry to another section.\n"
         "Run `rememb delete <id> --yes` to remove an entry.\n"
+        "Run `rememb clear --yes` to remove all entries (use with caution).\n"
         "\n## Importing files\n"
         "If the user asks to import notes or files into rememb:\n"
         "1. Run `rememb import <folder> --dry-run` to preview the files\n"
@@ -500,6 +501,7 @@ def _print_table(entries: list[dict]) -> None:
     table.add_column("Content")
     table.add_column("Tags", style="dim", width=20)
     table.add_column("Date", style="dim", width=22)
+    table.add_column("Updated", style="dim", width=22)
 
     for e in entries:
         table.add_row(
@@ -508,6 +510,7 @@ def _print_table(entries: list[dict]) -> None:
             escape(e["content"]),
             escape(", ".join(e.get("tags", [])) or "-"),
             e["created_at"],
+            e.get("updated_at", "N/A"),
         )
 
     console.print(table)

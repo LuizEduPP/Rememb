@@ -15,6 +15,7 @@ Available sections: project | actions | systems | requests | user | context
 Run `rememb edit <id> --content "<new content>"` to update an entry.
 Run `rememb edit <id> --section <section>` to move an entry to another section.
 Run `rememb delete <id> --yes` to remove an entry.
+Run `rememb clear --yes` to remove all entries (use with caution).
 
 ## Rules
 - Always read memory at the start of a new session

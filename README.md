@@ -146,6 +146,7 @@ rememb read              Read all entries (--section, --agent, --raw)
 rememb search <query>    Semantic search (falls back to keyword)
 rememb delete <id>       Delete a memory entry by ID (--yes to skip confirmation)
 rememb edit <id>         Edit a memory entry (--content, --section, --tags)
+rememb clear             Clear all entries (--yes to confirm)
 rememb import <folder>   Import .md/.txt/.pdf files into memory (--section, --recursive, --dry-run)
 rememb rules [editor]    Print agent rules for windsurf/cursor/claude/continue/vscode
 ```

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import re
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -14,6 +18,119 @@ ENTRIES_FILE = "entries.json"
 META_FILE = "meta.json"
 
 SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
+
+# Tamanhos máximos para validação
+MAX_CONTENT_LENGTH = 10000
+MAX_TAG_LENGTH = 50
+MAX_TAGS_PER_ENTRY = 10
+
+
+@contextmanager
+def _file_lock(filepath: Path, mode: str = "r+"):
+    """Context manager para file locking cross-platform.
+    
+    Usa fcntl no Unix e msvcrt no Windows.
+    """
+    import platform
+    
+    # Cria arquivo se não existe (para locking)
+    if not filepath.exists() and "w" in mode:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text("[]", encoding="utf-8")
+    
+    f = open(filepath, mode, encoding="utf-8")
+    
+    try:
+        if platform.system() == "Windows":
+            import msvcrt
+            # LOCK_EX = 2, LOCK_NB = 1
+            lock_mode = 2 if "w" in mode else 0
+            msvcrt.locking(f.fileno(), lock_mode, 0x7FFFFFFF)
+        else:
+            import fcntl
+            if "w" in mode:
+                fcntl.flock(f, fcntl.LOCK_EX)
+            else:
+                fcntl.flock(f, fcntl.LOCK_SH)
+        yield f
+    finally:
+        if platform.system() == "Windows":
+            import msvcrt
+            msvcrt.locking(f.fileno(), 0, 0x7FFFFFFF)  # UNLOCK
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
+def _sanitize_content(content: str) -> str:
+    """Sanitiza conteúdo da entrada.
+    
+    - Remove caracteres de controle (exceto nova linha)
+    - Limita tamanho máximo
+    - Normaliza whitespace
+    """
+    if not isinstance(content, str):
+        raise TypeError(f"Content must be string, got {type(content).__name__}")
+    
+    # Remove caracteres de controle exceto \n, \t
+    content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
+    
+    # Normaliza whitespace
+    content = " ".join(content.split())
+    
+    # Limita tamanho
+    if len(content) > MAX_CONTENT_LENGTH:
+        content = content[:MAX_CONTENT_LENGTH] + "..."
+    
+    if not content.strip():
+        raise ValueError("Content cannot be empty")
+    
+    return content
+
+
+def _sanitize_tags(tags: list[str] | None) -> list[str]:
+    """Sanitiza tags.
+    
+    - Lowercase
+    - Remove caracteres especiais
+    - Limita tamanho e quantidade
+    - Remove duplicatas
+    """
+    if tags is None:
+        return []
+    
+    if not isinstance(tags, list):
+        raise TypeError(f"Tags must be list, got {type(tags).__name__}")
+    
+    if len(tags) > MAX_TAGS_PER_ENTRY:
+        raise ValueError(f"Maximum {MAX_TAGS_PER_ENTRY} tags allowed, got {len(tags)}")
+    
+    sanitized = []
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        
+        # Lowercase e strip
+        tag = tag.lower().strip()
+        
+        # Remove caracteres não alfanuméricos (exceto hífen e underscore)
+        tag = re.sub(r"[^a-z0-9\-_]", "", tag)
+        
+        # Limita tamanho
+        if len(tag) > MAX_TAG_LENGTH:
+            tag = tag[:MAX_TAG_LENGTH]
+        
+        if tag and tag not in sanitized:
+            sanitized.append(tag)
+    
+    return sanitized
+
+
+def _compute_entries_hash(entries: list[dict]) -> str:
+    """Computa hash SHA256 das entradas para invalidação de cache."""
+    content = json.dumps(entries, sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
 def global_root() -> Path:
@@ -75,11 +192,13 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
 
     if not global_mode:
         gitignore = root / ".gitignore"
-        gitignore_line = ".rememb/embeddings.npy\n"
+        gitignore_lines = [".rememb/embeddings.npy\n", ".rememb/embeddings.hash\n"]
         if gitignore.exists():
             content = gitignore.read_text(encoding="utf-8")
-            if gitignore_line.strip() not in content:
-                gitignore.write_text(content.rstrip() + "\n" + gitignore_line, encoding="utf-8")
+            for line in gitignore_lines:
+                if line.strip() not in content:
+                    content = content.rstrip() + "\n" + line
+            gitignore.write_text(content, encoding="utf-8")
 
     return rememb
 
@@ -92,13 +211,25 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
     if section not in SECTIONS:
         raise ValueError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
 
+    # Sanitiza conteúdo e tags
+    content = _sanitize_content(content)
+    tags = _sanitize_tags(tags)
+
     entries = _load_entries(root)
+    
+    # Gera ID único (verifica colisão)
+    existing_ids = {e["id"] for e in entries}
+    new_id = str(uuid.uuid4())[:8]
+    while new_id in existing_ids:
+        new_id = str(uuid.uuid4())[:8]
+    
     entry = {
-        "id": str(uuid.uuid4())[:8],
+        "id": new_id,
         "section": section,
         "content": content,
-        "tags": tags or [],
+        "tags": tags,
         "created_at": _now(),
+        "updated_at": _now(),
     }
     entries.append(entry)
     _save_entries(root, entries)
@@ -119,13 +250,14 @@ def edit_entry(root: Path, entry_id: str, content: Optional[str] = None, section
     for e in entries:
         if e["id"] == entry_id:
             if content is not None:
-                e["content"] = content.encode("utf-8", errors="ignore").decode("utf-8")
+                e["content"] = _sanitize_content(content)
             if section is not None:
+                section = section.lower()
                 if section not in SECTIONS:
                     raise ValueError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
                 e["section"] = section
             if tags is not None:
-                e["tags"] = tags
+                e["tags"] = _sanitize_tags(tags)
             e["updated_at"] = _now()
             _save_entries(root, entries)
             return e
@@ -149,7 +281,11 @@ def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
 
     try:
         return _semantic_search(root, entries, query, top_k)
-    except Exception:
+    except ImportError as e:
+        # sentence-transformers ou numpy não instalados
+        raise RuntimeError(f"Semantic search requires: pip install rememb[semantic] ({e})")
+    except (RuntimeError, ValueError, OSError) as e:
+        # Erros de modelo, encoding, ou I/O - fallback para keyword
         return _keyword_search(entries, query, top_k)
 
 
@@ -160,17 +296,31 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) ->
     model = SentenceTransformer("all-MiniLM-L6-v2")
     texts = [e["content"] for e in entries]
 
+    # Hash-based cache invalidation
+    current_hash = _compute_entries_hash(entries)
     embeddings_path = _rememb_path(root) / "embeddings.npy"
-    if embeddings_path.exists():
-        embeddings = np.load(str(embeddings_path))
-        if len(embeddings) != len(texts):
-            embeddings = model.encode(texts)
-            np.save(str(embeddings_path), embeddings)
-    else:
-        embeddings = model.encode(texts)
-        np.save(str(embeddings_path), embeddings)
+    hash_path = _rememb_path(root) / "embeddings.hash"
 
-    query_vec = model.encode([query])[0]
+    cache_valid = False
+    embeddings = None
+
+    if embeddings_path.exists() and hash_path.exists():
+        stored_hash = hash_path.read_text(encoding="utf-8").strip()
+        if stored_hash == current_hash:
+            try:
+                embeddings = np.load(str(embeddings_path))
+                if len(embeddings) == len(texts):
+                    cache_valid = True
+            except (OSError, ValueError):
+                # Cache corrompido, recalcula
+                pass
+
+    if not cache_valid:
+        embeddings = model.encode(texts, show_progress_bar=False)
+        np.save(str(embeddings_path), embeddings)
+        hash_path.write_text(current_hash, encoding="utf-8")
+
+    query_vec = model.encode([query], show_progress_bar=False)[0]
     scores = np.dot(embeddings, query_vec) / (
         np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec) + 1e-9
     )
@@ -182,7 +332,10 @@ def _keyword_search(entries: list[dict], query: str, top_k: int) -> list[dict]:
     q = query.lower()
     scored = []
     for entry in entries:
-        score = entry["content"].lower().count(q)
+        content_score = entry["content"].lower().count(q)
+        # Tags têm peso maior (2x) pois são metadados intencionais
+        tags_score = sum(q in tag.lower() for tag in entry.get("tags", [])) * 2
+        score = content_score + tags_score
         if score > 0:
             scored.append((score, entry))
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -190,12 +343,20 @@ def _keyword_search(entries: list[dict], query: str, top_k: int) -> list[dict]:
 
 
 def _load_entries(root: Path) -> list[dict]:
-    raw = _entries_path(root).read_text(encoding="utf-8")
-    return json.loads(raw)
+    """Carrega entradas com file locking para thread-safety."""
+    filepath = _entries_path(root)
+    with _file_lock(filepath, mode="r") as f:
+        raw = f.read()
+        return json.loads(raw)
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:
-    _entries_path(root).write_text(json.dumps(entries, indent=2), encoding="utf-8")
+    """Salva entradas com file locking para thread-safety."""
+    filepath = _entries_path(root)
+    with _file_lock(filepath, mode="r+") as f:
+        f.seek(0)
+        f.write(json.dumps(entries, indent=2))
+        f.truncate()
 
 
 def _now() -> str:

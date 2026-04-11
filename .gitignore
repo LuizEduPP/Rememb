@@ -7,3 +7,4 @@ build/
 venv/
 *.egg
 .rememb/embeddings.npy
+.rememb/embeddings.hash

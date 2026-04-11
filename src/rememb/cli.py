@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -40,8 +41,17 @@ def _root() -> Path:
     """Returns memory root. Auto-initializes global ~/.rememb/ if nothing found."""
     root = find_root()
     if not is_initialized(root):
-        root = global_root()
-        init(root, project_name="global", global_mode=True)
+        try:
+            root = global_root()
+            init(root, project_name="global", global_mode=True)
+        except PermissionError as e:
+            console.print(f"[red]Permission denied:[/red] Cannot create ~/.rememb/ directory")
+            console.print(f"[dim]Details: {e}[/dim]")
+            raise typer.Exit(1)
+        except OSError as e:
+            console.print(f"[red]System error:[/red] Cannot initialize rememb storage")
+            console.print(f"[dim]Details: {e}[/dim]")
+            raise typer.Exit(1)
     return root
 
 
@@ -160,12 +170,22 @@ def search(
     _print_table(results)
 
 
+def _validate_entry_id(entry_id: str) -> bool:
+    """Valida formato de entry ID (8 caracteres hex)."""
+    return bool(re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE))
+
+
 @app.command()
 def delete(
     entry_id: str = typer.Argument(..., help="Entry ID to delete (8-char)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete a memory entry by ID."""
+    if not _validate_entry_id(entry_id):
+        console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
+        console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
+        raise typer.Exit(1)
+    
     root = _root()
     if not yes:
         typer.confirm(f"Delete entry {entry_id}?", abort=True)
@@ -184,6 +204,15 @@ def edit(
     tags: Optional[str] = typer.Option(None, "--tags", "-t", help="New tags (comma-separated)"),
 ):
     """Edit a memory entry by ID."""
+    if not _validate_entry_id(entry_id):
+        console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
+        console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
+        raise typer.Exit(1)
+    
+    if content is None and section is None and tags is None:
+        console.print("[red]Error:[/red] Provide at least one option: --content, --section, or --tags")
+        raise typer.Exit(1)
+    
     root = _root()
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
     result = edit_entry(root, entry_id, content=content, section=section, tags=tag_list)
@@ -241,8 +270,13 @@ def import_cmd(
                 write_entry(root, entry_section, f"{f.stem}: {summary}", tags=[f.suffix.lstrip(".")])
                 console.print(f"  [green]✓[/green] {f.name} → [{entry_section}]")
                 imported += 1
-            except Exception as e:
+            except (RuntimeError, ValueError, TypeError) as e:
+                # Erros de validação, seção inválida, ou não inicializado
                 console.print(f"  [red]✗[/red] {f.name}: {e}")
+                skipped += 1
+            except OSError as e:
+                # Erros de I/O (permissão, disco cheio, etc)
+                console.print(f"  [red]✗[/red] {f.name}: I/O error - {e}")
                 skipped += 1
 
     if not dry_run:
@@ -298,7 +332,9 @@ def _read_file_content(path: Path) -> str:
     if path.suffix.lower() in {".md", ".txt"}:
         try:
             return path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except (OSError, UnicodeDecodeError, PermissionError) as e:
+            # Erros de I/O, encoding, ou permissão
+            console.print(f"  [yellow]⚠[/yellow] Could not read {path.name}: {e}")
             return ""
     if path.suffix.lower() == ".pdf":
         try:
@@ -308,7 +344,13 @@ def _read_file_content(path: Path) -> str:
         except ImportError:
             console.print(f"[yellow]PDF support requires: pip install rememb[pdf][/yellow]")
             return ""
-        except Exception:
+        except (OSError, PermissionError) as e:
+            # Erros de I/O ou permissão no PDF
+            console.print(f"  [yellow]⚠[/yellow] Could not read PDF {path.name}: {e}")
+            return ""
+        except Exception as e:
+            # Erros de parsing do PDF (estrutura corrompida, etc)
+            console.print(f"  [yellow]⚠[/yellow] Could not parse PDF {path.name}: {e}")
             return ""
     return ""
 

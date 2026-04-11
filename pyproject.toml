@@ -9,13 +9,20 @@ description = "Persistent memory standard for AI agents — local, portable, zer
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
-keywords = ["ai", "agents", "memory", "llm", "mcp", "windsurf", "cursor", "claude"]
+keywords = ["ai", "agents", "memory", "llm", "mcp", "windsurf", "cursor", "claude", "copilot", "continue", "vscode", "persistent-memory", "ai-tools"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
     "typer>=0.12.0",
@@ -27,10 +34,13 @@ dependencies = [
 [project.scripts]
 rememb = "rememb.cli:app"
 
+[project.optional-dependencies]
+dev = ["build", "twine"]
+
 [project.urls]
-Homepage = "https://github.com/yourusername/rememb"
-Repository = "https://github.com/yourusername/rememb"
-Issues = "https://github.com/yourusername/rememb/issues"
+Homepage = "https://github.com/LuizEduPP/rememb"
+Repository = "https://github.com/LuizEduPP/rememb"
+Issues = "https://github.com/LuizEduPP/rememb/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -151,7 +151,7 @@ No API calls. No embeddings sent to the cloud. Falls back to keyword search if t
 ## Contributing
 
 ```bash
-git clone https://github.com/yourusername/rememb
+git clone https://github.com/LuizEduPP/rememb
 cd rememb
 pip install -e ".[dev]"
 ```

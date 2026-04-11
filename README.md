@@ -39,7 +39,9 @@ That's it. A JSON file in your project. Your agent reads it at the start of ever
 ## Install
 
 ```bash
-pip install rememb
+git clone https://github.com/LuizEduPP/rememb.git
+cd rememb
+pip install -e .
 ```
 
 ---

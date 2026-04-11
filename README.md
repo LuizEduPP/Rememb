@@ -1,4 +1,4 @@
-# rememb
+# Rememb
 
 > **Persistent memory for AI agents — local, portable, zero config.**
 

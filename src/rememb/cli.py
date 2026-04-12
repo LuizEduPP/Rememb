@@ -415,6 +415,25 @@ def mcp():
         raise typer.Exit(1)
 
 
+def _mcp_json_block() -> str:
+    import shutil
+    bin_path = shutil.which("rememb") or "rememb"
+    return (
+        "\n## MCP setup (recommended)\n"
+        "Instead of CLI rules, add rememb as an MCP server so the agent calls it natively.\n\n"
+        "```json\n"
+        '{\n'
+        '  "mcpServers": {\n'
+        '    "rememb": {\n'
+        f'      "command": "{bin_path}",\n'
+        '      "args": ["mcp"]\n'
+        '    }\n'
+        '  }\n'
+        '}\n'
+        "```\n"
+    )
+
+
 def _build_rules() -> dict:
     base = (
         "# rememb\n\n"
@@ -444,11 +463,15 @@ def _build_rules() -> dict:
         "4. For individual files with mixed content, use `rememb write` instead\n"
     )
 
+    mcp_block = _mcp_json_block()
+
     windsurf = (
         base +
         "\n# Where to place (Windsurf / Cascade)\n"
         "- Settings → Cascade → Custom Instructions\n"
         "- Or: .windsurfrules at project root\n"
+        + mcp_block +
+        "Place the JSON above in: Settings → Cascade → MCP Servers\n"
     )
 
     cursor = (
@@ -456,12 +479,16 @@ def _build_rules() -> dict:
         "\n# Where to place (Cursor)\n"
         "- .cursorrules at project root\n"
         "- Or: Settings → Rules for AI\n"
+        + mcp_block +
+        "Place the JSON above in: ~/.cursor/mcp.json\n"
     )
 
     claude = (
         base +
         "\n# Where to place (Claude Code)\n"
         "- CLAUDE.md at project root (auto-read every session)\n"
+        + mcp_block +
+        "Place the JSON above in: ~/.claude/mcp.json\n"
     )
 
     continue_dev = (

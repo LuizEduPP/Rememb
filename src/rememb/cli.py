@@ -10,6 +10,8 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
+from rich.text import Text
+from rich.columns import Columns
 
 from rememb import __version__
 from rememb.store import (
@@ -32,25 +34,117 @@ console = Console()
 
 def _version_callback(value: bool) -> None:
     if value:
-        console.print(f"rememb v{__version__}")
+        console.print(Panel(
+            f"[bold cyan]rememb[/bold cyan] [dim]v{__version__}[/dim]",
+            border_style="cyan",
+            padding=(0, 2)
+        ))
         raise typer.Exit()
 
 
-app = typer.Typer(
+def _show_help():
+    """Display custom styled help."""
+    title = Text("🧠 ", style="bold magenta")
+    title.append("rememb", style="bold cyan")
+    
+    subtitle = Text("Persistent memory for AI agents", style="dim italic")
+    subtitle.append(" — ", style="dim")
+    subtitle.append("local, portable, zero config", style="dim")
+    
+    console.print()
+    console.print(Panel(
+        f"[bold cyan]rememb[/bold cyan] [dim]v{__version__}[/dim]\n"
+        f"[dim italic]Persistent memory for AI agents — local, portable, zero config[/dim italic]",
+        border_style="cyan",
+        padding=(1, 2),
+        title="🧠",
+        title_align="left"
+    ))
+    
+    # Commands section
+    console.print(f"\n[bold bright_cyan]Commands[/bold bright_cyan]")
+    
+    commands = [
+        ("init", "Initialize memory store in current directory"),
+        ("write", "Save a new memory entry"),
+        ("read", "Display all stored memories"),
+        ("search", "Search memories by content or tags"),
+        ("edit", "Update an existing memory entry"),
+        ("delete", "Remove a memory entry"),
+        ("clear", "Remove all memory entries"),
+        ("import", "Import files into memory"),
+        ("rules", "Print AI agent rules"),
+        ("mcp", "Start MCP server"),
+    ]
+    
+    cmd_table = Table(box=None, show_header=False, padding=(0, 2))
+    cmd_table.add_column(style="bold green", width=12)
+    cmd_table.add_column(style="dim")
+    
+    for cmd, desc in commands:
+        cmd_table.add_row(cmd, desc)
+    
+    console.print(cmd_table)
+    
+    # Options section
+    console.print(f"\n[bold bright_cyan]Options[/bold bright_cyan]")
+    
+    opts_table = Table(box=None, show_header=False, padding=(0, 2))
+    opts_table.add_column(style="bold yellow", width=12)
+    opts_table.add_column(style="dim", width=6)
+    opts_table.add_column(style="dim")
+    
+    opts_table.add_row("--version", "-v", "Show version and exit")
+    opts_table.add_row("--help", "-h", "Show this help message")
+    
+    console.print(opts_table)
+    
+    # Sections info
+    console.print(f"\n[bold bright_cyan]Sections[/bold bright_cyan] [dim](use with --section)[/dim]")
+    
+    sections_cols = Columns([
+        f"[bold]{s}[/bold]" for s in SECTIONS
+    ], equal=True, expand=False)
+    console.print(sections_cols)
+    
+    # Examples
+    console.print(f"\n[bold bright_cyan]Examples[/bold bright_cyan]")
+    console.print(f"  [dim]$[/dim] [green]rememb[/green] [cyan]init[/cyan]")
+    console.print(f"  [dim]$[/dim] [green]rememb[/green] [cyan]write[/cyan] [yellow]\"Project uses FastAPI\"[/yellow] [cyan]--section[/cyan] project")
+    console.print(f"  [dim]$[/dim] [green]rememb[/green] [cyan]search[/cyan] [yellow]\"database\"[/yellow]")
+    console.print(f"  [dim]$[/dim] [green]rememb[/green] [cyan]read[/cyan] [cyan]--agent[/cyan]")
+    
+    console.print()
+
+
+class CustomTyper(typer.Typer):
+    def __call__(self, *args, **kwargs):
+        import sys
+        # Check if no args or --help was passed
+        if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ("--help", "-h")):
+            _show_help()
+            sys.exit(0)
+        return super().__call__(*args, **kwargs)
+
+
+app = CustomTyper(
     name="rememb",
     help="Persistent memory for AI agents — local, portable, zero config.",
-    no_args_is_help=True,
+    no_args_is_help=False,
     rich_markup_mode="rich",
 )
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: Optional[bool] = typer.Option(
-        None, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version and exit."
+        None, "--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
 ) -> None:
-    pass
+    if ctx.invoked_subcommand is None:
+        _show_help()
+        raise typer.Exit()
 
 
 def _root() -> Path:
@@ -60,19 +154,33 @@ def _root() -> Path:
             root = global_root()
             init(root, project_name="global", global_mode=True)
         except PermissionError as e:
-            console.print(f"[red]Permission denied:[/red] Cannot create ~/.rememb/ directory")
-            console.print(f"[dim]Details: {e}[/dim]")
+            console.print(Panel(
+                f"[red]✗ Permission denied[/red]\n"
+                f"[dim]Cannot create ~/.rememb/ directory[/dim]\n"
+                f"[dim]{e}[/dim]",
+                border_style="red",
+                padding=(0, 2)
+            ))
             raise typer.Exit(1)
         except OSError as e:
-            console.print(f"[red]System error:[/red] Cannot initialize rememb storage")
-            console.print(f"[dim]Details: {e}[/dim]")
+            console.print(Panel(
+                f"[red]✗ System error[/red]\n"
+                f"[dim]Cannot initialize rememb storage[/dim]\n"
+                f"[dim]{e}[/dim]",
+                border_style="red",
+                padding=(0, 2)
+            ))
             raise typer.Exit(1)
     return root
 
 
 @app.command()
 def version():
-    console.print(f"rememb v{__version__}")
+    console.print(Panel(
+        f"[bold cyan]rememb[/bold cyan] [dim]v{__version__}[/dim]",
+        border_style="cyan",
+        padding=(0, 2)
+    ))
 
 
 @app.command("init")
@@ -83,7 +191,11 @@ def init_cmd(
     root = (path or Path.cwd()).resolve()
 
     if is_initialized(root):
-        console.print(f"[yellow]Already initialized at {root / '.rememb'}[/yellow]")
+        console.print(Panel(
+            f"[yellow]⚠ Already initialized[/yellow] at [dim]{root / '.rememb'}[/dim]",
+            border_style="yellow",
+            padding=(0, 2)
+        ))
         raise typer.Exit()
 
     global_mode = root == global_root()
@@ -115,13 +227,19 @@ def write(
     try:
         entry = write_entry(root, section, content, tag_list)
     except (RuntimeError, ValueError) as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.print(Panel(
+            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
-    console.print(
-        f"[green]✓[/green] Saved [bold][{entry['section']}][/bold] "
-        f"[dim]id={entry['id']} at {entry['created_at']}[/dim]"
-    )
+    console.print(Panel(
+        f"[green]✓[/green] Saved to [bold cyan]{entry['section']}[/bold cyan]\n"
+        f"[dim]ID: {entry['id']} | {entry['created_at']}[/dim]",
+        border_style="green",
+        padding=(0, 2)
+    ))
 
 
 @app.command()
@@ -135,11 +253,20 @@ def read(
     try:
         entries = read_entries(root, section)
     except RuntimeError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.print(Panel(
+            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
     if not entries:
-        console.print("[dim]No entries found.[/dim]")
+        console.print(Panel(
+            "[dim]No entries found.[/dim]\n"
+            "[dim italic]Use 'rememb write' to add memories[/dim italic]",
+            border_style="dim",
+            padding=(0, 2)
+        ))
         raise typer.Exit()
 
     if raw:
@@ -165,18 +292,30 @@ def search(
     try:
         results = search_entries(root, query, top_k)
     except RuntimeError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.print(Panel(
+            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
     if not results:
-        console.print("[dim]No results found.[/dim]")
+        console.print(Panel(
+            "[dim]No results found.[/dim]",
+            border_style="dim",
+            padding=(0, 2)
+        ))
         raise typer.Exit()
 
     if agent:
         _print_agent_format(results)
         return
 
-    console.print(f"\n[bold]Top {len(results)} results for:[/bold] [italic]{query}[/italic]\n")
+    console.print(Panel(
+        f"[bold]Top {len(results)} results[/bold] for: [italic yellow]{query}[/italic yellow]",
+        border_style="cyan",
+        padding=(0, 2)
+    ))
     _print_table(results)
 
 
@@ -190,17 +329,30 @@ def delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     if not _validate_entry_id(entry_id):
-        console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
-        console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
+        console.print(Panel(
+            f"[red]✗ Invalid entry ID format[/red]\n"
+            f"[dim]{entry_id}[/dim]\n"
+            f"[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
     
     root = _root()
     if not yes:
         typer.confirm(f"Delete entry {entry_id}?", abort=True)
     if delete_entry(root, entry_id):
-        console.print(f"[green]✓ Deleted[/green] {entry_id}")
+        console.print(Panel(
+            f"[green]✓ Deleted[/green] entry [bold]{entry_id}[/bold]",
+            border_style="green",
+            padding=(0, 2)
+        ))
     else:
-        console.print(f"[red]Not found:[/red] {entry_id}")
+        console.print(Panel(
+            f"[red]✗ Not found[/red]\n[dim]ID: {entry_id}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
 
@@ -212,22 +364,39 @@ def edit(
     tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Replace tags (comma-separated)"),
 ):
     if not _validate_entry_id(entry_id):
-        console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
-        console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
+        console.print(Panel(
+            f"[red]✗ Invalid entry ID format[/red]\n"
+            f"[dim]{entry_id}[/dim]\n"
+            f"[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
     
     if content is None and section is None and tags is None:
-        console.print("[red]Error:[/red] Provide at least one option: --content, --section, or --tags")
+        console.print(Panel(
+            "[red]✗ Error[/red]\n[dim]Provide at least one option: --content, --section, or --tags[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
     
     root = _root()
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
     result = edit_entry(root, entry_id, content=content, section=section, tags=tag_list)
     if result:
-        console.print(f"[green]✓ Updated[/green] {entry_id}")
+        console.print(Panel(
+            f"[green]✓ Updated[/green] entry [bold]{entry_id}[/bold]",
+            border_style="green",
+            padding=(0, 2)
+        ))
         _print_table([result])
     else:
-        console.print(f"[red]Not found:[/red] {entry_id}")
+        console.print(Panel(
+            f"[red]✗ Not found[/red]\n[dim]ID: {entry_id}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
 
@@ -238,23 +407,47 @@ def clear(
     root = _root()
     entries = read_entries(root)
     if not entries:
-        console.print("[dim]No entries to clear.[/dim]")
+        console.print(Panel(
+            "[dim]No entries to clear.[/dim]",
+            border_style="dim",
+            padding=(0, 2)
+        ))
         raise typer.Exit()
     
-    console.print(f"[yellow]⚠ This will delete {len(entries)} entries:[/yellow]")
+    console.print(Panel(
+        f"[yellow]⚠ This will delete {len(entries)} entries[/yellow]",
+        border_style="yellow",
+        padding=(0, 2)
+    ))
     _print_table(entries[:5])  
     if len(entries) > 5:
-        console.print(f"[dim]... and {len(entries) - 5} more[/dim]")
+        console.print(Panel(
+            f"[dim]... and {len(entries) - 5} more[/dim]",
+            border_style="dim",
+            padding=(0, 1)
+        ))
     
     if not yes:
-        console.print("\n[dim]Use --yes to confirm[/dim]")
+        console.print(Panel(
+            "[dim]Use --yes to confirm deletion[/dim]",
+            border_style="yellow",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
     
     try:
         count = clear_entries(root, confirm=True)
-        console.print(f"[green]✓ Cleared {count} entries[/green]")
+        console.print(Panel(
+            f"[green]✓ Cleared {count} entries[/green]",
+            border_style="green",
+            padding=(0, 2)
+        ))
     except RuntimeError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.print(Panel(
+            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
 
@@ -269,7 +462,11 @@ def import_cmd(
     folder = folder.expanduser().resolve()
 
     if not folder.exists():
-        console.print(f"[red]Folder not found:[/red] {folder}")
+        console.print(Panel(
+            f"[red]✗ Folder not found[/red]\n[dim]{folder}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
     pattern = "**/*" if recursive else "*"
@@ -277,10 +474,19 @@ def import_cmd(
     files = [f for f in folder.glob(pattern) if f.is_file() and f.suffix.lower() in supported]
 
     if not files:
-        console.print(f"[yellow]No supported files found in {folder}[/yellow]")
+        console.print(Panel(
+            f"[yellow]⚠ No supported files found[/yellow]\n[dim]{folder}[/dim]\n"
+            f"[dim]Supported: .md, .txt, .pdf[/dim]",
+            border_style="yellow",
+            padding=(0, 2)
+        ))
         raise typer.Exit()
 
-    console.print(f"\n[bold]Found {len(files)} files[/bold] in [dim]{folder}[/dim]\n")
+    console.print(Panel(
+        f"[bold]Found {len(files)} files[/bold] in [dim]{folder}[/dim]",
+        border_style="cyan",
+        padding=(0, 2)
+    ))
 
     imported = 0
     skipped = 0
@@ -310,9 +516,18 @@ def import_cmd(
                 skipped += 1
 
     if not dry_run:
-        console.print(f"\n[green]Imported {imported} files[/green], skipped {skipped}")
+        console.print(Panel(
+            f"[green]✓ Imported {imported} files[/green], skipped [dim]{skipped}[/dim]",
+            border_style="green",
+            padding=(0, 2)
+        ))
     else:
-        console.print(f"\n[dim]Dry run — nothing saved. Remove --dry-run to import.[/dim]")
+        console.print(Panel(
+            "[dim]Dry run — nothing saved[/dim]\n"
+            "[dim]Remove --dry-run to import[/dim]",
+            border_style="dim",
+            padding=(0, 2)
+        ))
 
 
 def _extract_summary(content: str) -> str:
@@ -348,7 +563,11 @@ def _read_file_content(path: Path) -> str:
         try:
             return path.read_text(encoding="utf-8", errors="ignore")
         except (OSError, UnicodeDecodeError, PermissionError) as e:
-            console.print(f"  [yellow]⚠[/yellow] Could not read {path.name}: {e}")
+            console.print(Panel(
+                f"[yellow]⚠ Could not read {path.name}[/yellow]\n[dim]{e}[/dim]",
+                border_style="yellow",
+                padding=(0, 1)
+            ))
             return ""
     if path.suffix.lower() == ".pdf":
         try:
@@ -356,13 +575,25 @@ def _read_file_content(path: Path) -> str:
             reader = pypdf.PdfReader(str(path))
             return " ".join(page.extract_text() or "" for page in reader.pages)
         except ImportError:
-            console.print(f"[yellow]PDF support requires: pip install rememb[pdf][/yellow]")
+            console.print(Panel(
+                "[yellow]⚠ PDF support requires:[/yellow] pip install rememb[pdf]",
+                border_style="yellow",
+                padding=(0, 2)
+            ))
             return ""
         except (OSError, PermissionError) as e:
-            console.print(f"  [yellow]⚠[/yellow] Could not read PDF {path.name}: {e}")
+            console.print(Panel(
+                f"[yellow]⚠ Could not read PDF {path.name}[/yellow]\n[dim]{e}[/dim]",
+                border_style="yellow",
+                padding=(0, 1)
+            ))
             return ""
         except Exception as e:
-            console.print(f"  [yellow]⚠[/yellow] Could not parse PDF {path.name}: {e}")
+            console.print(Panel(
+                f"[yellow]⚠ Could not parse PDF {path.name}[/yellow]\n[dim]{e}[/dim]",
+                border_style="yellow",
+                padding=(0, 1)
+            ))
             return ""
     return ""
 
@@ -381,8 +612,12 @@ def mcp():
         from rememb.mcp_server import run_server as mcp_run_server
         asyncio.run(mcp_run_server())
     except ImportError as e:
-        console.print(f"[red]MCP support requires:[/red] pip install rememb[mcp]")
-        console.print(f"[dim]Details: {e}[/dim]")
+        console.print(Panel(
+            "[red]✗ MCP support requires:[/red] pip install rememb[mcp]\n"
+            f"[dim]{e}[/dim]",
+            border_style="red",
+            padding=(0, 2)
+        ))
         raise typer.Exit(1)
 
 

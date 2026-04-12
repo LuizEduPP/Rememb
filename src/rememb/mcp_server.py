@@ -72,30 +72,30 @@ def _format_entries(entries: list[dict]) -> str:
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
-    root = _get_root()
+    root = await asyncio.to_thread(_get_root)
     
     try:
         if name == "rememb_read":
             section = arguments.get("section")
-            entries = read_entries(root, section)
+            entries = await asyncio.to_thread(read_entries, root, section)
             return [TextContent(type="text", text=_format_entries(entries))]
         
         elif name == "rememb_search":
             query = arguments["query"]
             top_k = arguments.get("top_k", 5)
             try:
-                entries = search_entries(root, query, top_k)
+                entries = await asyncio.to_thread(search_entries, root, query, top_k)
             except RuntimeError:
                 from rememb.store import _keyword_search
-                all_entries = read_entries(root)
-                entries = _keyword_search(all_entries, query, top_k)
+                all_entries = await asyncio.to_thread(read_entries, root)
+                entries = await asyncio.to_thread(_keyword_search, all_entries, query, top_k)
             return [TextContent(type="text", text=_format_entries(entries))]
         
         elif name == "rememb_write":
             content = arguments["content"]
             section = arguments.get("section", "context")
             tags = arguments.get("tags", [])
-            entry = write_entry(root, section, content, tags)
+            entry = await asyncio.to_thread(write_entry, root, section, content, tags)
             return [TextContent(
                 type="text",
                 text=f"Saved [{entry['section']}] id={entry['id']}"
@@ -106,14 +106,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             content = arguments.get("content")
             section = arguments.get("section")
             tags = arguments.get("tags")
-            result = edit_entry(root, entry_id, content, section, tags)
+            result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
             if result:
                 return [TextContent(type="text", text=f"Updated {entry_id}")]
             return [TextContent(type="text", text=f"Entry {entry_id} not found")]
         
         elif name == "rememb_delete":
             entry_id = arguments["entry_id"]
-            if delete_entry(root, entry_id):
+            if await asyncio.to_thread(delete_entry, root, entry_id):
                 return [TextContent(type="text", text=f"Deleted {entry_id}")]
             return [TextContent(type="text", text=f"Entry {entry_id} not found")]
         
@@ -121,14 +121,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             confirm = arguments.get("confirm", False)
             if not confirm:
                 return [TextContent(type="text", text="Clear cancelled. Set confirm=true to proceed.")]
-            count = clear_entries(root, confirm=True)
+            count = await asyncio.to_thread(lambda: clear_entries(root, confirm=True))
             return [TextContent(type="text", text=f"Cleared {count} entries")]
         
         elif name == "rememb_init":
-            if is_initialized(root):
+            if await asyncio.to_thread(is_initialized, root):
                 return [TextContent(type="text", text=f"Already initialized at {root / '.rememb'}")]
             project_name = arguments.get("project_name", "")
-            rememb_path = init(root, project_name=project_name)
+            rememb_path = await asyncio.to_thread(init, root, project_name)
             return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
         
         else:

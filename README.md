@@ -1,5 +1,5 @@
 # Rememb
-![rememb cover](https://raw.githubusercontent.com/LuizEduPP/rememb/main/assets/cover.png)
+![rememb cover](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/cover.png)
 
 
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  

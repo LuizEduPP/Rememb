@@ -2,6 +2,7 @@
 ![rememb cover](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/cover.png)
 
 
+[![SafeSkill 91/100](https://img.shields.io/badge/SafeSkill-91%2F100_Verified%20Safe-brightgreen)](https://safeskill.dev/scan/luizedupp-rememb)
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
 `rememb` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
 

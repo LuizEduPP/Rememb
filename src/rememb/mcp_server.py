@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +49,12 @@ def _get_root() -> Path:
     if not is_initialized(root):
         root = global_root()
         if not is_initialized(root):
-            init(root, project_name="global", global_mode=True)
+            try:
+                init(root, project_name="global", global_mode=True)
+            except PermissionError as e:
+                raise RuntimeError(f"Cannot create ~/.rememb/ directory: {e}") from e
+            except OSError as e:
+                raise RuntimeError(f"Cannot initialize rememb storage: {e}") from e
     return root
 
 
@@ -103,9 +109,13 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         
         elif name == "rememb_edit":
             entry_id = arguments["entry_id"]
+            if not re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE):
+                return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
             content = arguments.get("content")
             section = arguments.get("section")
             tags = arguments.get("tags")
+            if content is None and section is None and tags is None:
+                return [TextContent(type="text", text="Provide at least one field to update: content, section, or tags.")]
             result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
             if result:
                 return [TextContent(type="text", text=f"Updated {entry_id}")]

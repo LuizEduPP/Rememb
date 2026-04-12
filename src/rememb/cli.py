@@ -58,6 +58,7 @@ def version():
     console.print(f"rememb v{__version__}")
 
 
+@app.command("init")
 def init_cmd(
     path: Optional[Path] = typer.Argument(None, help="Project root (default: current dir)"),
     name: str = typer.Option("", "--name", "-n", help="Project name"),
@@ -82,7 +83,6 @@ def init_cmd(
     ))
 
 
-app.command("init")(init_cmd)
 
 
 

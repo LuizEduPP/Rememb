@@ -36,7 +36,7 @@ def _get_embedding_model():
 def _file_lock(filepath: Path, mode: str = "r+"):
     import platform
     
-    if not filepath.exists() and "w" in mode:
+    if not filepath.exists():
         filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_text("[]", encoding="utf-8")
     
@@ -70,7 +70,7 @@ def _sanitize_content(content: str) -> str:
     
     content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
     
-    content = " ".join(content.split())
+    content = re.sub(r"[ \t]+", " ", content).strip()
     
     if len(content) > MAX_CONTENT_LENGTH:
         content = content[:MAX_CONTENT_LENGTH] + "..."
@@ -221,10 +221,7 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
     return entry
 
 
-def delete_entry(root: Path, entry_id: str, *, confirm: bool = False) -> bool:
-    if confirm:
-        pass
-    
+def delete_entry(root: Path, entry_id: str) -> bool:
     entries = _load_entries(root)
     new_entries = [e for e in entries if e["id"] != entry_id]
     if len(new_entries) == len(entries):
@@ -333,11 +330,17 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) ->
 
 
 def _keyword_search(entries: list[dict], query: str, top_k: int) -> list[dict]:
-    q = query.lower()
+    tokens = query.lower().split()
+    if not tokens:
+        return []
     scored = []
     for entry in entries:
-        content_score = entry["content"].lower().count(q)
-        tags_score = sum(q in tag.lower() for tag in entry.get("tags", [])) * 2
+        text = entry["content"].lower()
+        content_score = sum(text.count(t) for t in tokens)
+        tags_score = sum(
+            any(t in tag.lower() for t in tokens)
+            for tag in entry.get("tags", [])
+        ) * 2
         score = content_score + tags_score
         if score > 0:
             scored.append((score, entry))
@@ -353,11 +356,20 @@ def _load_entries(root: Path) -> list[dict]:
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:
+    import tempfile
     filepath = _entries_path(root)
-    with _file_lock(filepath, mode="r+") as f:
-        f.seek(0)
-        f.write(json.dumps(entries, indent=2))
-        f.truncate()
+    data = json.dumps(entries, indent=2)
+    tmp_path = filepath.parent / (filepath.name + ".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp_path.replace(filepath)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
 
 
 def _now() -> str:

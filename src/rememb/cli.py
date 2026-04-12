@@ -27,13 +27,30 @@ from rememb.store import (
     write_entry,
 )
 
+console = Console()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"rememb v{__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="rememb",
     help="Persistent memory for AI agents — local, portable, zero config.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
-console = Console()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version and exit."
+    ),
+) -> None:
+    pass
 
 
 def _root() -> Path:

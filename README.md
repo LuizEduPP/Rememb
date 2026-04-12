@@ -1,8 +1,6 @@
 # Rememb
+![rememb cover](https://raw.githubusercontent.com/LuizEduPP/rememb/main/assets/cover.png)
 
-> **Persistent memory for AI agents — local, portable, zero config.**
-
-![rememb demo](https://raw.githubusercontent.com/LuizEduPP/rememb/main/demo/demo.gif)
 
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
 `rememb` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
@@ -44,6 +42,8 @@ pip install rememb[mcp]
 ```
 
 **Minimal (CLI only):**
+![rememb demo](https://raw.githubusercontent.com/LuizEduPP/rememb/main/assets/demo.gif)
+
 ```bash
 pip install rememb
 ```

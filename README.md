@@ -131,12 +131,6 @@ rememb rules [editor]           # Show editor integration rules
 
 ---
 
-## Roadmap
-
-- [ ] `rememb web` — local browser
-
----
-
 ## Contributing
 
 ```bash

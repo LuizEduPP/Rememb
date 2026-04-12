@@ -1,8 +1,6 @@
 ![rememb cover](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/cover.png)
 
-
-AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
-`rememb` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
+AI agents forget everything between sessions. `rememb` gives them persistent memory — local, portable, and works with any agent.
 
 ![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
 
@@ -10,62 +8,36 @@ AI agents (Windsurf, Cursor, Claude, Continue) forget everything between session
 
 ## The problem
 
-Every developer using AI agents hits this wall:
+Every dev using AI professionally hits this wall:
 
 ```
-Session 1: "We're using PostgreSQL, the auth module is at src/auth/, prefer async patterns."
+Session 1: "We're using PostgreSQL, auth at src/auth/, prefer async patterns."
 Session 2: Agent starts from zero. You explain everything again.
 Session 3: Same thing.
 ```
 
-Existing solutions (Mem0, Zep, Letta) require servers, API keys, cloud accounts, and framework lock-in.  
+Existing solutions (Mem0, Zep, Letta) require servers, API keys, and cloud accounts.  
 You just want the agent to **remember your project**.
-
----
-
-## The solution
-
-```
-.rememb/
-  entries.json   ← structured memory (project, actions, systems, user, context)
-  meta.json      ← project metadata
-```
-
-That's it. A JSON file in your project. Your agent reads it at the start of every session.
 
 ---
 
 ## Install
 
-**Recommended (with MCP support):**
 ```bash
-pip install rememb[mcp]
-```
-
-**Minimal (CLI only):**
-```bash
-pip install rememb
-```
-
-**All features:**
-```bash
-pip install rememb[mcp,semantic,pdf]
+pip install rememb[mcp]        # Recommended — includes MCP server
+pip install rememb             # CLI only
+pip install rememb[mcp,semantic,pdf]  # All features
 ```
 
 ---
 
-## Quick Start (MCP — Recommended)
+## Quick Start
 
-**Zero friction. No CLI commands. Native IDE integration.**
+### With MCP (recommended)
 
-### 1. Install with MCP
-```bash
-pip install rememb[mcp]
-```
+Zero friction. No CLI commands. Native IDE integration.
 
-### 2. Add to your IDE config
-
-Add this to your IDE's MCP config:
+**1. Add to your IDE's MCP config:**
 
 ```json
 {
@@ -84,26 +56,40 @@ Add this to your IDE's MCP config:
 | **Cursor** | `.cursor/mcp.json` |
 | **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 
-### 3. Restart your IDE
+**2. Restart your IDE.**
 
-The agent now automatically:
-- **Reads** memory at session start
-- **Writes** memories when learning something new
-- **Searches** context when needed
+The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
 
-No configuration needed. No commands to remember.
+### Without MCP
+
+```bash
+rememb rules windsurf   # Generate rules for your editor
+```
+
+Copy the output to your editor's rules file.
 
 ---
 
-## Alternative: CLI Integration
+## How it works
 
-If your editor doesn't support MCP yet, use CLI-based integration:
-
-```bash
-rememb rules windsurf   # Get rules for your editor
+```
+.rememb/
+  entries.json   ← structured memory (project, actions, systems, user, context)
+  meta.json      ← project metadata
 ```
 
-Copy the output to your editor's rules file. See `rememb rules --help` for all options.
+A JSON file in your project. Your agent reads it at the start of every session.
+
+```
+User: "We're using PostgreSQL, auth at src/auth/, async patterns"
+Agent: [rememb_write] → Saved
+
+[New session]
+Agent: [rememb_read]  → Context loaded
+Agent: "I see you're using PostgreSQL with auth at src/auth/..."
+```
+
+Search uses local semantic embeddings (no API, no cloud). Falls back to keyword search if embeddings aren't available.
 
 ---
 
@@ -120,78 +106,38 @@ Copy the output to your editor's rules file. See `rememb rules --help` for all o
 
 ---
 
-## Commands
-
-```
-rememb init              Initialize memory store
-rememb write <text>      Add new entry (--section, --tags)
-rememb read              List all entries (--section, --raw, --agent)
-rememb search <query>    Search by content or tags (--top, --agent)
-rememb delete <id>       Remove single entry (--yes)
-rememb edit <id>         Modify existing entry (--content, --section, --tags)
-rememb clear             Delete ALL entries (requires --yes)
-rememb import <folder>   Import .md/.txt/.pdf files (--section, --recursive, --dry-run)
-rememb rules [editor]    Show AI editor integration rules
-```
-
----
-
-## How it works
-
-With MCP enabled, the agent automatically manages memory:
-
-```
-User: "We're using PostgreSQL, auth at src/auth/, async patterns"
-Agent: [calls rememb_write] → Saved to memory
-
-[New session starts]
-Agent: [calls rememb_read]  → Loads all context automatically
-Agent: "I see you're using PostgreSQL with auth at src/auth/..."
-```
-
-### Search
-
-`rememb search` uses local semantic search (no API calls, no cloud). Falls back to keyword search if embeddings aren't available.
-
----
-
-## Design principles
-
-- **Local first** — everything is a JSON file in your project
-- **Portable** — copy `.rememb/` and it works anywhere
-- **Agnostic** — works with any agent (MCP or CLI)
-- **Zero config** — `pip install rememb[mcp]` and add to IDE
-- **No lock-in** — plain JSON, read it with anything
-
----
-
-## CLI Reference
-
-For scripting or manual management:
+## CLI
 
 ```bash
-rememb init                    # Initialize memory store
-rememb write "text"            # Add memory (--section, --tags)
-rememb read                    # List all entries
-rememb search "query"          # Semantic search
-rememb delete <id>             # Remove entry
-rememb edit <id> --content "x" # Update entry
-rememb clear --yes             # Delete all
-rememb import <folder>         # Import .md/.txt/.pdf
+rememb init                     # Initialize memory store
+rememb write "text"             # Add entry (--section, --tags)
+rememb read                     # List all entries (--section, --agent)
+rememb search "query"           # Semantic/keyword search (--top)
+rememb edit <id>                # Update entry (--content, --section, --tags)
+rememb delete <id>              # Remove entry
+rememb clear --yes              # Delete all entries
+rememb import <folder>          # Import .md/.txt/.pdf files
+rememb rules [editor]           # Show editor integration rules
 ```
+
+---
+
+## Design
+
+- **Local first** — plain JSON file in your project
+- **Portable** — copy `.rememb/` anywhere, it works
+- **Agnostic** — any agent, any IDE (MCP or CLI)
+- **No lock-in** — no servers, no API keys, no accounts
 
 ---
 
 ## Roadmap
 
-### Done ✓
-- [x] MCP server (`rememb mcp`) — native IDE integration, no CLI required
-
-### Planned
-- [ ] `rememb sync` — sync `~/.rememb/` across machines via private git
-- [ ] `rememb web` — local browser UI to manage memories visually
+- [x] MCP server — native IDE integration
+- [ ] `rememb sync` — sync across machines via private git
+- [ ] `rememb web` — local browser UI
 - [ ] VS Code / Windsurf extension
-- [ ] `rememb export` — export memory to Markdown / Obsidian / Notion
+- [ ] `rememb export` — Markdown / Obsidian / Notion
 
 ---
 

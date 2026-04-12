@@ -4,6 +4,8 @@
 AI agents (Windsurf, Cursor, Claude, Continue) forget everything between sessions.  
 `rememb` gives them a structured memory that lives in your project, belongs to you, and works with any agent.
 
+![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
+
 ---
 
 ## The problem
@@ -41,8 +43,6 @@ pip install rememb[mcp]
 ```
 
 **Minimal (CLI only):**
-![rememb demo](https://raw.githubusercontent.com/LuizEduPP/rememb/main/assets/demo.gif)
-
 ```bash
 pip install rememb
 ```

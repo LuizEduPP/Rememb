@@ -133,11 +133,7 @@ rememb rules [editor]           # Show editor integration rules
 
 ## Roadmap
 
-- [x] MCP server — native IDE integration
-- [ ] `rememb sync` — sync across machines via private git
-- [ ] `rememb web` — local browser UI
-- [ ] VS Code / Windsurf extension
-- [ ] `rememb export` — Markdown / Obsidian / Notion
+- [ ] `rememb web` — local browser
 
 ---
 

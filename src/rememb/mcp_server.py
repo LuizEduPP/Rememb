@@ -1,9 +1,3 @@
-"""MCP (Model Context Protocol) server for rememb.
-
-Provides native IDE integration via the Model Context Protocol.
-No CLI commands required - agents connect directly via stdio or HTTP.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -25,12 +19,10 @@ from rememb.store import (
 )
 
 
-# Lazy imports for MCP - only loaded when run_server() is called
 _mcp_modules = None
 
 
 def _load_mcp():
-    """Lazy import MCP modules. Raises ImportError if not installed."""
     global _mcp_modules
     if _mcp_modules is None:
         try:
@@ -52,7 +44,6 @@ def _load_mcp():
 
 
 def _get_root() -> Path:
-    """Get memory root, auto-initializing global if needed."""
     root = find_root()
     if not is_initialized(root):
         root = global_root()
@@ -62,7 +53,6 @@ def _get_root() -> Path:
 
 
 def _format_entries(entries: list[dict]) -> str:
-    """Format entries for LLM consumption."""
     if not entries:
         return "No memory entries found."
     
@@ -82,7 +72,6 @@ def _format_entries(entries: list[dict]) -> str:
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
-    """Handle tool calls."""
     root = _get_root()
     
     try:
@@ -150,7 +139,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
 
 async def run_server():
-    """Run the MCP server via stdio."""
     mcp = _load_mcp()
     Server = mcp["Server"]
     stdio_server = mcp["stdio_server"]
@@ -159,7 +147,6 @@ async def run_server():
     
     server = Server("rememb")
     
-    # Build tool list
     tools = [
         Tool(
             name="rememb_read",
@@ -307,7 +294,6 @@ async def run_server():
 
 
 def main():
-    """Entry point for rememb mcp command."""
     asyncio.run(run_server())
 
 

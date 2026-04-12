@@ -1,5 +1,3 @@
-"""Core storage engine for .rememb/"""
-
 from __future__ import annotations
 
 import hashlib
@@ -19,18 +17,15 @@ META_FILE = "meta.json"
 
 SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
 
-# Tamanhos máximos para validação
 MAX_CONTENT_LENGTH = 10000
 MAX_TAG_LENGTH = 50
 MAX_TAGS_PER_ENTRY = 10
 MAX_ENTRIES = 10000
 
-# Cache do modelo de embeddings (singleton)
 _model_cache: dict = {}
 
 
 def _get_embedding_model():
-    """Retorna modelo SentenceTransformer cacheado (singleton)."""
     if "model" not in _model_cache:
         from sentence_transformers import SentenceTransformer
         _model_cache["model"] = SentenceTransformer("all-MiniLM-L6-v2")
@@ -39,13 +34,8 @@ def _get_embedding_model():
 
 @contextmanager
 def _file_lock(filepath: Path, mode: str = "r+"):
-    """Context manager para file locking cross-platform.
-    
-    Usa fcntl no Unix e msvcrt no Windows.
-    """
     import platform
     
-    # Cria arquivo se não existe (para locking)
     if not filepath.exists() and "w" in mode:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_text("[]", encoding="utf-8")
@@ -55,7 +45,6 @@ def _file_lock(filepath: Path, mode: str = "r+"):
     try:
         if platform.system() == "Windows":
             import msvcrt
-            # LOCK_EX = 2, LOCK_NB = 1
             lock_mode = 2 if "w" in mode else 0
             msvcrt.locking(f.fileno(), lock_mode, 0x7FFFFFFF)
         else:
@@ -68,7 +57,7 @@ def _file_lock(filepath: Path, mode: str = "r+"):
     finally:
         if platform.system() == "Windows":
             import msvcrt
-            msvcrt.locking(f.fileno(), 0, 0x7FFFFFFF)  # UNLOCK
+            msvcrt.locking(f.fileno(), 0, 0x7FFFFFFF)
         else:
             import fcntl
             fcntl.flock(f, fcntl.LOCK_UN)
@@ -76,22 +65,13 @@ def _file_lock(filepath: Path, mode: str = "r+"):
 
 
 def _sanitize_content(content: str) -> str:
-    """Sanitiza conteúdo da entrada.
-    
-    - Remove caracteres de controle (exceto nova linha)
-    - Limita tamanho máximo
-    - Normaliza whitespace
-    """
     if not isinstance(content, str):
         raise TypeError(f"Content must be string, got {type(content).__name__}")
     
-    # Remove caracteres de controle exceto \n, \t
     content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
     
-    # Normaliza whitespace
     content = " ".join(content.split())
     
-    # Limita tamanho
     if len(content) > MAX_CONTENT_LENGTH:
         content = content[:MAX_CONTENT_LENGTH] + "..."
     
@@ -102,13 +82,6 @@ def _sanitize_content(content: str) -> str:
 
 
 def _sanitize_tags(tags: list[str] | None) -> list[str]:
-    """Sanitiza tags.
-    
-    - Lowercase
-    - Remove caracteres especiais
-    - Limita tamanho e quantidade
-    - Remove duplicatas
-    """
     if tags is None:
         return []
     
@@ -123,13 +96,10 @@ def _sanitize_tags(tags: list[str] | None) -> list[str]:
         if not isinstance(tag, str):
             continue
         
-        # Lowercase e strip
         tag = tag.lower().strip()
         
-        # Remove caracteres não alfanuméricos (exceto hífen e underscore)
         tag = re.sub(r"[^a-z0-9\-_]", "", tag)
         
-        # Limita tamanho
         if len(tag) > MAX_TAG_LENGTH:
             tag = tag[:MAX_TAG_LENGTH]
         
@@ -140,13 +110,11 @@ def _sanitize_tags(tags: list[str] | None) -> list[str]:
 
 
 def _compute_entries_hash(entries: list[dict]) -> str:
-    """Computa hash SHA256 das entradas para invalidação de cache."""
     content = json.dumps(entries, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
 def global_root() -> Path:
-    """Returns the global memory root: ~/.rememb/"""
     return Path.home()
 
 
@@ -163,19 +131,12 @@ def _meta_path(root: Path) -> Path:
 
 
 def find_root(start: Optional[Path] = None, local: bool = False) -> Path:
-    """Find .rememb/ root.
-
-    Priority:
-    1. Walk up from start looking for a local .rememb/ (if --local or found naturally)
-    2. Fall back to global ~/.rememb/
-    """
     current = (start or Path.cwd()).resolve()
     for parent in [current, *current.parents]:
         if (parent / REMEMB_DIR).is_dir():
             return parent
 
     if local:
-        # Verifica se diretório tem permissão de escrita
         if not os.access(current, os.W_OK):
             raise PermissionError(f"Cannot write to directory: {current}")
         return current
@@ -216,7 +177,6 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
                         content = content.rstrip() + "\n" + line
                 gitignore.write_text(content, encoding="utf-8")
             except (OSError, PermissionError):
-                # .gitignore is read-only or locked, skip silently
                 pass
 
     return rememb
@@ -230,23 +190,19 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
     if section not in SECTIONS:
         raise ValueError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
 
-    # Sanitiza conteúdo e tags
     content = _sanitize_content(content)
     tags = _sanitize_tags(tags)
 
     entries = _load_entries(root)
     
-    # Verifica limite máximo de entradas
     if len(entries) >= MAX_ENTRIES:
         raise RuntimeError(f"Maximum number of entries ({MAX_ENTRIES}) reached. Delete some entries first.")
     
-    # Verifica duplicatas (mesmo conteúdo na mesma seção)
     if skip_duplicates:
         for e in entries:
             if e["section"] == section and e["content"] == content:
                 raise ValueError(f"Duplicate entry: same content already exists in section '{section}' (id: {e['id']})")
     
-    # Gera ID único (verifica colisão)
     existing_ids = {e["id"] for e in entries}
     new_id = str(uuid.uuid4())[:8]
     while new_id in existing_ids:
@@ -266,14 +222,8 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
 
 
 def delete_entry(root: Path, entry_id: str, *, confirm: bool = False) -> bool:
-    """Delete a memory entry by ID.
-    
-    Args:
-        confirm: If True, requires explicit confirmation (for API safety)
-    """
     if confirm:
-        # API safety - caller must explicitly set confirm=True
-        pass  # The confirmation should be handled by the caller
+        pass
     
     entries = _load_entries(root)
     new_entries = [e for e in entries if e["id"] != entry_id]
@@ -284,17 +234,6 @@ def delete_entry(root: Path, entry_id: str, *, confirm: bool = False) -> bool:
 
 
 def clear_entries(root: Path, *, confirm: bool = False) -> int:
-    """Clear all memory entries.
-    
-    Args:
-        confirm: Must be True to actually clear (safety mechanism)
-        
-    Returns:
-        Number of entries deleted
-        
-    Raises:
-        RuntimeError: If confirm is not True
-    """
     if not confirm:
         raise RuntimeError("Clearing all entries requires confirm=True")
     
@@ -306,7 +245,6 @@ def clear_entries(root: Path, *, confirm: bool = False) -> int:
     
     if count > 0:
         _save_entries(root, [])
-        # Also clear embeddings cache since entries changed
         embeddings_path = _rememb_path(root) / "embeddings.npy"
         hash_path = _rememb_path(root) / "embeddings.hash"
         if embeddings_path.exists():
@@ -346,7 +284,6 @@ def read_entries(root: Path, section: Optional[str] = None) -> list[dict]:
 
 
 def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
-    """Semantic search using sentence-transformers. Falls back to keyword search."""
     entries = _load_entries(root)
     if not entries:
         return []
@@ -354,10 +291,8 @@ def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
     try:
         return _semantic_search(root, entries, query, top_k)
     except ImportError as e:
-        # sentence-transformers ou numpy não instalados
         raise RuntimeError(f"Semantic search requires: pip install rememb[semantic] ({e})")
     except (RuntimeError, ValueError, OSError) as e:
-        # Erros de modelo, encoding, ou I/O - fallback para keyword
         return _keyword_search(entries, query, top_k)
 
 
@@ -367,7 +302,6 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) ->
     model = _get_embedding_model()
     texts = [e["content"] for e in entries]
 
-    # Hash-based cache invalidation
     current_hash = _compute_entries_hash(entries)
     embeddings_path = _rememb_path(root) / "embeddings.npy"
     hash_path = _rememb_path(root) / "embeddings.hash"
@@ -383,7 +317,6 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) ->
                 if len(embeddings) == len(texts):
                     cache_valid = True
             except (OSError, ValueError):
-                # Cache corrompido, recalcula
                 pass
 
     if not cache_valid:
@@ -404,7 +337,6 @@ def _keyword_search(entries: list[dict], query: str, top_k: int) -> list[dict]:
     scored = []
     for entry in entries:
         content_score = entry["content"].lower().count(q)
-        # Tags têm peso maior (2x) pois são metadados intencionais
         tags_score = sum(q in tag.lower() for tag in entry.get("tags", [])) * 2
         score = content_score + tags_score
         if score > 0:
@@ -414,7 +346,6 @@ def _keyword_search(entries: list[dict], query: str, top_k: int) -> list[dict]:
 
 
 def _load_entries(root: Path) -> list[dict]:
-    """Carrega entradas com file locking para thread-safety."""
     filepath = _entries_path(root)
     with _file_lock(filepath, mode="r") as f:
         raw = f.read()
@@ -422,7 +353,6 @@ def _load_entries(root: Path) -> list[dict]:
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:
-    """Salva entradas com file locking para thread-safety."""
     filepath = _entries_path(root)
     with _file_lock(filepath, mode="r+") as f:
         f.seek(0)

@@ -1,5 +1,3 @@
-"""rememb CLI — persistent memory for AI agents."""
-
 from __future__ import annotations
 
 import re
@@ -39,7 +37,6 @@ console = Console()
 
 
 def _root() -> Path:
-    """Returns memory root. Auto-initializes global ~/.rememb/ if nothing found."""
     root = find_root()
     if not is_initialized(root):
         try:
@@ -58,7 +55,6 @@ def _root() -> Path:
 
 @app.command()
 def version():
-    """Show version."""
     console.print(f"rememb v{__version__}")
 
 
@@ -66,7 +62,6 @@ def init_cmd(
     path: Optional[Path] = typer.Argument(None, help="Project root (default: current dir)"),
     name: str = typer.Option("", "--name", "-n", help="Project name"),
 ):
-    """Initialize memory store."""
     root = (path or Path.cwd()).resolve()
 
     if is_initialized(root):
@@ -97,7 +92,6 @@ def write(
     section: str = typer.Option("context", "--section", "-s", help=f"Section: {', '.join(SECTIONS)}"),
     tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ):
-    """Add a new memory entry."""
     root = _root()
     tag_list = [t.strip() for t in tags.split(",")] if tags else []
 
@@ -119,7 +113,6 @@ def read(
     raw: bool = typer.Option(False, "--raw", help="Output as JSON"),
     agent: bool = typer.Option(False, "--agent", help="Format for AI agents"),
 ):
-    """List all memory entries."""
     root = _root()
 
     try:
@@ -150,7 +143,6 @@ def search(
     top_k: int = typer.Option(5, "--top", "-k", help="Max results"),
     agent: bool = typer.Option(False, "--agent", help="Format for AI agents"),
 ):
-    """Search entries by content or tags."""
     root = _root()
 
     try:
@@ -172,7 +164,6 @@ def search(
 
 
 def _validate_entry_id(entry_id: str) -> bool:
-    """Valida formato de entry ID (8 caracteres hex)."""
     return bool(re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE))
 
 
@@ -181,7 +172,6 @@ def delete(
     entry_id: str = typer.Argument(..., help="Entry ID (8 hex chars)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Remove a single entry."""
     if not _validate_entry_id(entry_id):
         console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
         console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
@@ -204,7 +194,6 @@ def edit(
     section: Optional[str] = typer.Option(None, "--section", "-s", help=f"Move to section: {', '.join(SECTIONS)}"),
     tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Replace tags (comma-separated)"),
 ):
-    """Modify an existing entry."""
     if not _validate_entry_id(entry_id):
         console.print(f"[red]Invalid entry ID format:[/red] {entry_id}")
         console.print("[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
@@ -229,17 +218,14 @@ def edit(
 def clear(
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm deletion"),
 ):
-    """Delete ALL entries (requires --yes)."""
     root = _root()
-    
-    # First show what will be deleted
     entries = read_entries(root)
     if not entries:
         console.print("[dim]No entries to clear.[/dim]")
         raise typer.Exit()
     
     console.print(f"[yellow]⚠ This will delete {len(entries)} entries:[/yellow]")
-    _print_table(entries[:5])  # Show first 5
+    _print_table(entries[:5])  
     if len(entries) > 5:
         console.print(f"[dim]... and {len(entries) - 5} more[/dim]")
     
@@ -262,7 +248,6 @@ def import_cmd(
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Include subfolders"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
 ):
-    """Import .md/.txt/.pdf files."""
     root = _root()
     folder = folder.expanduser().resolve()
 
@@ -289,7 +274,6 @@ def import_cmd(
             skipped += 1
             continue
 
-        # Extract summary from frontmatter or first meaningful paragraph
         summary = _extract_summary(content)
         summary = summary.encode("utf-8", errors="ignore").decode("utf-8")
         entry_section = section
@@ -302,11 +286,9 @@ def import_cmd(
                 console.print(f"  [green]✓[/green] {f.name} → [{entry_section}]")
                 imported += 1
             except (RuntimeError, ValueError, TypeError) as e:
-                # Erros de validação, seção inválida, ou não inicializado
                 console.print(f"  [red]✗[/red] {f.name}: {e}")
                 skipped += 1
             except OSError as e:
-                # Erros de I/O (permissão, disco cheio, etc)
                 console.print(f"  [red]✗[/red] {f.name}: I/O error - {e}")
                 skipped += 1
 
@@ -317,18 +299,7 @@ def import_cmd(
 
 
 def _extract_summary(content: str) -> str:
-    """Extract the best summary from file content.
-
-    Priority:
-    1. First frontmatter field with a descriptive sentence value (>20 chars, has spaces)
-    2. First meaningful paragraph after skipping structural/metadata lines
-    3. First 500 chars as fallback
-    Language-agnostic — no hardcoded field names or keywords.
-    """
     import re
-    # 1. Try to find a descriptive value in YAML frontmatter
-    # Heuristic: a field whose value is a non-trivial sentence (>20 chars, contains a space)
-    # This is language-agnostic — no hardcoded field names
     fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
     if fm_match:
         for line in fm_match.group(1).splitlines():
@@ -340,9 +311,6 @@ def _extract_summary(content: str) -> str:
                 return v
         content = content[fm_match.end():].strip()
 
-    # 2. First meaningful paragraph — language-agnostic structural skipping
-    # Skips: headings, list markers, blockquotes, code fences, blank lines,
-    # and single-word "key: value" metadata lines (e.g. "status: active", "date: 2025")
     skip = re.compile(r"^(#+\s|[-*+]\s|>\s|```|\s*$|\S+:\s)", re.IGNORECASE)
     lines = []
     for line in content.splitlines():
@@ -364,7 +332,6 @@ def _read_file_content(path: Path) -> str:
         try:
             return path.read_text(encoding="utf-8", errors="ignore")
         except (OSError, UnicodeDecodeError, PermissionError) as e:
-            # Erros de I/O, encoding, ou permissão
             console.print(f"  [yellow]⚠[/yellow] Could not read {path.name}: {e}")
             return ""
     if path.suffix.lower() == ".pdf":
@@ -376,11 +343,9 @@ def _read_file_content(path: Path) -> str:
             console.print(f"[yellow]PDF support requires: pip install rememb[pdf][/yellow]")
             return ""
         except (OSError, PermissionError) as e:
-            # Erros de I/O ou permissão no PDF
             console.print(f"  [yellow]⚠[/yellow] Could not read PDF {path.name}: {e}")
             return ""
         except Exception as e:
-            # Erros de parsing do PDF (estrutura corrompida, etc)
             console.print(f"  [yellow]⚠[/yellow] Could not parse PDF {path.name}: {e}")
             return ""
     return ""
@@ -391,7 +356,6 @@ def _read_file_content(path: Path) -> str:
 def rules(
     editor: Optional[str] = typer.Argument(None, help="Editor name (windsurf, cursor, claude, continue, vscode, all)"),
 ):
-    """Show AI editor integration rules."""
     _rules = _build_rules()
 
     editors = {
@@ -425,7 +389,6 @@ def rules(
 
 @app.command()
 def mcp():
-    """Run MCP server for native IDE integration."""
     import asyncio
     try:
         from rememb.mcp_server import run_server as mcp_run_server
@@ -530,7 +493,6 @@ def _print_table(entries: list[dict]) -> None:
 
 
 def _print_agent_format(entries: list[dict]) -> None:
-    """Compact format optimized for LLM context consumption."""
     by_section: dict[str, list] = {}
     for e in entries:
         by_section.setdefault(e["section"], []).append(e)

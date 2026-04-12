@@ -369,38 +369,9 @@ def _read_file_content(path: Path) -> str:
 
 
 @app.command()
-def rules(
-    editor: Optional[str] = typer.Argument(None, help="Editor name (windsurf, cursor, claude, continue, vscode, all)"),
-):
-    _rules = _build_rules()
-
-    editors = {
-        "windsurf": ("Windsurf / Cascade", "windsurf_rules"),
-        "cursor": ("Cursor", "cursor_rules"),
-        "claude": ("Claude / Claude.md", "claude_rules"),
-        "continue": ("Continue.dev", "continue_rules"),
-        "vscode": ("VS Code + Copilot", "vscode_rules"),
-    }
-
-    if not editor:
-        console.print("\n[bold]Available editors:[/bold]\n")
-        for key, (label, _) in editors.items():
-            console.print(f"  [cyan]rememb rules {key}[/cyan]  [dim]→ {label}[/dim]")
-        console.print()
-        return
-
-    if editor.lower() == "all":
-        for key, (label, rule_key) in editors.items():
-            print(_rules[rule_key])
-            print()
-        return
-
-    if editor.lower() not in editors:
-        console.print(f"[red]Unknown editor:[/red] {editor}. Choose from: {', '.join(editors)}")
-        raise typer.Exit(1)
-
-    label, key = editors[editor.lower()]
-    print(_rules[key])
+def rules():
+    """Print generic rules for AI agents."""
+    print(GENERIC_RULES)
 
 
 @app.command()
@@ -415,102 +386,42 @@ def mcp():
         raise typer.Exit(1)
 
 
-def _mcp_json_block() -> str:
-    import shutil
-    bin_path = shutil.which("rememb") or "rememb"
-    return (
-        "\n## MCP setup (recommended)\n"
-        "Instead of CLI rules, add rememb as an MCP server so the agent calls it natively.\n\n"
-        "```json\n"
-        '{\n'
-        '  "mcpServers": {\n'
-        '    "rememb": {\n'
-        f'      "command": "{bin_path}",\n'
-        '      "args": ["mcp"]\n'
-        '    }\n'
-        '  }\n'
-        '}\n'
-        "```\n"
-    )
+GENERIC_RULES = """# rememb
+
+You have access to `rememb`, a CLI tool for persistent memory across sessions.
+Use it to remember and retrieve context about this project and user.
+
+## Reading memory
+Run `rememb read --agent` to load all stored context before responding.
+Run `rememb search "<topic>" --agent` to find specific information.
+
+## Writing memory
+Run `rememb write "<summary>" --section <section>` when you learn something worth remembering.
+Available sections: project | actions | systems | requests | user | context
+
+## Editing memory
+Run `rememb edit <id> --content "<new content>"` to update an entry.
+Run `rememb edit <id> --section <section>` to move an entry to another section.
+Run `rememb delete <id> --yes` to remove an entry.
+Run `rememb clear --yes` to remove all entries (use with caution).
+
+## Rules
+- Always read memory at the start of a new session
+- Save important context after learning it — do not wait
+- Keep entries short (1-3 sentences)
+- Use --tags to categorize: `rememb write "..." --section project --tags tag1,tag2`
+
+## Importing files
+If the user asks to import notes or files into rememb:
+1. Run `rememb import <folder> --dry-run` to preview files
+2. Decide which section fits the content
+3. Run `rememb import <folder> --section <section>` to save
+4. For mixed content, read individual files and use `rememb write` instead
+"""
 
 
-def _build_rules() -> dict:
-    base = (
-        "# rememb\n\n"
-        "You have access to `rememb`, a CLI tool for persistent memory across sessions.\n"
-        "Use it to remember and retrieve context about this project and user.\n\n"
-        "## Reading memory\n"
-        "Run `rememb read --agent` to load all stored context before responding.\n"
-        "Run `rememb search \"<topic>\" --agent` to find specific information.\n\n"
-        "## Writing memory\n"
-        "Run `rememb write \"<summary>\" --section <section>` when you learn something worth remembering.\n"
-        "Available sections: project | actions | systems | requests | user | context\n\n"
-        "## Rules\n"
-        "- Always read memory at the start of a new session\n"
-        "- Save important context after learning it — do not wait\n"
-        "- Keep entries short (1-3 sentences)\n"
-        "- Use --tags to categorize: `rememb write \"...\" --section project --tags tag1,tag2`\n"
-        "\n## Editing memory\n"
-        "Run `rememb edit <id> --content \"<new content>\"` to update an entry.\n"
-        "Run `rememb edit <id> --section <section>` to move an entry to another section.\n"
-        "Run `rememb delete <id> --yes` to remove an entry.\n"
-        "Run `rememb clear --yes` to remove all entries (use with caution).\n"
-        "\n## Importing files\n"
-        "If the user asks to import notes or files into rememb:\n"
-        "1. Run `rememb import <folder> --dry-run` to preview the files\n"
-        "2. Read the content and decide which section fits each batch\n"
-        "3. Run `rememb import <folder> --section <section>` to save\n"
-        "4. For individual files with mixed content, use `rememb write` instead\n"
-    )
-
-    mcp_block = _mcp_json_block()
-
-    windsurf = (
-        base +
-        "\n# Where to place (Windsurf / Cascade)\n"
-        "- Settings → Cascade → Custom Instructions\n"
-        "- Or: .windsurfrules at project root\n"
-        + mcp_block +
-        "Place the JSON above in: Settings → Cascade → MCP Servers\n"
-    )
-
-    cursor = (
-        base +
-        "\n# Where to place (Cursor)\n"
-        "- .cursorrules at project root\n"
-        "- Or: Settings → Rules for AI\n"
-        + mcp_block +
-        "Place the JSON above in: ~/.cursor/mcp.json\n"
-    )
-
-    claude = (
-        base +
-        "\n# Where to place (Claude Code)\n"
-        "- CLAUDE.md at project root (auto-read every session)\n"
-        + mcp_block +
-        "Place the JSON above in: ~/.claude/mcp.json\n"
-    )
-
-    continue_dev = (
-        base +
-        "\n# Where to place (Continue.dev)\n"
-        "- config.json → models[].systemMessage\n"
-        "- Or: .continuerc.json → systemMessage\n"
-    )
-
-    vscode = (
-        base +
-        "\n# Where to place (VS Code + Copilot)\n"
-        "- .github/copilot-instructions.md at project root (auto-read by Copilot)\n"
-    )
-
-    return {
-        "windsurf_rules": windsurf,
-        "cursor_rules": cursor,
-        "claude_rules": claude,
-        "continue_rules": continue_dev,
-        "vscode_rules": vscode,
-    }
+def _build_rules() -> str:
+    return GENERIC_RULES
 
 
 def _print_table(entries: list[dict]) -> None:

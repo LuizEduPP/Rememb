@@ -50,12 +50,6 @@ Zero friction. No CLI commands. Native IDE integration.
 }
 ```
 
-| Editor | Config file |
-|--------|-------------|
-| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` |
-| **Cursor** | `.cursor/mcp.json` |
-| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-
 **2. Restart your IDE.**
 
 The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
@@ -63,10 +57,10 @@ The agent now automatically reads memory at session start, writes when learning 
 ### Without MCP
 
 ```bash
-rememb rules windsurf   # Generate rules for your editor
+rememb rules   # Print generic rules for AI agents
 ```
 
-Copy the output to your editor's rules file.
+Copy the output to your editor's rules file (`.windsurfrules`, `.cursorrules`, `CLAUDE.md`, etc.)
 
 ---
 
@@ -117,7 +111,7 @@ rememb edit <id>                # Update entry (--content, --section, --tags)
 rememb delete <id>              # Remove entry
 rememb clear --yes              # Delete all entries
 rememb import <folder>          # Import .md/.txt/.pdf files
-rememb rules [editor]           # Show editor integration rules
+rememb rules                    # Show generic rules for AI agents
 ```
 
 ---

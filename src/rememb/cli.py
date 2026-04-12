@@ -6,7 +6,6 @@ from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
@@ -300,7 +299,6 @@ def import_cmd(
 
 
 def _extract_summary(content: str) -> str:
-    import re
     fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
     if fm_match:
         for line in fm_match.group(1).splitlines():

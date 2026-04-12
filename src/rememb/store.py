@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import re
 import uuid
 from contextlib import contextmanager
@@ -11,7 +12,6 @@ from pathlib import Path
 from typing import Optional
 
 REMEMB_DIR = ".rememb"
-GLOBAL_REMEMB_DIR = Path.home() / ".rememb"
 ENTRIES_FILE = "entries.json"
 META_FILE = "meta.json"
 
@@ -34,8 +34,6 @@ def _get_embedding_model():
 
 @contextmanager
 def _file_lock(filepath: Path, mode: str = "r+"):
-    import platform
-    
     if not filepath.exists():
         filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_text("[]", encoding="utf-8")
@@ -169,15 +167,13 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     if not global_mode:
         gitignore = root / ".gitignore"
         gitignore_lines = [".rememb/embeddings.npy\n", ".rememb/embeddings.hash\n"]
-        if gitignore.exists():
-            try:
-                content = gitignore.read_text(encoding="utf-8")
-                for line in gitignore_lines:
-                    if line.strip() not in content:
-                        content = content.rstrip() + "\n" + line
-                gitignore.write_text(content, encoding="utf-8")
-            except (OSError, PermissionError):
-                pass
+        try:
+            content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+            additions = "".join(l for l in gitignore_lines if l.strip() not in content)
+            if additions:
+                gitignore.write_text((content.rstrip() + "\n" + additions) if content else additions, encoding="utf-8")
+        except (OSError, PermissionError):
+            pass
 
     return rememb
 

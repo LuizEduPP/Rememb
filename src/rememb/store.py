@@ -287,9 +287,9 @@ def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
 
     try:
         return _semantic_search(root, entries, query, top_k)
-    except ImportError as e:
-        raise RuntimeError(f"Semantic search requires: pip install rememb[semantic] ({e})")
-    except (RuntimeError, ValueError, OSError) as e:
+    except ImportError:
+        return _keyword_search(entries, query, top_k)
+    except (RuntimeError, ValueError, OSError):
         return _keyword_search(entries, query, top_k)
 
 
@@ -356,7 +356,6 @@ def _load_entries(root: Path) -> list[dict]:
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:
-    import tempfile
     filepath = _entries_path(root)
     data = json.dumps(entries, indent=2)
     tmp_path = filepath.parent / (filepath.name + ".tmp")
@@ -370,6 +369,26 @@ def _save_entries(root: Path, entries: list[dict]) -> None:
         if tmp_path.exists():
             tmp_path.unlink()
         raise
+
+
+def format_entries(entries: list[dict], include_id: bool = False) -> str:
+    if not entries:
+        return "No memory entries found."
+
+    by_section: dict[str, list] = {}
+    for e in entries:
+        by_section.setdefault(e["section"], []).append(e)
+
+    lines = ["# Memory Context (rememb)\n"]
+    for section, items in by_section.items():
+        lines.append(f"## {section.capitalize()}")
+        for item in items:
+            tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
+            prefix = f"[{item['id']}] " if include_id else ""
+            lines.append(f"- {prefix}{item['content']}{tags}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def _now() -> str:

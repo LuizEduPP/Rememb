@@ -19,6 +19,7 @@ from rememb.store import (
     delete_entry,
     edit_entry,
     find_root,
+    format_entries,
     global_root,
     init,
     is_initialized,
@@ -493,16 +494,4 @@ def _print_table(entries: list[dict]) -> None:
 
 
 def _print_agent_format(entries: list[dict]) -> None:
-    by_section: dict[str, list] = {}
-    for e in entries:
-        by_section.setdefault(e["section"], []).append(e)
-
-    output = ["# Memory Context (rememb)\n"]
-    for section, items in by_section.items():
-        output.append(f"## {section.capitalize()}")
-        for item in items:
-            tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
-            output.append(f"- {item['content']}{tags}")
-        output.append("")
-
-    print("\n".join(output))
+    print(format_entries(entries, include_id=False))

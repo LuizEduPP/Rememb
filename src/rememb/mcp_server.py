@@ -11,6 +11,7 @@ from rememb.store import (
     delete_entry,
     edit_entry,
     find_root,
+    format_entries,
     global_root,
     init,
     is_initialized,
@@ -58,25 +59,6 @@ def _get_root() -> Path:
     return root
 
 
-def _format_entries(entries: list[dict]) -> str:
-    if not entries:
-        return "No memory entries found."
-    
-    by_section: dict[str, list] = {}
-    for e in entries:
-        by_section.setdefault(e["section"], []).append(e)
-    
-    lines = ["# Memory Context (rememb)\n"]
-    for section, items in by_section.items():
-        lines.append(f"## {section.capitalize()}")
-        for item in items:
-            tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
-            lines.append(f"- [{item['id']}] {item['content']}{tags}")
-        lines.append("")
-    
-    return "\n".join(lines)
-
-
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     root = await asyncio.to_thread(_get_root)
     
@@ -84,18 +66,13 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         if name == "rememb_read":
             section = arguments.get("section")
             entries = await asyncio.to_thread(read_entries, root, section)
-            return [TextContent(type="text", text=_format_entries(entries))]
+            return [TextContent(type="text", text=format_entries(entries, include_id=True))]
         
         elif name == "rememb_search":
             query = arguments["query"]
             top_k = arguments.get("top_k", 5)
-            try:
-                entries = await asyncio.to_thread(search_entries, root, query, top_k)
-            except RuntimeError:
-                from rememb.store import _keyword_search
-                all_entries = await asyncio.to_thread(read_entries, root)
-                entries = await asyncio.to_thread(_keyword_search, all_entries, query, top_k)
-            return [TextContent(type="text", text=_format_entries(entries))]
+            entries = await asyncio.to_thread(search_entries, root, query, top_k)
+            return [TextContent(type="text", text=format_entries(entries, include_id=True))]
         
         elif name == "rememb_write":
             content = arguments["content"]
@@ -123,6 +100,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         
         elif name == "rememb_delete":
             entry_id = arguments["entry_id"]
+            if not re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE):
+                return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
             if await asyncio.to_thread(delete_entry, root, entry_id):
                 return [TextContent(type="text", text=f"Deleted {entry_id}")]
             return [TextContent(type="text", text=f"Entry {entry_id} not found")]

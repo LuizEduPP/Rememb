@@ -2,5 +2,6 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "maintainers": [
     "LuizEduPP"
-  ]
+  ],
+  "logoUrl": "https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/logo.png"
 }

@@ -67,6 +67,7 @@ def _show_help():
         ("delete", "Remove a memory entry"),
         ("clear", "Remove all memory entries"),
         ("import", "Import files into memory"),
+        ("stats", "Show memory statistics"),
         ("rules", "Print AI agent rules"),
         ("mcp", "Start MCP server"),
     ]
@@ -579,6 +580,57 @@ def _read_file_content(path: Path) -> str:
             return ""
     return ""
 
+
+
+@app.command()
+def stats():
+    """Show memory statistics."""
+    root = find_root()
+    entries = read_entries(root)
+
+    if not entries:
+        console.print(Panel(
+            "[dim]No entries found. Run [bold]rememb init[/bold] to get started.[/dim]",
+            border_style="dim",
+            padding=(0, 2)
+        ))
+        return
+
+    total = len(entries)
+    by_section: dict[str, int] = {s: 0 for s in SECTIONS}
+    for e in entries:
+        sec = e.get("section", "context")
+        if sec in by_section:
+            by_section[sec] += 1
+
+    timestamps = [e.get("created_at", "") for e in entries if e.get("created_at")]
+    timestamps.sort()
+    oldest = timestamps[0][:10] if timestamps else "—"
+    newest = timestamps[-1][:10] if timestamps else "—"
+
+    entries_path = root / ".rememb" / "entries.json"
+    size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
+
+    table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    table.add_column(style="dim", width=16)
+    table.add_column(style="bold")
+
+    table.add_row("Total entries", str(total))
+    table.add_row("Memory size", f"{size_kb} KB")
+    table.add_row("Oldest entry", oldest)
+    table.add_row("Newest entry", newest)
+    table.add_row("", "")
+    for sec in SECTIONS:
+        count = by_section[sec]
+        bar = "█" * count + "░" * max(0, 10 - min(count, 10))
+        table.add_row(sec, f"{bar[:10]}  {count}")
+
+    console.print(Panel(
+        table,
+        title="[bold cyan]rememb stats[/bold cyan]",
+        border_style="cyan",
+        padding=(0, 1)
+    ))
 
 
 @app.command()

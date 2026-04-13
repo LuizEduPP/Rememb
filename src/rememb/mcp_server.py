@@ -144,7 +144,7 @@ async def run_server():
     tools = [
         Tool(
             name="rememb_read",
-            description="Read all memory entries or filter by section. Use this at the start of every session to load context.",
+            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Use this at the start of every session to load context. Prefer rememb_search when looking for specific information by keyword or topic.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -158,7 +158,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_search",
-            description="Search memory entries by content or tags using semantic similarity.",
+            description="Search memory entries by content or tags using semantic similarity with keyword fallback. Safe, read-only operation with no side effects. Use instead of rememb_read when you need to find specific entries by topic rather than loading all entries. Returns the top_k most relevant results ranked by similarity.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -177,7 +177,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_write",
-            description="Save a new memory entry. Use this when you learn something worth remembering.",
+            description="Save a new memory entry. Creates a new entry and returns its ID — does not overwrite existing entries. Use when you learn something new worth remembering across sessions. Use rememb_edit instead to update an existing entry by ID.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -202,7 +202,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_edit",
-            description="Modify an existing memory entry by ID.",
+            description="Update an existing memory entry in-place by its ID. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: the entry is updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove one.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -230,7 +230,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_delete",
-            description="Remove a memory entry by ID.",
+            description="Permanently delete a single memory entry by its ID. Deletion is irreversible — the entry cannot be recovered. No cascading side effects. Use rememb_edit to update instead. Use rememb_clear to delete all entries at once.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -244,7 +244,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_clear",
-            description="Delete ALL memory entries. Use with caution.",
+            description="Permanently delete ALL memory entries at once. Irreversible — no recovery is possible after this operation. Requires confirm=true as a safety guard. Use rememb_delete to remove a single entry by ID instead. Only use this to fully reset the memory store.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -258,7 +258,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_init",
-            description="Initialize rememb memory store in current directory.",
+            description="Initialize a local rememb memory store in the current directory, creating a .rememb/ folder. Idempotent — safe to call even if already initialized (returns status without overwriting). Call this once per project before using other tools. Falls back to ~/.rememb/ globally if not initialized.",
             inputSchema={
                 "type": "object",
                 "properties": {

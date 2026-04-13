@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.luizedupp/rememb -->
 ![rememb cover](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/cover.png)
 
 AI agents forget everything between sessions. `rememb` gives them persistent memory — local, portable, and works with any agent.

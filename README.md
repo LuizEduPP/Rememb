@@ -128,7 +128,7 @@ rememb rules                    # Show generic rules for AI agents
 ## Contributing
 
 ```bash
-git clone https://github.com/LuizEduPP/rememb
+git clone https://github.com/LuizEduPP/Rememb
 cd rememb
 pip install -e ".[dev]"
 ```

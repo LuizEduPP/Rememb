@@ -169,7 +169,8 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
         gitignore_lines = [".rememb/embeddings.npy\n", ".rememb/embeddings.hash\n"]
         try:
             content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-            additions = "".join(l for l in gitignore_lines if l.strip() not in content)
+            existing_lines = {line.strip() for line in content.splitlines()}
+            additions = "".join(l for l in gitignore_lines if l.strip() not in existing_lines)
             if additions:
                 gitignore.write_text((content.rstrip() + "\n" + additions) if content else additions, encoding="utf-8")
         except (OSError, PermissionError):
@@ -348,7 +349,13 @@ def _load_entries(root: Path) -> list[dict]:
     filepath = _entries_path(root)
     with _file_lock(filepath, mode="r") as f:
         raw = f.read()
+    try:
         return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"Memory file is corrupted ({filepath}): {e}\n"
+            f"Fix manually or delete {filepath} to reset."
+        ) from e
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +12,6 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
-from rich.text import Text
 from rich.columns import Columns
 
 from rememb import __version__
@@ -44,13 +45,6 @@ def _version_callback(value: bool) -> None:
 
 def _show_help():
     """Display custom styled help."""
-    title = Text("🧠 ", style="bold magenta")
-    title.append("rememb", style="bold cyan")
-    
-    subtitle = Text("Persistent memory for AI agents", style="dim italic")
-    subtitle.append(" — ", style="dim")
-    subtitle.append("local, portable, zero config", style="dim")
-    
     console.print()
     console.print(Panel(
         f"[bold cyan]rememb[/bold cyan] [dim]v{__version__}[/dim]\n"
@@ -119,8 +113,6 @@ def _show_help():
 
 class CustomTyper(typer.Typer):
     def __call__(self, *args, **kwargs):
-        import sys
-        # Check if no args or --help was passed
         if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ("--help", "-h")):
             _show_help()
             sys.exit(0)
@@ -172,15 +164,6 @@ def _root() -> Path:
             ))
             raise typer.Exit(1)
     return root
-
-
-@app.command()
-def version():
-    console.print(Panel(
-        f"[bold cyan]rememb[/bold cyan] [dim]v{__version__}[/dim]",
-        border_style="cyan",
-        padding=(0, 2)
-    ))
 
 
 @app.command("init")
@@ -270,7 +253,6 @@ def read(
         raise typer.Exit()
 
     if raw:
-        import json
         print(json.dumps(entries, indent=2))
         return
 
@@ -433,7 +415,7 @@ def clear(
             border_style="yellow",
             padding=(0, 2)
         ))
-        raise typer.Exit(1)
+        raise typer.Exit()
     
     try:
         count = clear_entries(root, confirm=True)
@@ -653,10 +635,6 @@ If the user asks to import notes or files into rememb:
 3. Run `rememb import <folder> --section <section>` to save
 4. For mixed content, read individual files and use `rememb write` instead
 """
-
-
-def _build_rules() -> str:
-    return GENERIC_RULES
 
 
 def _print_table(entries: list[dict]) -> None:

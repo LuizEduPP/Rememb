@@ -1,4 +1,2 @@
 include README.md
 include LICENSE
-recursive-include rules *.md
-recursive-include demo *.gif

@@ -22,6 +22,7 @@ from rememb.store import (
 
 
 _mcp_modules = None
+_root_cache: dict = {}
 
 
 def _load_mcp():
@@ -46,17 +47,19 @@ def _load_mcp():
 
 
 def _get_root() -> Path:
-    root = find_root()
-    if not is_initialized(root):
-        root = global_root()
+    if "root" not in _root_cache:
+        root = find_root()
         if not is_initialized(root):
-            try:
-                init(root, project_name="global", global_mode=True)
-            except PermissionError as e:
-                raise RuntimeError(f"Cannot create ~/.rememb/ directory: {e}") from e
-            except OSError as e:
-                raise RuntimeError(f"Cannot initialize rememb storage: {e}") from e
-    return root
+            root = global_root()
+            if not is_initialized(root):
+                try:
+                    init(root, project_name="global", global_mode=True)
+                except PermissionError as e:
+                    raise RuntimeError(f"Cannot create ~/.rememb/ directory: {e}") from e
+                except OSError as e:
+                    raise RuntimeError(f"Cannot initialize rememb storage: {e}") from e
+        _root_cache["root"] = root
+    return _root_cache["root"]
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
@@ -114,10 +117,12 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text=f"Cleared {count} entries")]
         
         elif name == "rememb_init":
-            if await asyncio.to_thread(is_initialized, root):
-                return [TextContent(type="text", text=f"Already initialized at {root / '.rememb'}")]
             project_name = arguments.get("project_name", "")
-            rememb_path = await asyncio.to_thread(init, root, project_name)
+            init_root = find_root(local=True)
+            if await asyncio.to_thread(is_initialized, init_root):
+                return [TextContent(type="text", text=f"Already initialized at {init_root / '.rememb'}")]
+            _root_cache.clear()
+            rememb_path = await asyncio.to_thread(init, init_root, project_name)
             return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
         
         else:

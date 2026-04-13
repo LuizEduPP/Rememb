@@ -116,6 +116,28 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             count = await asyncio.to_thread(lambda: clear_entries(root, confirm=True))
             return [TextContent(type="text", text=f"Cleared {count} entries")]
         
+        elif name == "rememb_stats":
+            entries = await asyncio.to_thread(read_entries, root)
+            total = len(entries)
+            by_section = {s: 0 for s in SECTIONS}
+            for e in entries:
+                sec = e.get("section", "context")
+                if sec in by_section:
+                    by_section[sec] += 1
+            entries_path = root / ".rememb" / "entries.json"
+            size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
+            timestamps = sorted(e.get("created_at", "") for e in entries if e.get("created_at"))
+            oldest = timestamps[0][:10] if timestamps else "—"
+            newest = timestamps[-1][:10] if timestamps else "—"
+            lines = [
+                f"Total entries: {total}",
+                f"Memory size: {size_kb} KB",
+                f"Oldest entry: {oldest}",
+                f"Newest entry: {newest}",
+                "",
+            ] + [f"{s}: {by_section[s]}" for s in SECTIONS]
+            return [TextContent(type="text", text="\n".join(lines))]
+
         elif name == "rememb_init":
             project_name = arguments.get("project_name", "")
             init_root = find_root(local=True)
@@ -255,6 +277,11 @@ async def run_server():
                 },
                 "required": ["confirm"]
             }
+        ),
+        Tool(
+            name="rememb_stats",
+            description="Return memory usage statistics: total entries, size in KB, oldest and newest entry dates, and count per section. Safe, read-only operation with no side effects. Use to give the user an overview of their memory store or to decide if cleanup is needed.",
+            inputSchema={"type": "object", "properties": {}}
         ),
         Tool(
             name="rememb_init",

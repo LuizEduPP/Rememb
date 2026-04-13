@@ -6,12 +6,12 @@
     "url": "https://github.com/LuizEduPP/Rememb",
     "source": "github"
   },
-  "version": "0.3.3",
+  "version": "0.3.4",
   "packages": [
     {
       "registry_type": "pypi",
       "identifier": "rememb",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "transport": {
         "type": "stdio"
       },

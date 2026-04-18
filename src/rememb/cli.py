@@ -4,15 +4,8 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
-from rich.console import Console
-from rich.markup import escape
-from rich.panel import Panel
-from rich.table import Table
-from rich import box
-from rich.columns import Columns
 
 from rememb import __version__
 from rememb.store import (
@@ -20,17 +13,35 @@ from rememb.store import (
     clear_entries,
     delete_entry,
     edit_entry,
-    find_root,
     format_entries,
-    global_root,
+    get_stats,
     init,
-    is_initialized,
     read_entries,
     search_entries,
     write_entry,
 )
-
-console = Console()
+from rememb.utils import (
+    box,
+    Columns,
+    console,
+    escape,
+    find_root,
+    global_root,
+    is_initialized,
+    Panel,
+    Table,
+    _extract_summary,
+    _handle_error,
+    _parse_tags,
+    _print_error,
+    _print_info,
+    _print_success,
+    _print_table,
+    _print_warning,
+    _read_file_content,
+    _root,
+    _validate_entry_id_or_exit,
+)
 
 
 def _version_callback(value: bool) -> None:
@@ -43,17 +54,25 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+class CustomTyper(typer.Typer):
+    def __call__(self, *args, **kwargs):
+        if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ("--help", "-h")):
+            _show_help()
+            sys.exit(0)
+        return super().__call__(*args, **kwargs)
+
+
+app = CustomTyper(
+    name="rememb",
+    help="Persistent memory for AI agents — local, portable, zero config.",
+    no_args_is_help=False,
+    rich_markup_mode="rich",
+)
+
+
 def _show_help():
-    """Display custom styled help."""
-    console.print()
-    console.print(Panel(
-        f"[bold cyan]rememb[/bold cyan] [dim]v{__version__}[/dim]\n"
-        f"[dim italic]Persistent memory for AI agents — local, portable, zero config[/dim italic]",
-        border_style="cyan",
-        padding=(1, 2),
-        title="🧠",
-        title_align="left"
-    ))
+    console.print(f"\n[bold bright_cyan]rememb[/bold bright_cyan] [dim]v{__version__}[/dim]")
+    console.print(f"[dim]Persistent memory for AI agents — local, portable, zero config.[/dim]\n")
     
     # Commands section
     console.print(f"\n[bold bright_cyan]Commands[/bold bright_cyan]")
@@ -112,26 +131,10 @@ def _show_help():
     console.print()
 
 
-class CustomTyper(typer.Typer):
-    def __call__(self, *args, **kwargs):
-        if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ("--help", "-h")):
-            _show_help()
-            sys.exit(0)
-        return super().__call__(*args, **kwargs)
-
-
-app = CustomTyper(
-    name="rememb",
-    help="Persistent memory for AI agents — local, portable, zero config.",
-    no_args_is_help=False,
-    rich_markup_mode="rich",
-)
-
-
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    version: Optional[bool] = typer.Option(
+    version: bool | None = typer.Option(
         None, "--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
 ) -> None:
@@ -140,46 +143,15 @@ def main(
         raise typer.Exit()
 
 
-def _root() -> Path:
-    root = find_root()
-    if not is_initialized(root):
-        try:
-            root = global_root()
-            init(root, project_name="global", global_mode=True)
-        except PermissionError as e:
-            console.print(Panel(
-                f"[red]✗ Permission denied[/red]\n"
-                f"[dim]Cannot create ~/.rememb/ directory[/dim]\n"
-                f"[dim]{e}[/dim]",
-                border_style="red",
-                padding=(0, 2)
-            ))
-            raise typer.Exit(1)
-        except OSError as e:
-            console.print(Panel(
-                f"[red]✗ System error[/red]\n"
-                f"[dim]Cannot initialize rememb storage[/dim]\n"
-                f"[dim]{e}[/dim]",
-                border_style="red",
-                padding=(0, 2)
-            ))
-            raise typer.Exit(1)
-    return root
-
-
 @app.command("init")
 def init_cmd(
-    path: Optional[Path] = typer.Argument(None, help="Project root (default: current dir)"),
+    path: Path | None = typer.Argument(None, help="Project root (default: current dir)"),
     name: str = typer.Option("", "--name", "-n", help="Project name"),
 ):
     root = (path or Path.cwd()).resolve()
 
     if is_initialized(root):
-        console.print(Panel(
-            f"[yellow]⚠ Already initialized[/yellow] at [dim]{root / '.rememb'}[/dim]",
-            border_style="yellow",
-            padding=(0, 2)
-        ))
+        _print_warning(f"Already initialized at [dim]{root / '.rememb'}[/dim]")
         raise typer.Exit()
 
     global_mode = root == global_root()
@@ -203,54 +175,27 @@ def init_cmd(
 def write(
     content: str = typer.Argument(..., help="Content to store"),
     section: str = typer.Option("context", "--section", "-s", help=f"Section: {', '.join(SECTIONS)}"),
-    tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
+    tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
+    skip_duplicates: bool = typer.Option(False, "--skip-duplicates", help="Skip duplicate entries"),
 ):
     root = _root()
-    tag_list = [t.strip() for t in tags.split(",")] if tags else []
+    tag_list = _parse_tags(tags) or []
 
-    try:
-        entry = write_entry(root, section, content, tag_list)
-    except (RuntimeError, ValueError) as e:
-        console.print(Panel(
-            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
-        raise typer.Exit(1)
-
-    console.print(Panel(
-        f"[green]✓[/green] Saved to [bold cyan]{entry['section']}[/bold cyan]\n"
-        f"[dim]ID: {entry['id']} | {entry['created_at']}[/dim]",
-        border_style="green",
-        padding=(0, 2)
-    ))
+    entry = _handle_error(write_entry, root, section, content, tag_list, skip_duplicates)
+    _print_success(f"Saved to [bold cyan]{entry['section']}[/bold cyan]\n[dim]ID: {entry['id']} | {entry['created_at']}[/dim]")
 
 
 @app.command()
 def read(
-    section: Optional[str] = typer.Option(None, "--section", "-s", help="Filter by section"),
+    section: str | None = typer.Option(None, "--section", "-s", help="Filter by section"),
     raw: bool = typer.Option(False, "--raw", help="Output as JSON"),
     agent: bool = typer.Option(False, "--agent", help="Format for AI agents"),
 ):
     root = _root()
 
-    try:
-        entries = read_entries(root, section)
-    except RuntimeError as e:
-        console.print(Panel(
-            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
-        raise typer.Exit(1)
-
+    entries = _handle_error(read_entries, root, section)
     if not entries:
-        console.print(Panel(
-            "[dim]No entries found.[/dim]\n"
-            "[dim italic]Use 'rememb write' to add memories[/dim italic]",
-            border_style="dim",
-            padding=(0, 2)
-        ))
+        _print_warning("No entries found.\n[dim italic]Use 'rememb write' to add memories[/dim italic]", border_style="dim")
         raise typer.Exit()
 
     if raw:
@@ -272,38 +217,17 @@ def search(
 ):
     root = _root()
 
-    try:
-        results = search_entries(root, query, top_k)
-    except RuntimeError as e:
-        console.print(Panel(
-            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
-        raise typer.Exit(1)
-
+    results = _handle_error(search_entries, root, query, top_k)
     if not results:
-        console.print(Panel(
-            "[dim]No results found.[/dim]",
-            border_style="dim",
-            padding=(0, 2)
-        ))
+        _print_warning("No results found.", border_style="dim")
         raise typer.Exit()
 
     if agent:
         _print_agent_format(results)
         return
 
-    console.print(Panel(
-        f"[bold]Top {len(results)} results[/bold] for: [italic yellow]{query}[/italic yellow]",
-        border_style="cyan",
-        padding=(0, 2)
-    ))
+    _print_info(f"Top {len(results)} results for: [italic yellow]{query}[/italic yellow]")
     _print_table(results)
-
-
-def _validate_entry_id(entry_id: str) -> bool:
-    return bool(re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE))
 
 
 @app.command()
@@ -311,75 +235,39 @@ def delete(
     entry_id: str = typer.Argument(..., help="Entry ID (8 hex chars)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    if not _validate_entry_id(entry_id):
-        console.print(Panel(
-            f"[red]✗ Invalid entry ID format[/red]\n"
-            f"[dim]{entry_id}[/dim]\n"
-            f"[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
-        raise typer.Exit(1)
+    _validate_entry_id_or_exit(entry_id)
     
     root = _root()
     if not yes:
         typer.confirm(f"Delete entry {entry_id}?", abort=True)
     if delete_entry(root, entry_id):
-        console.print(Panel(
-            f"[green]✓ Deleted[/green] entry [bold]{entry_id}[/bold]",
-            border_style="green",
-            padding=(0, 2)
-        ))
+        _print_success(f"Deleted entry [bold]{entry_id}[/bold]")
     else:
-        console.print(Panel(
-            f"[red]✗ Not found[/red]\n[dim]ID: {entry_id}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
+        _print_error(f"Not found\n[dim]ID: {entry_id}[/dim]")
         raise typer.Exit(1)
 
 
 @app.command()
 def edit(
     entry_id: str = typer.Argument(..., help="Entry ID (8 hex chars)"),
-    content: Optional[str] = typer.Option(None, "--content", "-c", help="Update content"),
-    section: Optional[str] = typer.Option(None, "--section", "-s", help=f"Move to section: {', '.join(SECTIONS)}"),
-    tags: Optional[str] = typer.Option(None, "--tags", "-t", help="Replace tags (comma-separated)"),
+    content: str | None = typer.Option(None, "--content", "-c", help="Update content"),
+    section: str | None = typer.Option(None, "--section", "-s", help=f"Move to section: {', '.join(SECTIONS)}"),
+    tags: str | None = typer.Option(None, "--tags", "-t", help="Replace tags (comma-separated)"),
 ):
-    if not _validate_entry_id(entry_id):
-        console.print(Panel(
-            f"[red]✗ Invalid entry ID format[/red]\n"
-            f"[dim]{entry_id}[/dim]\n"
-            f"[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
-        raise typer.Exit(1)
+    _validate_entry_id_or_exit(entry_id)
     
     if content is None and section is None and tags is None:
-        console.print(Panel(
-            "[red]✗ Error[/red]\n[dim]Provide at least one option: --content, --section, or --tags[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
+        _print_error("Provide at least one option: --content, --section, or --tags")
         raise typer.Exit(1)
     
     root = _root()
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    tag_list = _parse_tags(tags)
     result = edit_entry(root, entry_id, content=content, section=section, tags=tag_list)
     if result:
-        console.print(Panel(
-            f"[green]✓ Updated[/green] entry [bold]{entry_id}[/bold]",
-            border_style="green",
-            padding=(0, 2)
-        ))
+        _print_success(f"Updated entry [bold]{entry_id}[/bold]")
         _print_table([result])
     else:
-        console.print(Panel(
-            f"[red]✗ Not found[/red]\n[dim]ID: {entry_id}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
+        _print_error(f"Not found\n[dim]ID: {entry_id}[/dim]")
         raise typer.Exit(1)
 
 
@@ -390,48 +278,20 @@ def clear(
     root = _root()
     entries = read_entries(root)
     if not entries:
-        console.print(Panel(
-            "[dim]No entries to clear.[/dim]",
-            border_style="dim",
-            padding=(0, 2)
-        ))
+        _print_warning("No entries to clear.", border_style="dim")
         raise typer.Exit()
     
-    console.print(Panel(
-        f"[yellow]⚠ This will delete {len(entries)} entries[/yellow]",
-        border_style="yellow",
-        padding=(0, 2)
-    ))
+    _print_warning(f"This will delete {len(entries)} entries")
     _print_table(entries[:5])  
     if len(entries) > 5:
-        console.print(Panel(
-            f"[dim]... and {len(entries) - 5} more[/dim]",
-            border_style="dim",
-            padding=(0, 1)
-        ))
+        _print_warning(f"... and {len(entries) - 5} more", border_style="dim")
     
     if not yes:
-        console.print(Panel(
-            "[dim]Use --yes to confirm deletion[/dim]",
-            border_style="yellow",
-            padding=(0, 2)
-        ))
+        _print_warning("Use --yes to confirm deletion")
         raise typer.Exit()
     
-    try:
-        count = clear_entries(root, confirm=True)
-        console.print(Panel(
-            f"[green]✓ Cleared {count} entries[/green]",
-            border_style="green",
-            padding=(0, 2)
-        ))
-    except RuntimeError as e:
-        console.print(Panel(
-            f"[red]✗ Error[/red]\n[dim]{e}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
-        raise typer.Exit(1)
+    count = _handle_error(clear_entries, root, confirm=True)
+    _print_success(f"Cleared {count} entries")
 
 
 @app.command("import")
@@ -444,12 +304,19 @@ def import_cmd(
     root = _root()
     folder = folder.expanduser().resolve()
 
+    # Validate folder is within project root or current working directory
+    try:
+        folder.relative_to(root)
+    except ValueError:
+        try:
+            cwd = Path.cwd().resolve()
+            folder.relative_to(cwd)
+        except ValueError:
+            _print_error(f"Path traversal detected\n[dim]{folder}\n[dim]Folder must be within project or current directory[/dim]")
+            raise typer.Exit(1)
+
     if not folder.exists():
-        console.print(Panel(
-            f"[red]✗ Folder not found[/red]\n[dim]{folder}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
+        _print_error(f"Folder not found\n[dim]{folder}[/dim]")
         raise typer.Exit(1)
 
     pattern = "**/*" if recursive else "*"
@@ -457,26 +324,17 @@ def import_cmd(
     files = [f for f in folder.glob(pattern) if f.is_file() and f.suffix.lower() in supported]
 
     if not files:
-        console.print(Panel(
-            f"[yellow]⚠ No supported files found[/yellow]\n[dim]{folder}[/dim]\n"
-            f"[dim]Supported: .md, .txt, .pdf[/dim]",
-            border_style="yellow",
-            padding=(0, 2)
-        ))
+        _print_warning(f"No supported files found\n[dim]{folder}\n[dim]Supported: .md, .txt, .pdf[/dim]")
         raise typer.Exit()
 
-    console.print(Panel(
-        f"[bold]Found {len(files)} files[/bold] in [dim]{folder}[/dim]",
-        border_style="cyan",
-        padding=(0, 2)
-    ))
+    _print_info(f"Found {len(files)} files in [dim]{folder}[/dim]")
 
     imported = 0
     skipped = 0
 
     for f in files:
         content = _read_file_content(f)
-        if not content or len(content.strip()) < 10:
+        if not content:
             skipped += 1
             continue
 
@@ -485,7 +343,7 @@ def import_cmd(
         entry_section = section
 
         if dry_run:
-            console.print(f"  [dim]{escape(f.name)}[/dim] → [cyan]{entry_section}[/cyan]  {escape(summary[:80])}...")
+            console.print(f"  [dim]{escape(f.name)}[/dim] → [cyan]{entry_section}[/cyan]  {escape(summary)}...")
         else:
             try:
                 write_entry(root, entry_section, f"{f.stem}: {summary}", tags=[f.suffix.lstrip(".")])
@@ -499,86 +357,9 @@ def import_cmd(
                 skipped += 1
 
     if not dry_run:
-        console.print(Panel(
-            f"[green]✓ Imported {imported} files[/green], skipped [dim]{skipped}[/dim]",
-            border_style="green",
-            padding=(0, 2)
-        ))
+        _print_success(f"Imported {imported} files, skipped [dim]{skipped}[/dim]")
     else:
-        console.print(Panel(
-            "[dim]Dry run — nothing saved[/dim]\n"
-            "[dim]Remove --dry-run to import[/dim]",
-            border_style="dim",
-            padding=(0, 2)
-        ))
-
-
-def _extract_summary(content: str) -> str:
-    fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if fm_match:
-        for line in fm_match.group(1).splitlines():
-            key, sep, value = line.partition(":")
-            if not sep:
-                continue
-            v = value.strip()
-            if len(v) > 20 and " " in v:
-                return v
-        content = content[fm_match.end():].strip()
-
-    skip = re.compile(r"^(#+\s|[-*+]\s|>\s|```|\s*$|\S+:\s)", re.IGNORECASE)
-    lines = []
-    for line in content.splitlines():
-        if skip.match(line):
-            if lines:
-                break
-            continue
-        lines.append(line.strip())
-        if len(" ".join(lines)) >= 300:
-            break
-
-    if lines:
-        return " ".join(lines)[:500]
-    return content.strip()[:500].replace("\n", " ").strip()
-
-
-def _read_file_content(path: Path) -> str:
-    if path.suffix.lower() in {".md", ".txt"}:
-        try:
-            return path.read_text(encoding="utf-8", errors="ignore")
-        except (OSError, UnicodeDecodeError, PermissionError) as e:
-            console.print(Panel(
-                f"[yellow]⚠ Could not read {path.name}[/yellow]\n[dim]{e}[/dim]",
-                border_style="yellow",
-                padding=(0, 1)
-            ))
-            return ""
-    if path.suffix.lower() == ".pdf":
-        try:
-            import pypdf
-            reader = pypdf.PdfReader(str(path))
-            return " ".join(page.extract_text() or "" for page in reader.pages)
-        except ImportError:
-            console.print(Panel(
-                "[yellow]⚠ PDF support requires:[/yellow] pip install rememb[pdf]",
-                border_style="yellow",
-                padding=(0, 2)
-            ))
-            return ""
-        except (OSError, PermissionError) as e:
-            console.print(Panel(
-                f"[yellow]⚠ Could not read PDF {path.name}[/yellow]\n[dim]{e}[/dim]",
-                border_style="yellow",
-                padding=(0, 1)
-            ))
-            return ""
-        except Exception as e:
-            console.print(Panel(
-                f"[yellow]⚠ Could not parse PDF {path.name}[/yellow]\n[dim]{e}[/dim]",
-                border_style="yellow",
-                padding=(0, 1)
-            ))
-            return ""
-    return ""
+        _print_warning("Dry run — nothing saved\n[dim]Remove --dry-run to import[/dim]", border_style="dim")
 
 
 
@@ -586,44 +367,25 @@ def _read_file_content(path: Path) -> str:
 def stats():
     """Show memory statistics."""
     root = find_root()
-    entries = read_entries(root)
+    s = get_stats(root)
 
-    if not entries:
-        console.print(Panel(
-            "[dim]No entries found. Run [bold]rememb init[/bold] to get started.[/dim]",
-            border_style="dim",
-            padding=(0, 2)
-        ))
+    if s["total"] == 0:
+        _print_warning("No entries found. Run [bold]rememb init[/bold] to get started.", border_style="dim")
         return
-
-    total = len(entries)
-    by_section: dict[str, int] = {s: 0 for s in SECTIONS}
-    for e in entries:
-        sec = e.get("section", "context")
-        if sec in by_section:
-            by_section[sec] += 1
-
-    timestamps = [e.get("created_at", "") for e in entries if e.get("created_at")]
-    timestamps.sort()
-    oldest = timestamps[0][:10] if timestamps else "—"
-    newest = timestamps[-1][:10] if timestamps else "—"
-
-    entries_path = root / ".rememb" / "entries.json"
-    size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
 
     table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
     table.add_column(style="dim", width=16)
     table.add_column(style="bold")
 
-    table.add_row("Total entries", str(total))
-    table.add_row("Memory size", f"{size_kb} KB")
-    table.add_row("Oldest entry", oldest)
-    table.add_row("Newest entry", newest)
+    table.add_row("Total entries", str(s["total"]))
+    table.add_row("Memory size", f"{s['size_kb']} KB")
+    table.add_row("Oldest entry", s["oldest"])
+    table.add_row("Newest entry", s["newest"])
     table.add_row("", "")
     for sec in SECTIONS:
-        count = by_section[sec]
-        bar = "█" * count + "░" * max(0, 10 - min(count, 10))
-        table.add_row(sec, f"{bar[:10]}  {count}")
+        count = s["by_section"][sec]
+        bar = "█" * count
+        table.add_row(sec, f"{bar}  {count}")
 
     console.print(Panel(
         table,
@@ -646,12 +408,7 @@ def mcp():
         from rememb.mcp_server import run_server as mcp_run_server
         asyncio.run(mcp_run_server())
     except ImportError as e:
-        console.print(Panel(
-            "[red]✗ MCP support requires:[/red] pip install rememb[mcp]\n"
-            f"[dim]{e}[/dim]",
-            border_style="red",
-            padding=(0, 2)
-        ))
+        _print_error(f"MCP support requires: pip install rememb[mcp]\n[dim]{e}[/dim]")
         raise typer.Exit(1)
 
 
@@ -687,28 +444,6 @@ If the user asks to import notes or files into rememb:
 3. Run `rememb import <folder> --section <section>` to save
 4. For mixed content, read individual files and use `rememb write` instead
 """
-
-
-def _print_table(entries: list[dict]) -> None:
-    table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", show_lines=True)
-    table.add_column("ID", style="dim", width=10)
-    table.add_column("Section", style="bold", width=12)
-    table.add_column("Content")
-    table.add_column("Tags", style="dim", width=20)
-    table.add_column("Date", style="dim", width=22)
-    table.add_column("Updated", style="dim", width=22)
-
-    for e in entries:
-        table.add_row(
-            e["id"],
-            e["section"],
-            escape(e["content"]),
-            escape(", ".join(e.get("tags", [])) or "-"),
-            e["created_at"],
-            e.get("updated_at", "N/A"),
-        )
-
-    console.print(table)
 
 
 def _print_agent_format(entries: list[dict]) -> None:

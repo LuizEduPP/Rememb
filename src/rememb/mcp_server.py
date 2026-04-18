@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from pathlib import Path
 from typing import Any
 
@@ -10,152 +9,204 @@ from rememb.store import (
     clear_entries,
     delete_entry,
     edit_entry,
-    find_root,
     format_entries,
-    global_root,
+    get_stats,
     init,
-    is_initialized,
     read_entries,
     search_entries,
     write_entry,
 )
+from rememb.exceptions import RemembError, RemembNotInitializedError
+from rememb.utils import _validate_entry_id, find_root, is_initialized
+from rememb.helpers import _assert_initialized
 
 
-_mcp_modules = None
-_root_cache: dict = {}
+class MCPContext:
+    """Encapsulates MCP-specific cache and state.
+    
+    Manages MCP module imports and root cache for MCP server operations.
+    """
+    def __init__(self):
+        self._mcp_modules = None
+        self._root_cache: dict = {}
+    
+    def get_mcp_modules(self):
+        """Get or load MCP modules.
+        
+        Returns:
+            Dictionary with Server, stdio_server, Tool, TextContent classes
+        
+        Raises:
+            ImportError: If mcp package not installed
+        """
+        if self._mcp_modules is None:
+            try:
+                from mcp.server import Server
+                from mcp.server.stdio import stdio_server
+                from mcp.types import Tool, TextContent
+                self._mcp_modules = {
+                    "Server": Server,
+                    "stdio_server": stdio_server,
+                    "Tool": Tool,
+                    "TextContent": TextContent,
+                }
+            except ImportError as e:
+                raise ImportError(
+                    "MCP server requires: pip install mcp>=1.0.0\n"
+                    "Install with: pip install rememb[mcp]"
+                ) from e
+        return self._mcp_modules
+    
+    def get_root_cache(self) -> dict:
+        """Get root cache dictionary.
+        
+        Returns:
+            Root cache dictionary
+        """
+        return self._root_cache
+    
+    def clear_root_cache(self):
+        """Clear root cache dictionary."""
+        self._root_cache.clear()
 
 
-def _load_mcp():
-    global _mcp_modules
-    if _mcp_modules is None:
-        try:
-            from mcp.server import Server
-            from mcp.server.stdio import stdio_server
-            from mcp.types import Tool, TextContent
-            _mcp_modules = {
-                "Server": Server,
-                "stdio_server": stdio_server,
-                "Tool": Tool,
-                "TextContent": TextContent,
-            }
-        except ImportError as e:
-            raise ImportError(
-                "MCP server requires: pip install mcp>=1.0.0\n"
-                "Install with: pip install rememb[mcp]"
-            ) from e
-    return _mcp_modules
+_mcp_context = MCPContext()
 
 
 def _get_root() -> Path:
-    if "root" not in _root_cache:
-        root = find_root()
-        if not is_initialized(root):
-            root = global_root()
-            if not is_initialized(root):
-                try:
-                    init(root, project_name="global", global_mode=True)
-                except PermissionError as e:
-                    raise RuntimeError(f"Cannot create ~/.rememb/ directory: {e}") from e
-                except OSError as e:
-                    raise RuntimeError(f"Cannot initialize rememb storage: {e}") from e
-        _root_cache["root"] = root
-    return _root_cache["root"]
+    """Get root path with cache invalidation.
+    
+    Returns:
+        Project root path
+    
+    Raises:
+        RemembNotInitializedError: If rememb not initialized
+    """
+    root = find_root()
+    _assert_initialized(root)
+    
+    root_cache = _mcp_context.get_root_cache()
+    # Clear cache if root changed
+    if "root" in root_cache and root_cache["root"] != root:
+        _mcp_context.clear_root_cache()
+        root_cache = _mcp_context.get_root_cache()
+    
+    root_cache["root"] = root
+    return root
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
+    """Handle MCP tool invocation.
+    
+    Args:
+        name: Tool name (e.g., 'rememb_read', 'rememb_write')
+        arguments: Tool arguments dictionary
+        TextContent: TextContent class for responses
+    
+    Returns:
+        List of TextContent responses
+    """
     root = await asyncio.to_thread(_get_root)
     
-    try:
-        if name == "rememb_read":
-            section = arguments.get("section")
-            entries = await asyncio.to_thread(read_entries, root, section)
-            return [TextContent(type="text", text=format_entries(entries, include_id=True))]
-        
-        elif name == "rememb_search":
-            query = arguments["query"]
-            top_k = arguments.get("top_k", 5)
-            entries = await asyncio.to_thread(search_entries, root, query, top_k)
-            return [TextContent(type="text", text=format_entries(entries, include_id=True))]
-        
-        elif name == "rememb_write":
-            content = arguments["content"]
-            section = arguments.get("section", "context")
-            tags = arguments.get("tags", [])
-            entry = await asyncio.to_thread(write_entry, root, section, content, tags)
-            return [TextContent(
-                type="text",
-                text=f"Saved [{entry['section']}] id={entry['id']}"
-            )]
-        
-        elif name == "rememb_edit":
-            entry_id = arguments["entry_id"]
-            if not re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE):
-                return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
-            content = arguments.get("content")
-            section = arguments.get("section")
-            tags = arguments.get("tags")
-            if content is None and section is None and tags is None:
-                return [TextContent(type="text", text="Provide at least one field to update: content, section, or tags.")]
-            result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
-            if result:
-                return [TextContent(type="text", text=f"Updated {entry_id}")]
-            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
-        
-        elif name == "rememb_delete":
-            entry_id = arguments["entry_id"]
-            if not re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE):
-                return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
-            if await asyncio.to_thread(delete_entry, root, entry_id):
-                return [TextContent(type="text", text=f"Deleted {entry_id}")]
-            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
-        
-        elif name == "rememb_clear":
-            confirm = arguments.get("confirm", False)
-            if not confirm:
-                return [TextContent(type="text", text="Clear cancelled. Set confirm=true to proceed.")]
-            count = await asyncio.to_thread(lambda: clear_entries(root, confirm=True))
-            return [TextContent(type="text", text=f"Cleared {count} entries")]
-        
-        elif name == "rememb_stats":
-            entries = await asyncio.to_thread(read_entries, root)
-            total = len(entries)
-            by_section = {s: 0 for s in SECTIONS}
-            for e in entries:
-                sec = e.get("section", "context")
-                if sec in by_section:
-                    by_section[sec] += 1
-            entries_path = root / ".rememb" / "entries.json"
-            size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
-            timestamps = sorted(e.get("created_at", "") for e in entries if e.get("created_at"))
-            oldest = timestamps[0][:10] if timestamps else "—"
-            newest = timestamps[-1][:10] if timestamps else "—"
-            lines = [
-                f"Total entries: {total}",
-                f"Memory size: {size_kb} KB",
-                f"Oldest entry: {oldest}",
-                f"Newest entry: {newest}",
-                "",
-            ] + [f"{s}: {by_section[s]}" for s in SECTIONS]
-            return [TextContent(type="text", text="\n".join(lines))]
-
-        elif name == "rememb_init":
-            project_name = arguments.get("project_name", "")
-            init_root = find_root(local=True)
-            if await asyncio.to_thread(is_initialized, init_root):
-                return [TextContent(type="text", text=f"Already initialized at {init_root / '.rememb'}")]
-            _root_cache.clear()
-            rememb_path = await asyncio.to_thread(init, init_root, project_name)
-            return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
-        
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    async def rememb_read():
+        section = arguments.get("section")
+        entries = await asyncio.to_thread(read_entries, root, section)
+        return [TextContent(type="text", text=format_entries(entries, include_id=True))]
     
-    except Exception as e:
+    async def rememb_search():
+        query = arguments["query"]
+        top_k = arguments.get("top_k", 5)
+        entries = await asyncio.to_thread(search_entries, root, query, top_k)
+        return [TextContent(type="text", text=format_entries(entries, include_id=True))]
+    
+    async def rememb_write():
+        content = arguments["content"]
+        section = arguments.get("section", "context")
+        tags = arguments.get("tags", [])
+        entry = await asyncio.to_thread(write_entry, root, section, content, tags)
+        return [TextContent(
+            type="text",
+            text=f"Saved [{entry['section']}] id={entry['id']}"
+        )]
+    
+    async def rememb_edit():
+        entry_id = arguments["entry_id"]
+        if not _validate_entry_id(entry_id):
+            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        content = arguments.get("content")
+        section = arguments.get("section")
+        tags = arguments.get("tags")
+        if content is None and section is None and tags is None:
+            return [TextContent(type="text", text="Provide at least one field to update: content, section, or tags.")]
+        result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
+        if result:
+            return [TextContent(type="text", text=f"Updated {entry_id}")]
+        return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+    
+    async def rememb_delete():
+        entry_id = arguments["entry_id"]
+        if not _validate_entry_id(entry_id):
+            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if await asyncio.to_thread(delete_entry, root, entry_id):
+            return [TextContent(type="text", text=f"Deleted {entry_id}")]
+        return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+    
+    async def rememb_clear():
+        confirm = arguments.get("confirm", False)
+        if not confirm:
+            return [TextContent(type="text", text="Clear cancelled. Set confirm=true to proceed.")]
+        count = await asyncio.to_thread(clear_entries, root, confirm=True)
+        return [TextContent(type="text", text=f"Cleared {count} entries")]
+    
+    async def rememb_stats():
+        s = await asyncio.to_thread(get_stats, root)
+        lines = [
+            f"Total entries: {s['total']}",
+            f"Memory size: {s['size_kb']} KB",
+            f"Oldest entry: {s['oldest']}",
+            f"Newest entry: {s['newest']}",
+            "",
+        ] + [f"{sec}: {s['by_section'][sec]}" for sec in SECTIONS]
+        return [TextContent(type="text", text="\n".join(lines))]
+    
+    async def rememb_init():
+        project_name = arguments.get("project_name", "")
+        init_root = find_root(local=True)
+        if await asyncio.to_thread(is_initialized, init_root):
+            return [TextContent(type="text", text=f"Already initialized at {init_root / '.rememb'}")]
+        _mcp_context.clear_root_cache()
+        rememb_path = await asyncio.to_thread(init, init_root, project_name)
+        return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
+    
+    tool_handlers = {
+        "rememb_read": rememb_read,
+        "rememb_search": rememb_search,
+        "rememb_write": rememb_write,
+        "rememb_edit": rememb_edit,
+        "rememb_delete": rememb_delete,
+        "rememb_clear": rememb_clear,
+        "rememb_stats": rememb_stats,
+        "rememb_init": rememb_init,
+    }
+    
+    handler = tool_handlers.get(name)
+    if not handler:
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    
+    try:
+        return await handler()
+    except RemembError as e:
         return [TextContent(type="text", text=f"Error: {e}")]
+    except Exception as e:
+        return [TextContent(type="text", text=f"Unexpected error: {e}")]
 
 
 async def run_server():
-    mcp = _load_mcp()
+    """Run MCP stdio server.
+    
+    Starts the MCP server and handles stdio communication.
+    """
+    mcp = _mcp_context.get_mcp_modules()
     Server = mcp["Server"]
     stdio_server = mcp["stdio_server"]
     Tool = mcp["Tool"]

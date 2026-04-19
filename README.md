@@ -27,9 +27,7 @@ You just want the agent to **remember your project**.
 ## Install
 
 ```bash
-pip install rememb[mcp]        # Recommended — includes MCP server
-pip install rememb             # CLI only
-pip install rememb[mcp,semantic,pdf]  # All features
+pip install rememb
 ```
 
 ---

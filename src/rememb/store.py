@@ -1,152 +1,60 @@
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import platform
-import re
+import logging
 import uuid
-from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-REMEMB_DIR = ".rememb"
-ENTRIES_FILE = "entries.json"
-META_FILE = "meta.json"
+from rememb.exceptions import (
+    RemembNotInitializedError,
+    RemembValidationError,
+    RemembStorageError,
+    RemembConfigError,
+    RemembError,
+)
+from rememb.config import META_FILE, SECTIONS
+from rememb.utils import _rememb_path, _entries_path, _meta_path, _now
+from rememb.helpers import (
+    MemoryStore,
+    _load_entries,
+    _atomic_modify,
+    _semantic_search,
+    _sanitize_content,
+    _sanitize_tags,
+    _store_context,
+    _validate_section,
+    _assert_initialized,
+)
 
-SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
-
-MAX_CONTENT_LENGTH = 10000
-MAX_TAG_LENGTH = 50
-MAX_TAGS_PER_ENTRY = 10
-MAX_ENTRIES = 10000
-
-_model_cache: dict = {}
-
-
-def _get_embedding_model():
-    if "model" not in _model_cache:
-        from sentence_transformers import SentenceTransformer
-        _model_cache["model"] = SentenceTransformer("all-MiniLM-L6-v2")
-    return _model_cache["model"]
-
-
-@contextmanager
-def _file_lock(filepath: Path, mode: str = "r+"):
-    if not filepath.exists():
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text("[]", encoding="utf-8")
-    
-    f = open(filepath, mode, encoding="utf-8")
-    
-    try:
-        if platform.system() == "Windows":
-            import msvcrt
-            lock_mode = 2 if "w" in mode else 0
-            msvcrt.locking(f.fileno(), lock_mode, 0x7FFFFFFF)
-        else:
-            import fcntl
-            if "w" in mode:
-                fcntl.flock(f, fcntl.LOCK_EX)
-            else:
-                fcntl.flock(f, fcntl.LOCK_SH)
-        yield f
-    finally:
-        if platform.system() == "Windows":
-            import msvcrt
-            msvcrt.locking(f.fileno(), 0, 0x7FFFFFFF)
-        else:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_UN)
-        f.close()
+logger = logging.getLogger(__name__)
 
 
-def _sanitize_content(content: str) -> str:
-    if not isinstance(content, str):
-        raise TypeError(f"Content must be string, got {type(content).__name__}")
-    
-    content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
-    
-    content = re.sub(r"[ \t]+", " ", content).strip()
-    
-    if len(content) > MAX_CONTENT_LENGTH:
-        content = content[:MAX_CONTENT_LENGTH] + "..."
-    
-    if not content.strip():
-        raise ValueError("Content cannot be empty")
-    
-    return content
-
-
-def _sanitize_tags(tags: list[str] | None) -> list[str]:
-    if tags is None:
-        return []
-    
-    if not isinstance(tags, list):
-        raise TypeError(f"Tags must be list, got {type(tags).__name__}")
-    
-    if len(tags) > MAX_TAGS_PER_ENTRY:
-        raise ValueError(f"Maximum {MAX_TAGS_PER_ENTRY} tags allowed, got {len(tags)}")
-    
-    sanitized = []
-    for tag in tags:
-        if not isinstance(tag, str):
-            continue
-        
-        tag = tag.lower().strip()
-        
-        tag = re.sub(r"[^a-z0-9\-_]", "", tag)
-        
-        if len(tag) > MAX_TAG_LENGTH:
-            tag = tag[:MAX_TAG_LENGTH]
-        
-        if tag and tag not in sanitized:
-            sanitized.append(tag)
-    
-    return sanitized
-
-
-def _compute_entries_hash(entries: list[dict]) -> str:
-    content = json.dumps(entries, sort_keys=True, ensure_ascii=True)
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-
-
-def global_root() -> Path:
-    return Path.home()
-
-
-def _rememb_path(root: Path) -> Path:
-    return root / REMEMB_DIR
-
-
-def _entries_path(root: Path) -> Path:
-    return _rememb_path(root) / ENTRIES_FILE
-
-
-def _meta_path(root: Path) -> Path:
-    return _rememb_path(root) / META_FILE
-
-
-def find_root(start: Optional[Path] = None, local: bool = False) -> Path:
-    current = (start or Path.cwd()).resolve()
-    for parent in [current, *current.parents]:
-        if (parent / REMEMB_DIR).is_dir():
-            return parent
-
-    if local:
-        if not os.access(current, os.W_OK):
-            raise PermissionError(f"Cannot write to directory: {current}")
-        return current
-
-    return global_root()
-
-
-def is_initialized(root: Path) -> bool:
-    return _entries_path(root).exists()
+__all__ = [
+    "SECTIONS",
+    "init",
+    "write_entry",
+    "read_entries",
+    "search_entries",
+    "delete_entry",
+    "edit_entry",
+    "clear_entries",
+    "format_entries",
+    "get_stats",
+]
 
 
 def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
+    """Initialize rememb at the given root directory.
+    
+    Args:
+        root: Project root path
+        project_name: Optional project name for metadata
+        global_mode: If True, initialize in global home directory
+    
+    Returns:
+        Path to .rememb directory
+    """
+    logger.debug(f"init called: root={root}, project_name={project_name}, global_mode={global_mode}")
     rememb = _rememb_path(root)
     rememb.mkdir(parents=True, exist_ok=True)
 
@@ -176,205 +84,257 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
         except (OSError, PermissionError):
             pass
 
+    logger.info(f"Initialized rememb at {rememb}")
     return rememb
 
 
 def write_entry(root: Path, section: str, content: str, tags: list[str] | None = None, skip_duplicates: bool = True) -> dict:
-    if not is_initialized(root):
-        raise RuntimeError("rememb not initialized. Run `rememb init` first.")
-
-    section = section.lower()
-    if section not in SECTIONS:
-        raise ValueError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
-
-    content = _sanitize_content(content)
-    tags = _sanitize_tags(tags)
-
-    entries = _load_entries(root)
+    """Write a new entry to memory.
     
-    if len(entries) >= MAX_ENTRIES:
-        raise RuntimeError(f"Maximum number of entries ({MAX_ENTRIES}) reached. Delete some entries first.")
+    Args:
+        root: Project root path
+        section: Section name (one of SECTIONS)
+        content: Entry content (1-3 sentences recommended)
+        tags: Optional list of tags for categorization
+        skip_duplicates: If True, reject duplicate content in same section
     
-    if skip_duplicates:
-        for e in entries:
-            if e["section"] == section and e["content"] == content:
-                raise ValueError(f"Duplicate entry: same content already exists in section '{section}' (id: {e['id']})")
+    Returns:
+        Created entry dictionary with id, section, content, tags, timestamps
     
-    existing_ids = {e["id"] for e in entries}
-    new_id = str(uuid.uuid4())[:8]
-    while new_id in existing_ids:
+    Raises:
+        RemembNotInitializedError: If rememb not initialized
+        RemembValidationError: If section invalid or duplicate detected
+        RemembConfigError: If max entries limit reached
+        RemembStorageError: If ID generation fails
+    """
+    logger.debug(f"write_entry called: section={section}, skip_duplicates={skip_duplicates}")
+    _assert_initialized(root)
+    section = _validate_section(section)
+
+    content = _sanitize_content(content, root)
+    tags = _sanitize_tags(tags or [], root)
+    logger.info(f"Writing entry to section '{section}'")
+
+    def add_entry(entries: list[dict]) -> dict:
+        config = _store_context.get_config(root)
+        max_entries = config["max_entries"]
+        if len(entries) >= max_entries:
+            raise RemembConfigError(f"Maximum number of entries ({max_entries}) reached. Delete some entries first.")
+        
+        if skip_duplicates:
+            for e in entries:
+                if e["section"] == section and e["content"] == content:
+                    raise RemembValidationError(f"Duplicate entry: same content already exists in section '{section}' (id: {e['id']})")
+        
+        existing_ids = {e["id"] for e in entries}
         new_id = str(uuid.uuid4())[:8]
+        max_attempts = 100
+        attempts = 0
+        while new_id in existing_ids and attempts < max_attempts:
+            new_id = str(uuid.uuid4())[:8]
+            attempts += 1
+        
+        if new_id in existing_ids:
+            raise RemembStorageError("Failed to generate unique ID after 100 attempts. Too many entries.")
+        
+        now = _now()
+        entry = {
+            "id": new_id,
+            "section": section,
+            "content": content,
+            "tags": tags,
+            "created_at": now,
+            "updated_at": now,
+        }
+        entries.append(entry)
+        return entry
     
-    entry = {
-        "id": new_id,
-        "section": section,
-        "content": content,
-        "tags": tags,
-        "created_at": _now(),
-        "updated_at": _now(),
-    }
-    entries.append(entry)
-    _save_entries(root, entries)
-    return entry
+    return _atomic_modify(root, add_entry)
 
 
 def delete_entry(root: Path, entry_id: str) -> bool:
-    entries = _load_entries(root)
-    new_entries = [e for e in entries if e["id"] != entry_id]
-    if len(new_entries) == len(entries):
+    """Delete an entry by ID.
+    
+    Args:
+        root: Project root path
+        entry_id: 8-character hexadecimal entry ID
+    
+    Returns:
+        True if entry was deleted, False if not found
+    """
+    logger.debug(f"delete_entry called: entry_id={entry_id}")
+    def remove_entry(entries: list[dict]) -> bool:
+        original_len = len(entries)
+        for i, e in enumerate(entries):
+            if e["id"] == entry_id:
+                entries.pop(i)
+                logger.info(f"Deleted entry {entry_id}")
+                return True
+        logger.warning(f"Entry {entry_id} not found for deletion")
         return False
-    _save_entries(root, new_entries)
-    return True
+    
+    return _atomic_modify(root, remove_entry)
 
 
 def clear_entries(root: Path, *, confirm: bool = False) -> int:
+    """Clear all entries from memory.
+    
+    Args:
+        root: Project root path
+        confirm: Must be True to proceed (safety guard)
+    
+    Returns:
+        Number of entries cleared
+    
+    Raises:
+        RemembValidationError: If confirm=False
+        RemembNotInitializedError: If rememb not initialized
+    """
+    logger.debug(f"clear_entries called: confirm={confirm}")
     if not confirm:
-        raise RuntimeError("Clearing all entries requires confirm=True")
+        raise RemembValidationError("Clearing all entries requires confirm=True")
+    _assert_initialized(root)
     
-    if not is_initialized(root):
-        raise RuntimeError("rememb not initialized. Run `rememb init` first.")
-    
-    entries = _load_entries(root)
-    count = len(entries)
-    
-    if count > 0:
-        _save_entries(root, [])
+    def clear_all(entries: list[dict]) -> int:
+        count = len(entries)
+        entries.clear()
+        
         embeddings_path = _rememb_path(root) / "embeddings.npy"
         hash_path = _rememb_path(root) / "embeddings.hash"
         if embeddings_path.exists():
             embeddings_path.unlink()
         if hash_path.exists():
             hash_path.unlink()
+        
+        logger.info(f"Cleared {count} entries")
+        return count
     
-    return count
+    return _atomic_modify(root, clear_all)
 
 
-def edit_entry(root: Path, entry_id: str, content: Optional[str] = None, section: Optional[str] = None, tags: Optional[list[str]] = None) -> Optional[dict]:
-    entries = _load_entries(root)
-    for e in entries:
-        if e["id"] == entry_id:
-            if content is not None:
-                e["content"] = _sanitize_content(content)
-            if section is not None:
-                section = section.lower()
-                if section not in SECTIONS:
-                    raise ValueError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
-                e["section"] = section
-            if tags is not None:
-                e["tags"] = _sanitize_tags(tags)
-            e["updated_at"] = _now()
-            _save_entries(root, entries)
-            return e
-    return None
+def edit_entry(root: Path, entry_id: str, content: str | None = None, section: str | None = None, tags: list[str] | None = None) -> dict | None:
+    """Edit an existing entry by ID.
+    
+    Args:
+        root: Project root path
+        entry_id: 8-character hexadecimal entry ID
+        content: New content (optional)
+        section: New section (optional)
+        tags: New tags list (optional)
+    
+    Returns:
+        Updated entry dictionary if found, None otherwise
+    
+    Raises:
+        RemembValidationError: If section invalid
+    """
+    logger.debug(f"edit_entry called: entry_id={entry_id}, content={content is not None}, section={section is not None}, tags={tags is not None}")
+    def modify_entry(entries: list[dict]) -> dict | None:
+        for e in entries:
+            if e["id"] == entry_id:
+                if content is not None:
+                    e["content"] = _sanitize_content(content, root)
+                if section is not None:
+                    e["section"] = _validate_section(section)
+                if tags is not None:
+                    e["tags"] = _sanitize_tags(tags, root)
+                e["updated_at"] = _now()
+                logger.info(f"Edited entry {entry_id}")
+                return e
+        logger.warning(f"Entry {entry_id} not found for editing")
+        return None
+    
+    return _atomic_modify(root, modify_entry)
 
 
-def read_entries(root: Path, section: Optional[str] = None) -> list[dict]:
-    if not is_initialized(root):
-        raise RuntimeError("rememb not initialized. Run `rememb init` first.")
+def read_entries(root: Path, section: str | None = None) -> list[dict]:
+    """Read entries from memory.
+    
+    Args:
+        root: Project root path
+        section: Optional section filter
+    
+    Returns:
+        List of entry dictionaries
+    
+    Raises:
+        RemembNotInitializedError: If rememb not initialized
+    """
+    logger.debug(f"read_entries called: section={section}")
+    _assert_initialized(root)
     entries = _load_entries(root)
     if section:
         entries = [e for e in entries if e["section"] == section.lower()]
+    logger.info(f"Read {len(entries)} entries" + (f" from section '{section}'" if section else ""))
     return entries
 
 
 def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
+    """Search entries by semantic similarity.
+    
+    Args:
+        root: Project root path
+        query: Search query (natural language or keywords)
+        top_k: Maximum number of results to return
+    
+    Returns:
+        List of top-k matching entries ranked by similarity
+    """
+    logger.debug(f"search_entries called: query='{query}', top_k={top_k}")
     entries = _load_entries(root)
     if not entries:
+        logger.warning("No entries to search")
         return []
 
     try:
-        return _semantic_search(root, entries, query, top_k)
-    except ImportError:
-        return _keyword_search(entries, query, top_k)
-    except (RuntimeError, ValueError, OSError):
-        return _keyword_search(entries, query, top_k)
+        model = _store_context.get_model()
+        results = _semantic_search(root, entries, query, top_k, model)
+    except ImportError as e:
+        raise RemembError(str(e)) from e
+    logger.info(f"Search returned {len(results)} results for query '{query}'")
+    return results
 
 
-def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int) -> list[dict]:
-    import numpy as np
-
-    model = _get_embedding_model()
-    texts = [e["content"] for e in entries]
-
-    current_hash = _compute_entries_hash(entries)
-    embeddings_path = _rememb_path(root) / "embeddings.npy"
-    hash_path = _rememb_path(root) / "embeddings.hash"
-
-    cache_valid = False
-    embeddings = None
-
-    if embeddings_path.exists() and hash_path.exists():
-        stored_hash = hash_path.read_text(encoding="utf-8").strip()
-        if stored_hash == current_hash:
-            try:
-                embeddings = np.load(str(embeddings_path))
-                if len(embeddings) == len(texts):
-                    cache_valid = True
-            except (OSError, ValueError):
-                pass
-
-    if not cache_valid:
-        embeddings = model.encode(texts, show_progress_bar=False)
-        np.save(str(embeddings_path), embeddings)
-        hash_path.write_text(current_hash, encoding="utf-8")
-
-    query_vec = model.encode([query], show_progress_bar=False)[0]
-    scores = np.dot(embeddings, query_vec) / (
-        np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec) + 1e-9
-    )
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    return [entries[i] for i in top_indices]
-
-
-def _keyword_search(entries: list[dict], query: str, top_k: int) -> list[dict]:
-    tokens = query.lower().split()
-    if not tokens:
-        return []
-    scored = []
-    for entry in entries:
-        text = entry["content"].lower()
-        content_score = sum(text.count(t) for t in tokens)
-        tags_score = sum(
-            any(t in tag.lower() for t in tokens)
-            for tag in entry.get("tags", [])
-        ) * 2
-        score = content_score + tags_score
-        if score > 0:
-            scored.append((score, entry))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [e for _, e in scored[:top_k]]
-
-
-def _load_entries(root: Path) -> list[dict]:
-    filepath = _entries_path(root)
-    with _file_lock(filepath, mode="r") as f:
-        raw = f.read()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(
-            f"Memory file is corrupted ({filepath}): {e}\n"
-            f"Fix manually or delete {filepath} to reset."
-        ) from e
-
-
-def _save_entries(root: Path, entries: list[dict]) -> None:
-    filepath = _entries_path(root)
-    data = json.dumps(entries, indent=2)
-    tmp_path = filepath.parent / (filepath.name + ".tmp")
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp_path.replace(filepath)
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
+def get_stats(root: Path) -> dict:
+    """Compute memory statistics.
+    
+    Args:
+        root: Project root path
+    
+    Returns:
+        Dictionary with total, by_section, size_kb, oldest, newest
+    """
+    entries = _load_entries(root)
+    total = len(entries)
+    by_section = {s: 0 for s in SECTIONS}
+    for e in entries:
+        sec = e.get("section", "context")
+        if sec in by_section:
+            by_section[sec] += 1
+    entries_path = _entries_path(root)
+    size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
+    timestamps = sorted(e.get("created_at", "") for e in entries if e.get("created_at"))
+    oldest = timestamps[0][:10] if timestamps else "—"
+    newest = timestamps[-1][:10] if timestamps else "—"
+    return {
+        "total": total,
+        "by_section": by_section,
+        "size_kb": size_kb,
+        "oldest": oldest,
+        "newest": newest,
+    }
 
 
 def format_entries(entries: list[dict], include_id: bool = False) -> str:
+    """Format entries for display.
+    
+    Args:
+        entries: List of entry dictionaries
+        include_id: If True, include entry IDs in output
+    
+    Returns:
+        Formatted markdown string
+    """
     if not entries:
         return "No memory entries found."
 
@@ -393,6 +353,12 @@ def format_entries(entries: list[dict], include_id: bool = False) -> str:
 
     return "\n".join(lines)
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+_store_instance = type('StoreModule', (), {
+    'write_entry': write_entry,
+    'read_entries': read_entries,
+    'search_entries': search_entries,
+    'delete_entry': delete_entry,
+    'edit_entry': edit_entry,
+    'clear_entries': clear_entries,
+})()
+assert isinstance(_store_instance, MemoryStore), "store.py must implement MemoryStore Protocol"

@@ -103,18 +103,31 @@ Search uses local semantic embeddings (no API, no cloud). Falls back to keyword 
 
 ---
 
+## TUI
+
+`rememb` includes a full terminal UI built with [Textual](https://textual.textualize.io/).
+
+```bash
+rememb          # Open the TUI
+```
+
+Features:
+- **Grid of memory cards** — browse all entries organized by section
+- **Sidebar navigation** — filter by section with entry counts
+- **Inline search** — press `/` to search across all entries
+- **Side panel** — create or edit entries without leaving the screen
+- **Dynamic layout** — grid adapts to terminal width (1–4 columns)
+- **Keyboard shortcuts** — `Ctrl+N` new, `Ctrl+R` refresh, `/` search, `Q` quit
+
+---
+
 ## CLI
 
 ```bash
-rememb init                     # Initialize memory store
-rememb write "text"             # Add entry (--section, --tags)
-rememb read                     # List all entries (--section, --agent)
-rememb search "query"           # Semantic/keyword search (--top)
-rememb edit <id>                # Update entry (--content, --section, --tags)
-rememb delete <id>              # Remove entry
-rememb clear --yes              # Delete all entries
-rememb import <folder>          # Import .md/.txt/.pdf files
-rememb rules                    # Show generic rules for AI agents
+rememb          # Open the TUI
+rememb mcp      # Start MCP server for AI agent integration
+rememb --version, -v    # Show version
+rememb --help, -h       # Show help
 ```
 
 ---

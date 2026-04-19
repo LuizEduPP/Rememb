@@ -8,39 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.9] - 2026-04-18
 
 ### Added
-- MemoryStore Protocol for abstract interface and testability
-- StoreContext for encapsulating cache and configuration
-- Exception hierarchy (RemembError, RemembNotInitializedError, RemembValidationError, RemembStorageError, RemembConfigError)
-- MCPContext for encapsulating MCP-specific state
-- Path traversal validation in import command
-- Basic logging (debug/info/warning) in all main functions
-- Configurable limits via config.json (1MB/entry, 100k entries)
+- Full TUI built with Textual — launched by default with `rememb`
+- Sidebar navigation with section filters and entry counts
+- Grid of memory cards with per-section color coding and icons
+- Inline search (`/`) across all entries
+- Side panel for creating and editing entries without leaving the screen
+- Dynamic grid layout — 1 to 4 columns based on terminal width
+- `Select` widget for section field in new/edit forms
+- `flat=True` buttons throughout for clean borderless styling
+- Keyboard bindings: `Ctrl+N` new, `Ctrl+R` refresh, `/` search, `Q` quit
 
 ### Changed
-- Modularized code into focused modules (exceptions, models, storage, search, validation, cli_utils)
-- Reduced store.py from ~620 to 280 lines
-- Reduced cli.py from ~706 to 622 lines
-- Refactored _handle_tool() to use dict dispatch instead of if/elif chain
-- Moved _validate_entry_id to cli_utils.py to eliminate duplication
-- Replaced hardcoded constants with configurable defaults
-- Changed behavior to fail-fast without graceful degradation
+- CLI simplified to two commands: `rememb` (TUI) and `rememb mcp`
+- `rememb` with no arguments now launches the TUI instead of showing help
+- All CLI sub-commands (`write`, `read`, `search`, `edit`, `delete`, `clear`, `import`, `rules`) removed from CLI — available via MCP and Python API
+- Delete confirmation kept as modal; new/edit moved to inline side panel
 
 ### Fixed
-- Race condition in write_entry with _atomic_modify()
-- File locking now maintained during entire operation
-- UUID collision loop with 100 attempt limit
-- JSON corruption recovery with backup and partial parse
-- Embedding cache invalidation on hash mismatch
-- Silent tag drop now emits warning
-- Keyword search case consistency (removed redundant .lower())
-- _extract_summary regex bug (removed \S+:\s skipping valid lines)
-- PDF error handling (specific exceptions instead of generic Exception)
-- MCP root_cache invalidation when root changes
-- Circular import between models.py and storage.py
-- Duplicate _show_help function
-- TypeError in validation.py (re.sub → string.join)
-- NameError in cli.py (result → results)
-- Duplicate _root() function
+- `DuplicateIds` error when refreshing the entry grid — replaced `query("*").remove()` with `remove_children()`
+- `NoMatches` error on `EntryCard` internal elements — switched from class selectors to UUID-based IDs per instance
+- `EmptySelectError` on `Select` widget initialized with empty options list
+
 
 ### Removed
 - Hardcoded constants (MAX_CONTENT_LENGTH, MAX_TAG_LENGTH, MAX_TAGS_PER_ENTRY, MAX_ENTRIES)

@@ -19,12 +19,12 @@ from rememb.store import read_entries, search_entries, get_stats, write_entry, e
 from rememb.utils import find_root, global_root, is_initialized
 
 SECTION_ICONS = {
-    "project": "📁",
-    "actions": "⚡",
-    "systems": "⚙️",
-    "requests": "📬",
-    "user": "👤",
-    "context": "💡",
+    "project": "◈",
+    "actions": "↯",
+    "systems": "⛭",
+    "requests": "✉",
+    "user": "☻",
+    "context": "✦",
 }
 
 SECTION_COLORS = {
@@ -46,7 +46,7 @@ SECTION_LABELS = {
     "context": "Context",
 }
 
-# --- Mensagens Customizadas ---
+
 class ActionTriggered(Message):
     """Enviada quando um botão dentro do card é clicado."""
     def __init__(self, action: str, entry: dict) -> None:
@@ -54,13 +54,13 @@ class ActionTriggered(Message):
         self.action = action
         self.entry = entry
 
-# --- Widgets Customizados ---
+
 
 class SectionButton(Button):
     """Botão da barra lateral com contador e ícone."""
     def __init__(self, section: str | None, count: int = 0, active: bool = False):
         name = section.capitalize() if section else "All"
-        icon = SECTION_ICONS.get(section, "🌐") if section else "🌍"
+        icon = SECTION_ICONS.get(section, "◎") if section else "◉"
         label = f"{icon} {name} "
         classes = "nav-btn"
         if section:
@@ -87,10 +87,10 @@ class EntryCard(Static):
     def compose(self) -> ComposeResult:
         with Vertical(classes="card-container"):
             with Horizontal(classes="card-header"):
-                yield Label(f"#[b]{self.entry_id[:8]}[/b]", classes="card-id")
+                yield Label(f"# [b]{self.entry_id[:8]}[/b]", classes="card-id")
                 with Horizontal(classes="card-actions"):
                     yield Button("✎", id="edit-card", classes="action-icon-btn", tooltip="Edit")
-                    yield Button("🗑", id="delete-card", classes="action-icon-btn delete", tooltip="Delete")
+                    yield Button("✕", id="delete-card", classes="action-icon-btn delete", tooltip="Delete")
 
             section_label = SECTION_LABELS.get(self.section, self.section.capitalize())
             yield Label(f"[b]{section_label}[/b]", classes="card-section-label")
@@ -112,35 +112,35 @@ class EntryCard(Static):
         BG_DARK = "#121417"
         BORDER_DIM = "#2e343b"
 
-        # Card container styles - fill grid cell
-        # self.styles.background = BG_CARD
+        
+        
         self.styles.height = "100%"
         self.styles.min_height = 15
         self.styles.padding = (1, 1, 1, 1)
-        # Full round border with section color
+        
         self.styles.border = ("round", self.color)
         self.styles.border_radius = 1
 
-        # Header styles
+        
         header = self.query_one(".card-header")
         header.styles.height = 3
         header.styles.align = ("left", "middle")
         header.styles.margin_bottom = 1
 
-        # Card ID - same height as buttons, vertically centered
+        
         card_id = self.query_one(".card-id")
         card_id.styles.width = "1fr"
         card_id.styles.height = 3
         card_id.styles.content_align = ("left", "middle")
 
-        # Card actions (buttons container) - vertically centered
+        
         actions = self.query_one(".card-actions")
         actions.styles.width = "auto"
         actions.styles.height = 3
         actions.styles.align = ("right", "middle")
         actions.styles.content_align = ("right", "middle")
 
-        # Action buttons styling
+        
         for btn in self.query(".action-icon-btn"):
             btn.styles.min_width = 6
             btn.styles.width = 6
@@ -152,19 +152,19 @@ class EntryCard(Static):
             btn.styles.padding = (0, 0, 0, 0)
             btn.styles.margin_left = 1
 
-        # Section label
+        
         section_label = self.query_one(".card-section-label")
         section_label.styles.color = self.color
         section_label.styles.margin = (1, 0, 1, 0)
 
-        # Content text - auto height for wrapping
+        
         content = self.query_one(".card-content-text")
         content.styles.height = "auto"
         content.styles.text_wrap = "wrap"
         content.styles.overflow = "hidden"
         content.styles.margin_bottom = 1
 
-        # Tags area - auto height for wrapping
+        
         tags_area = self.query_one(".card-tags-area")
         tags_area.styles.height = "auto"
         tags_area.styles.align = ("left", "top")
@@ -186,7 +186,7 @@ class EntryCard(Static):
     def on_delete(self):
         self.post_message(ActionTriggered("delete", self.entry))
 
-# --- Aplicação Principal ---
+
 
 class RemembApp(App):
     """Interface moderna para o rememb com Grid de Cards."""
@@ -219,16 +219,16 @@ class RemembApp(App):
         with Horizontal(id="body"):
             with Vertical(id="sidebar"):
                 yield Label("rememb", id="sidebar-app-name")
-                yield Button("➕ New", id="btn-new-entry", variant="primary")
+                yield Button("＋ New", id="btn-new-entry", variant="primary")
                 yield Label("SECTIONS", classes="sidebar-title")
                 yield Vertical(id="sidebar-buttons-container")
                 with Vertical(id="sidebar-bottom-buttons"):
-                    yield Button("🔄 Refresh", id="btn-refresh", classes="sidebar-bottom-btn")
-                    yield Button("🚪 Quit", id="btn-quit", classes="sidebar-bottom-btn")
+                    yield Button("↻ Refresh", id="btn-refresh", classes="sidebar-bottom-btn")
+                    yield Button("⏻ Quit", id="btn-quit", classes="sidebar-bottom-btn")
 
             with Vertical(id="main-area"):
                 with Horizontal(id="search-container"):
-                    yield Label("🔍", classes="search-icon")
+                    yield Label("⌕", classes="search-icon")
                     yield Input(placeholder="Search memory...", id="search-box")
                 with ScrollableContainer(id="main-scroll"):
                     yield Grid(id="entries-grid")
@@ -242,7 +242,7 @@ class RemembApp(App):
 
     def _apply_styles(self):
         """Apply programmatic styles to widgets."""
-        # Colors
+        
         BG_DARK = "#121417"
         BG_SIDEBAR = "#1a1d21"
         BG_CARD = "#1e2227"
@@ -250,68 +250,68 @@ class RemembApp(App):
         BORDER_DIM = "#2e343b"
         TEXT_DIM = "#6b7280"
 
-        # Screen background
-        # self.screen.styles.background = BG_DARK
+        
+        
 
-        # App name label
+        
         app_name = self.query_one("#sidebar-app-name")
         app_name.styles.text_align = "center"
         app_name.styles.text_style = "bold"
         app_name.styles.margin = (0, 0, 1, 0)
 
-        # Sidebar styling
+        
         sidebar = self.query_one("#sidebar")
-        # sidebar.styles.background = BG_SIDEBAR
+        
         sidebar.styles.border_right = ("solid", BORDER_DIM)
         sidebar.styles.padding = (1, 1, 1, 1)
 
-        # Sidebar title
+        
         title = self.query_one(".sidebar-title")
         title.styles.text_align = "center"
         title.styles.margin = (0, 0, 1, 0)
 
-        # Buttons container
+        
         btn_container = self.query_one("#sidebar-buttons-container")
         btn_container.styles.height = "1fr"
 
-        # Bottom buttons
+        
         bottom = self.query_one("#sidebar-bottom-buttons")
         bottom.styles.height = "auto"
         for btn in bottom.query(Button):
             btn.styles.width = "100%"
             btn.styles.margin_top = 1
 
-        # New entry button
+        
         new_btn = self.query_one("#btn-new-entry")
         new_btn.styles.width = "100%"
         new_btn.styles.margin_bottom = 1
 
-        # Search container
+        
         search = self.query_one("#search-container")
         search.styles.height = 5
-        # search.styles.background = BG_DARK
+        
         search.styles.border_bottom = ("solid", BORDER_DIM)
         search.styles.padding = (1, 2, 1, 2)
         search.styles.align = ("left", "middle")
 
-        # Search box
+        
         search_box = self.query_one("#search-box")
         search_box.styles.width = "1fr"
         search_box.styles.max_width = 60
-        # search_box.styles.background = BG_SIDEBAR
+        
         search_box.styles.padding = (0, 1, 0, 1)
 
-        # Search icon
+        
         search_icon = self.query_one(".search-icon")
         search_icon.styles.margin = (0, 1, 0, 1)
 
-        # Main scroll area
+        
         main_scroll = self.query_one("#main-scroll")
         main_scroll.styles.padding = (1, 2, 1, 2)
 
-        # Footer styling
+        
         footer = self.query_one(Footer)
-        # footer.styles.background = BG_SIDEBAR
+        
 
     def _get_root(self):
         if self._root_path: return self._root_path
@@ -329,7 +329,7 @@ class RemembApp(App):
         root = self._get_root()
         stats = get_stats(root)
 
-        # 1. Atualiza Sidebar (seções)
+        
         side_container = self.query_one("#sidebar-buttons-container")
         side_container.query("*").remove()
 
@@ -345,7 +345,7 @@ class RemembApp(App):
             btn = SectionButton(sec_name, count, active=(section == sec_name))
             side_container.mount(btn)
 
-        # Apply styles to nav buttons
+        
         for btn in side_container.query(SectionButton):
             btn.styles.width = "100%"
             btn.styles.height = "auto"
@@ -361,13 +361,13 @@ class RemembApp(App):
             if btn.has_class("-active"):
                 section_key = btn.section_name if btn.section_name else "all"
                 color = SECTION_COLORS.get(section_key, "#95a5a6")
-                btn.styles.background = color + "25"  # 15% opacity
+                btn.styles.background = color + "25"  
                 btn.styles.color = color
                 btn.styles.text_style = "bold"
                 btn.styles.border_left = ("thick", color)
 
 
-        # 2. Carrega Entries
+        
         self._load_entries(section)
 
     def _load_entries(self, section: str | None = None) -> None:
@@ -418,7 +418,7 @@ class RemembApp(App):
         for entry in results:
             grid.mount(EntryCard(entry))
 
-    # --- Actions (Modais) ---
+    
     def action_new_entry(self) -> None:
         self.push_screen(NewEntryScreen(self._get_root()), lambda saved: self._refresh_ui(self.current_section) if saved else None)
 
@@ -435,7 +435,7 @@ class RemembApp(App):
     def action_focus_search(self) -> None:
         self.query_one("#search-box").focus()
 
-# --- Modais ---
+
 
 class NewEntryScreen(Screen):
     def __init__(self, root): super().__init__(); self._root = root

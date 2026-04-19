@@ -353,8 +353,6 @@ def format_entries(entries: list[dict], include_id: bool = False) -> str:
 
     return "\n".join(lines)
 
-
-# Verify that this module implements MemoryStore Protocol
 _store_instance = type('StoreModule', (), {
     'write_entry': write_entry,
     'read_entries': read_entries,

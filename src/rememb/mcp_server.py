@@ -86,7 +86,6 @@ def _get_root() -> Path:
     _assert_initialized(root)
     
     root_cache = _mcp_context.get_root_cache()
-    # Clear cache if root changed
     if "root" in root_cache and root_cache["root"] != root:
         _mcp_context.clear_root_cache()
         root_cache = _mcp_context.get_root_cache()

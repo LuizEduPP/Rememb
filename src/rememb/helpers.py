@@ -1,14 +1,11 @@
 """Helper functions and classes for rememb operations."""
 
 import os
-# Disable multiprocessing to avoid fds_to_keep error in MCP stdio / TUI
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["TQDM_DISABLE"] = "0"  # keep progress bars but force mp lock init early
+os.environ["TQDM_DISABLE"] = "0"
 
-# Pre-initialize tqdm multiprocessing lock before any TUI/stdio FDs are opened
-# This prevents resource_tracker from spawning with invalid FDs later
 try:
     from tqdm.std import TqdmDefaultWriteLock
     TqdmDefaultWriteLock.create_mp_lock()
@@ -46,11 +43,6 @@ from rememb.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Models and Contexts
-# =============================================================================
 
 @runtime_checkable
 class MemoryStore(Protocol):
@@ -144,13 +136,8 @@ class StoreContext:
         return config
 
 
-# Global store context instance (used by validation functions)
 _store_context = StoreContext()
 
-
-# =============================================================================
-# Validation Helpers
-# =============================================================================
 
 def _validate_section(section: str) -> str:
     """Validate and normalize section name.
@@ -181,11 +168,6 @@ def _assert_initialized(root) -> None:
     """
     if not is_initialized(root):
         raise RemembNotInitializedError("rememb not initialized. Run `rememb init` first.")
-
-
-# =============================================================================
-# Storage Operations
-# =============================================================================
 
 @contextmanager
 def _file_lock(filepath: Path, mode: str = "r+"):
@@ -333,11 +315,6 @@ def _atomic_modify(root: Path, modifier) -> any:
         os.fsync(f.fileno())
         return result
 
-
-# =============================================================================
-# Search Operations
-# =============================================================================
-
 def _compute_entries_hash(entries: list[dict]) -> str:
     """Compute SHA256 hash of entries for cache validation.
     
@@ -402,11 +379,6 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
     )
     top_indices = np.argsort(scores)[::-1][:top_k]
     return [entries[i] for i in top_indices]
-
-
-# =============================================================================
-# Validation
-# =============================================================================
 
 def _sanitize_content(content: str, root: Path) -> str:
     """Sanitize and validate entry content.

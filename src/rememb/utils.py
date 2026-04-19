@@ -20,7 +20,6 @@ from rich import box
 from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE
 from rememb.exceptions import RemembError, RemembNotInitializedError
 
-# Shared console instance
 console = Console()
 
 logger = logging.getLogger(__name__)
@@ -176,12 +175,6 @@ def _now() -> str:
     """Get current UTC timestamp."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-
-# =============================================================================
-# CLI Utilities
-# =============================================================================
-
-
 def escape(text: str) -> str:
     """Escape markup-like characters for safe terminal output."""
     return html.escape(text)
@@ -301,7 +294,6 @@ def _print_table(entries: list[dict]) -> None:
         print("No entries found.")
         return
 
-    # Header
     print(f"\n{'ID':<10} {'Section':<12} {'Content':<50} {'Tags':<20} {'Created':<22} {'Updated':<22}")
     print("-" * 130)
 

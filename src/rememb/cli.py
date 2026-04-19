@@ -47,7 +47,6 @@ app = CustomTyper(
 
 
 def _show_help():
-    # Header with emoji in panel
     header_text = Text()
     header_text.append("🧠 ", style="bold bright_cyan")
     header_text.append("rememb\n", style="bold bright_cyan")
@@ -63,7 +62,6 @@ def _show_help():
     ))
     console.print("[dim italic]Persistent memory for AI agents — local, portable, zero config.[/dim italic]\n")
     
-    # Commands section with panel
     cmd_table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", border_style="green")
     cmd_table.add_column("Command", style="bold green", width=16)
     cmd_table.add_column("Description", style="white")
@@ -78,7 +76,6 @@ def _show_help():
         padding=(1, 2)
     ))
     
-    # Options section
     opts_table = Table(box=box.ROUNDED, show_header=True, header_style="bold yellow", border_style="yellow")
     opts_table.add_column("Option", style="bold yellow", width=16)
     opts_table.add_column("Description", style="white")
@@ -93,7 +90,6 @@ def _show_help():
         padding=(1, 2)
     ))
     
-    # Footer tip
     console.print("\n[dim]Tip: Run without arguments to start the interactive TUI.[/dim]\n")
 
 
@@ -105,7 +101,7 @@ def main(
     ),
 ) -> None:
     if ctx.invoked_subcommand is None:
-        # Launch TUI by default
+
         try:
             from rememb.tui import run_tui
             run_tui()

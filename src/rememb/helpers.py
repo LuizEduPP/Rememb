@@ -1,9 +1,23 @@
 """Helper functions and classes for rememb operations."""
 
+import os
+# Disable multiprocessing to avoid fds_to_keep error in MCP stdio / TUI
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["TQDM_DISABLE"] = "0"  # keep progress bars but force mp lock init early
+
+# Pre-initialize tqdm multiprocessing lock before any TUI/stdio FDs are opened
+# This prevents resource_tracker from spawning with invalid FDs later
+try:
+    from tqdm.std import TqdmDefaultWriteLock
+    TqdmDefaultWriteLock.create_mp_lock()
+except Exception:
+    pass
+
 import hashlib
 import json
 import logging
-import os
 import platform
 import re
 import warnings
@@ -84,6 +98,11 @@ class StoreContext:
             SentenceTransformer model instance (cached)
         """
         if "model" not in self._model_cache:
+            try:
+                import torch
+                torch.set_num_threads(1)
+            except ImportError:
+                pass
             from sentence_transformers import SentenceTransformer
             self._model_cache["model"] = SentenceTransformer("all-MiniLM-L6-v2")
         return self._model_cache["model"]
@@ -373,7 +392,7 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
             pass
     
     if not cache_valid:
-        embeddings = model.encode(texts, show_progress_bar=False)
+        embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
         np.save(str(embeddings_path), embeddings)
         hash_path.write_text(current_hash, encoding="utf-8")
     

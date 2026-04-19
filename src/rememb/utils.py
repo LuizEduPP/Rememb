@@ -1,5 +1,6 @@
 """Utility functions for rememb."""
 
+import html
 import logging
 import os
 import re
@@ -9,15 +10,18 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from rich import box
-from rich.columns import Columns
 from rich.console import Console
-from rich.markup import escape
+from rich.columns import Columns
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
+from rich import box
 
 from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE
 from rememb.exceptions import RemembError, RemembNotInitializedError
+
+# Shared console instance
+console = Console()
 
 logger = logging.getLogger(__name__)
 
@@ -177,63 +181,46 @@ def _now() -> str:
 # CLI Utilities
 # =============================================================================
 
-console = Console()
+
+def escape(text: str) -> str:
+    """Escape markup-like characters for safe terminal output."""
+    return html.escape(text)
 
 
-def _print_error(message: str, border_style: str = "red") -> None:
-    """Print error message in a panel.
+def _print_error(message: str, **kwargs) -> None:
+    """Print error message.
     
     Args:
         message: Error message to display
-        border_style: Border color (default: red)
     """
-    console.print(Panel(
-        f"[red]✗ Error[/red]\n[dim]{message}[/dim]",
-        border_style=border_style,
-        padding=(0, 2)
-    ))
+    print(f"\n✗ Error: {message}\n")
 
 
-def _print_success(message: str, border_style: str = "green") -> None:
-    """Print success message in a panel.
+def _print_success(message: str, **kwargs) -> None:
+    """Print success message.
     
     Args:
         message: Success message to display
-        border_style: Border color (default: green)
     """
-    console.print(Panel(
-        f"[green]✓[/green] {message}",
-        border_style=border_style,
-        padding=(0, 2)
-    ))
+    print(f"\n✓ {message}\n")
 
 
-def _print_warning(message: str, border_style: str = "yellow") -> None:
-    """Print warning message in a panel.
+def _print_warning(message: str, **kwargs) -> None:
+    """Print warning message.
     
     Args:
         message: Warning message to display
-        border_style: Border color (default: yellow)
     """
-    console.print(Panel(
-        f"[yellow]⚠ {message}[/yellow]",
-        border_style=border_style,
-        padding=(0, 2)
-    ))
+    print(f"\n⚠ {message}\n")
 
 
-def _print_info(message: str, border_style: str = "cyan") -> None:
-    """Print info message in a panel.
+def _print_info(message: str, **kwargs) -> None:
+    """Print info message.
     
     Args:
         message: Info message to display
-        border_style: Border color (default: cyan)
     """
-    console.print(Panel(
-        f"[bold]{message}[/bold]",
-        border_style=border_style,
-        padding=(0, 2)
-    ))
+    print(f"\n{message}\n")
 
 
 def _handle_error(func, *args, **kwargs) -> Any:
@@ -267,7 +254,7 @@ def _validate_entry_id_or_exit(entry_id: str) -> None:
         typer.Exit: If entry_id is invalid
     """
     if not _validate_entry_id(entry_id):
-        _print_error(f"Invalid entry ID format\n[dim]{entry_id}\n[dim]Expected: 8 hexadecimal characters (e.g., a1b2c3d4)[/dim]")
+        _print_error(f"Invalid entry ID format\n{entry_id}\nExpected: 8 hexadecimal characters (e.g., a1b2c3d4)")
         raise typer.Exit(1)
 
 
@@ -288,7 +275,7 @@ def _root() -> Path:
         root = find_root()
         if is_initialized(root):
             return root
-        _print_error("Not initialized\n[dim]Run 'rememb init' first[/dim]")
+        _print_error("Not initialized\nRun 'rememb init' first")
         raise typer.Exit(1)
     except RemembNotInitializedError:
         root = global_root()
@@ -296,10 +283,10 @@ def _root() -> Path:
             try:
                 _init(root, project_name="global", global_mode=True)
             except PermissionError as e:
-                _print_error(f"Permission denied\n[dim]Cannot create ~/.rememb/ directory\n{e}[/dim]")
+                _print_error(f"Permission denied\nCannot create ~/.rememb/ directory\n{e}")
                 raise typer.Exit(1)
             except OSError as e:
-                _print_error(f"System error\n[dim]Cannot initialize rememb storage\n{e}[/dim]")
+                _print_error(f"System error\nCannot initialize rememb storage\n{e}")
                 raise typer.Exit(1)
         return root
 
@@ -310,22 +297,18 @@ def _print_table(entries: list[dict]) -> None:
     Args:
         entries: List of entry dictionaries to display
     """
-    table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", show_lines=True)
-    table.add_column("ID", style="dim", width=10)
-    table.add_column("Section", style="bold", width=12)
-    table.add_column("Content")
-    table.add_column("Tags", style="dim", width=20)
-    table.add_column("Date", style="dim", width=22)
-    table.add_column("Updated", style="dim", width=22)
+    if not entries:
+        print("No entries found.")
+        return
+
+    # Header
+    print(f"\n{'ID':<10} {'Section':<12} {'Content':<50} {'Tags':<20} {'Created':<22} {'Updated':<22}")
+    print("-" * 130)
 
     for e in entries:
-        table.add_row(
-            e["id"],
-            e["section"],
-            escape(e["content"]),
-            escape(", ".join(e.get("tags", [])) or "-"),
-            e["created_at"],
-            e.get("updated_at", "N/A"),
-        )
-
-    console.print(table)
+        content = e["content"][:47] + "..." if len(e["content"]) > 50 else e["content"]
+        tags = ", ".join(e.get("tags", []))[:17] or "-"
+        if len(", ".join(e.get("tags", []))) > 20:
+            tags = tags[:17] + "..."
+        print(f"{e['id']:<10} {e['section']:<12} {content:<50} {tags:<20} {e['created_at']:<22} {e.get('updated_at', 'N/A'):<22}")
+    print()

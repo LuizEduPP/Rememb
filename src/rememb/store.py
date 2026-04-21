@@ -132,8 +132,8 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
                 conflict = _check_semantic_conflict(root, entries, content, model)
                 if conflict:
                     raise RemembValidationError(
-                        f"🚨 Guarda-Costas Semântico ativado: Você tentou gravar algo quase idêntico a [id: {conflict['id']}] "
-                        f"da seção '{conflict['section']}'.\nSe quiser atualizar regras, chame a ferramenta 'rememb_edit' com este ID."
+                        f"🚨 Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
+                        f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
                     )
             except ImportError:
                 pass

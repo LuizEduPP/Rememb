@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-21
+
+### Added
+- `rememb fetch-model` CLI command to download the `all-MiniLM-L6-v2` (~80MB) embedding model with a progress bar, preventing offline cold-start timeouts.
+- **Semantic Bodyguard:** Prevents duplicate or highly similar memories from polluting the store by blocking saves with >88% semantic overlap and responding with `RemembValidationError`.
+- **Muscular Memory (Read-Boosting):** Automatically bumps the `access_count` and `last_accessed` timestamp whenever an entry is retrieved, giving priority to frequently used active memories.
+- **Hybrid Search & Time Decay:** Semantic search now combines exact phrase hits (Lexical Boost) and applies a time-decay factor (older unused memories organically drop to 70% relevance after 90 days).
+
+### Changed
+- Translated all internal localized error and validation messages to pure English.
+
+### Removed
+- Stripped all inline comments from source code to enforce self-documenting code practices (`no-comments` rule).
+
 ## [0.3.9] - 2026-04-18
 
 ### Added

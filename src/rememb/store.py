@@ -125,6 +125,18 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
             for e in entries:
                 if e["section"] == section and e["content"] == content:
                     raise RemembValidationError(f"Duplicate entry: same content already exists in section '{section}' (id: {e['id']})")
+                    
+            try:
+                from rememb.helpers import _check_semantic_conflict
+                model = _store_context.get_model()
+                conflict = _check_semantic_conflict(root, entries, content, model)
+                if conflict:
+                    raise RemembValidationError(
+                        f"🚨 Guarda-Costas Semântico ativado: Você tentou gravar algo quase idêntico a [id: {conflict['id']}] "
+                        f"da seção '{conflict['section']}'.\nSe quiser atualizar regras, chame a ferramenta 'rememb_edit' com este ID."
+                    )
+            except ImportError:
+                pass
         
         existing_ids = {e["id"] for e in entries}
         new_id = str(uuid.uuid4())[:8]
@@ -291,7 +303,23 @@ def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
         results = _semantic_search(root, entries, query, top_k, model)
     except ImportError as e:
         raise RemembError(str(e)) from e
+        
     logger.info(f"Search returned {len(results)} results for query '{query}'")
+    
+    if results:
+        def bump_access(all_entries: list[dict]) -> None:
+            updated = False
+            result_ids = {r["id"] for r in results}
+            now_str = _now()
+            for e in all_entries:
+                if e["id"] in result_ids:
+                    e["access_count"] = e.get("access_count", 0) + 1
+                    e["last_accessed"] = now_str
+                    updated = True
+            return updated
+            
+        _atomic_modify(root, bump_access)
+        
     return results
 
 

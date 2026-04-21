@@ -327,6 +327,49 @@ def _compute_entries_hash(entries: list[dict]) -> str:
     content = json.dumps(entries, sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()
 
+def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model) -> dict | None:
+    """Check if the content is semantically a duplicate of an existing entry.
+    
+    Args:
+        root: Project root path
+        entries: List of entry dictionaries
+        content: New content string
+        model: Embedding model instance
+        
+    Returns:
+        Conflicting entry dictionary if found, None otherwise
+    """
+    if np is None or not entries:
+        return None
+        
+    texts = [e["content"] for e in entries]
+    current_hash = _compute_entries_hash(entries)
+    embeddings_path = _rememb_path(root) / "embeddings.npy"
+    hash_path = _rememb_path(root) / "embeddings.hash"
+    
+    cache_valid = False
+    if embeddings_path.exists() and hash_path.exists():
+        try:
+            if hash_path.read_text(encoding="utf-8") == current_hash:
+                embeddings = np.load(str(embeddings_path))
+                cache_valid = True
+        except (OSError, ValueError):
+            pass
+            
+    if not cache_valid:
+        embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
+        np.save(str(embeddings_path), embeddings)
+        hash_path.write_text(current_hash, encoding="utf-8")
+        
+    query_vec = model.encode([content], show_progress_bar=False)[0]
+    norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
+    
+    for i, e in enumerate(entries):
+        base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
+        if base_score > 0.88:
+            return e
+    return None
+
 
 def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, model) -> list[dict]:
     """Perform semantic search using embeddings.
@@ -378,7 +421,6 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
     norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
     scores = np.zeros(len(entries))
     
-    # Pre-calculate query tokens for lexical hybrid search
     query_lower = query.lower()
     query_tokens = [t for t in re.split(r'\W+', query_lower) if len(t) > 2]
     
@@ -388,20 +430,17 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
     for i, e in enumerate(entries):
         base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
         
-        # 1. Lexical Boost (Hybrid Search)
         content_lower = e["content"].lower()
         if query_lower in content_lower:
-            base_score += 0.3  # Exact phrase match boost
+            base_score += 0.3
         else:
             matches = sum(1 for t in query_tokens if t in content_lower)
             if matches > 0 and len(query_tokens) > 0:
                 base_score += 0.15 * (matches / len(query_tokens))
                 
-        # 2. Time Decay (Garbage Collection weight)
         try:
             pts = datetime.strptime(e.get("updated_at", e.get("created_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
             days_old = (now_ts - pts) / 86400.0
-            # Decay factor: max 1.0 (new), dropping to 0.70 after ~90 days
             decay = max(0.70, 1.0 - (days_old * 0.003)) 
             base_score *= decay
         except Exception:

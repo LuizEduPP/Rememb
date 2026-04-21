@@ -374,9 +374,41 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
         hash_path.write_text(current_hash, encoding="utf-8")
     
     query_vec = model.encode([query], show_progress_bar=False)[0]
-    scores = np.dot(embeddings, query_vec) / (
-        np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
-    )
+    
+    norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
+    scores = np.zeros(len(entries))
+    
+    # Pre-calculate query tokens for lexical hybrid search
+    query_lower = query.lower()
+    query_tokens = [t for t in re.split(r'\W+', query_lower) if len(t) > 2]
+    
+    from datetime import datetime, timezone
+    now_ts = datetime.now(timezone.utc).timestamp()
+    
+    for i, e in enumerate(entries):
+        base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
+        
+        # 1. Lexical Boost (Hybrid Search)
+        content_lower = e["content"].lower()
+        if query_lower in content_lower:
+            base_score += 0.3  # Exact phrase match boost
+        else:
+            matches = sum(1 for t in query_tokens if t in content_lower)
+            if matches > 0 and len(query_tokens) > 0:
+                base_score += 0.15 * (matches / len(query_tokens))
+                
+        # 2. Time Decay (Garbage Collection weight)
+        try:
+            pts = datetime.strptime(e.get("updated_at", e.get("created_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            days_old = (now_ts - pts) / 86400.0
+            # Decay factor: max 1.0 (new), dropping to 0.70 after ~90 days
+            decay = max(0.70, 1.0 - (days_old * 0.003)) 
+            base_score *= decay
+        except Exception:
+            pass
+            
+        scores[i] = base_score
+
     top_indices = np.argsort(scores)[::-1][:top_k]
     return [entries[i] for i in top_indices]
 

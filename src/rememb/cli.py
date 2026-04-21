@@ -67,6 +67,7 @@ def _show_help():
     cmd_table.add_column("Description", style="white")
     cmd_table.add_row("rememb", "Launch interactive TUI")
     cmd_table.add_row("mcp", "Start MCP server for AI agents")
+    cmd_table.add_row("fetch-model", "Download local embedding model for offline use")
     
     console.print(Panel(
         cmd_table,
@@ -120,4 +121,25 @@ def mcp():
         asyncio.run(mcp_run_server())
     except ImportError as e:
         print(f"MCP support requires additional dependencies: {e}")
+        raise typer.Exit(1)
+
+@app.command(name="fetch-model")
+def fetch_model():
+    """Download embedding model for offline semantic search."""
+    console.print("Downloading [bold cyan]all-MiniLM-L6-v2[/bold cyan] (~80MB)...")
+    
+    try:
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=False,
+        ) as progress:
+            progress.add_task(description="Downloading model weights from HuggingFace...", total=None)
+            from sentence_transformers import SentenceTransformer
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+            console.print("[bold green]✓[/bold green] Model downloaded successfully.")
+            console.print("[dim]You can now use semantic search offline.[/dim]")
+    except ImportError:
+        console.print("[bold red]Error:[/bold red] sentence-transformers not installed. Run: [cyan]pip install rememb[semantic][/cyan]")
         raise typer.Exit(1)

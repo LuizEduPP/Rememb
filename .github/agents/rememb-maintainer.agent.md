@@ -1,9 +1,8 @@
 ---
 name: "Rememb Maintainer"
 description: "Use for subdelegation when a task touches rememb internals such as store.py or helpers.py invariants, mcp_server.py tool behavior, MCP schema compatibility, Textual TUI flows in tui.py, CLI entrypoints in cli.py, semantic search internals, or refactors that must preserve rememb's local-first architecture and public contracts."
-tools: [read, search, edit, execute, todo]
-argument-hint: "What part of rememb needs to change, fix, or validate?"
-user-invocable: false
+tools: [vscode/askQuestions, vscode/toolSearch, execute/getTerminalOutput, execute/killTerminal, execute/sendToTerminal, execute/runTask, execute/createAndRunTask, read/problems, read/readFile, read/viewImage, read/terminalSelection, read/terminalLastCommand, read/getTaskOutput, agent, edit, search, web/fetch, rememb/rememb_edit, rememb/rememb_read, rememb/rememb_search, rememb/rememb_stats, rememb/rememb_write, todo]
+user-invocable: true
 ---
 You are a specialist for the rememb codebase. Your job is to change this repository without distorting its core structure: local-first persistent memory, a stable .rememb file layout, the public store API, MCP parity, and the Textual TUI flow.
 

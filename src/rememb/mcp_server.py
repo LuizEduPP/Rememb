@@ -7,6 +7,7 @@ from typing import Any
 from rememb.store import (
     SECTIONS,
     clear_entries,
+    consolidate_entries,
     delete_entry,
     edit_entry,
     format_entries,
@@ -122,7 +123,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         content = arguments["content"]
         section = arguments.get("section", "context")
         tags = arguments.get("tags", [])
-        entry = await asyncio.to_thread(write_entry, root, section, content, tags)
+        semantic_scope = arguments.get("semantic_scope", "global")
+        entry = await asyncio.to_thread(write_entry, root, section, content, tags, True, semantic_scope)
         return [TextContent(
             type="text",
             text=f"Saved [{entry['section']}] id={entry['id']}"
@@ -167,6 +169,31 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             "",
         ] + [f"{sec}: {s['by_section'][sec]}" for sec in SECTIONS]
         return [TextContent(type="text", text="\n".join(lines))]
+
+    async def rememb_consolidate():
+        section = arguments.get("section")
+        mode = arguments.get("mode", "exact")
+        similarity_threshold = arguments.get("similarity_threshold", 0.88)
+        result = await asyncio.to_thread(
+            consolidate_entries,
+            root,
+            section,
+            mode,
+            similarity_threshold,
+        )
+        target = result["section"] if result["section"] else "all sections"
+        mode_info = f" mode={result['mode']}"
+        if result["mode"] == "semantic":
+            mode_info += f" threshold={result['similarity_threshold']}"
+        return [TextContent(
+            type="text",
+            text=(
+                f"Consolidation completed for {target}. "
+                f"Using{mode_info}. "
+                f"Removed {result['removed_count']} duplicate entries "
+                f"({result['total_before']} -> {result['total_after']})."
+            ),
+        )]
     
     async def rememb_init():
         project_name = arguments.get("project_name", "")
@@ -185,6 +212,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_delete": rememb_delete,
         "rememb_clear": rememb_clear,
         "rememb_stats": rememb_stats,
+        "rememb_consolidate": rememb_consolidate,
         "rememb_init": rememb_init,
     }
     
@@ -249,7 +277,7 @@ async def run_server():
         ),
         Tool(
             name="rememb_write",
-            description="Save a new memory entry. Creates a new entry and returns its ID — does not overwrite existing entries. Use when you learn something new worth remembering across sessions. Use rememb_edit instead to update an existing entry by ID.",
+            description="Save a new memory entry. Creates a new entry and returns its ID — does not overwrite existing entries. Use when you learn something new worth remembering across sessions. Use rememb_edit instead to update an existing entry by ID. semantic_scope controls whether semantic duplicate blocking checks globally or only inside the target section.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -267,6 +295,12 @@ async def run_server():
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Tags to categorize this entry"
+                    },
+                    "semantic_scope": {
+                        "type": "string",
+                        "enum": ["global", "section"],
+                        "default": "global",
+                        "description": "Semantic duplicate guard scope: global (all sections) or section (target section only)"
                     }
                 },
                 "required": ["content"]
@@ -332,6 +366,31 @@ async def run_server():
             name="rememb_stats",
             description="Return memory usage statistics: total entries, size in KB, oldest and newest entry dates, and count per section. Safe, read-only operation with no side effects. Use to give the user an overview of their memory store or to decide if cleanup is needed.",
             inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
+            name="rememb_consolidate",
+            description="Consolidate duplicate entries and merge metadata (tags and access data). Supports exact mode (default, normalized content match) and semantic mode (cosine similarity threshold). This mutates storage by removing redundant entries and keeping one consolidated record per duplicate group.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "enum": SECTIONS,
+                        "description": f"Optional section filter: {', '.join(SECTIONS)}"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["exact", "semantic"],
+                        "default": "exact",
+                        "description": "Consolidation mode: exact (normalized content) or semantic (similarity threshold)"
+                    },
+                    "similarity_threshold": {
+                        "type": "number",
+                        "default": 0.88,
+                        "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)"
+                    }
+                }
+            }
         ),
         Tool(
             name="rememb_init",

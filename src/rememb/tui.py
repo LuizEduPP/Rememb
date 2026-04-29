@@ -19,7 +19,16 @@ from textual.binding import Binding
 from textual import on
 from textual.message import Message
 
-from rememb.store import read_entries, search_entries, get_stats, write_entry, edit_entry, delete_entry, SECTIONS
+from rememb.store import (
+    read_entries,
+    search_entries,
+    get_stats,
+    write_entry,
+    edit_entry,
+    delete_entry,
+    consolidate_entries,
+    SECTIONS,
+)
 from rememb.utils import find_root, global_root, is_initialized
 
 SECTION_ICONS = {
@@ -253,6 +262,7 @@ class RemembApp(App):
     BINDINGS = [
         Binding("ctrl+n", "new_entry", "New", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
+        Binding("ctrl+d", "consolidate", "Consolidate", show=True),
         Binding("/", "focus_search", "Search", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
@@ -276,6 +286,7 @@ class RemembApp(App):
                 yield ScrollableContainer(id="sidebar-sections")
                 yield Rule()
                 yield Button("↻  Refresh", id="btn-refresh", variant="warning", flat=True)
+                yield Button("⇵  Consolidate", id="btn-consolidate", variant="success", flat=True)
                 yield Button("⏻  Quit", id="btn-quit", variant="error", flat=True)
 
             with Vertical(id="main-area"):
@@ -340,6 +351,10 @@ class RemembApp(App):
         refresh_btn = self.query_one("#btn-refresh")
         refresh_btn.styles.width = "100%"
         refresh_btn.styles.margin_top = 1
+
+        consolidate_btn = self.query_one("#btn-consolidate")
+        consolidate_btn.styles.width = "100%"
+        consolidate_btn.styles.margin_top = 1
 
         quit_btn = self.query_one("#btn-quit")
         quit_btn.styles.width = "100%"
@@ -441,6 +456,8 @@ class RemembApp(App):
             self.action_new_entry()
         elif btn_id == "btn-refresh":
             self.action_refresh()
+        elif btn_id == "btn-consolidate":
+            self.action_consolidate()
         elif btn_id == "btn-quit":
             self.app.exit()
 
@@ -518,6 +535,23 @@ class RemembApp(App):
     def action_refresh(self) -> None:
         self._refresh_ui(self.current_section)
         self.notify("Memory refreshed", severity="information")
+
+    def action_consolidate(self) -> None:
+        try:
+            result = consolidate_entries(
+                self._get_root(),
+                section=self.current_section,
+                mode="semantic",
+                similarity_threshold=0.88,
+            )
+            target = result["section"] if result["section"] else "all sections"
+            self._refresh_ui(self.current_section)
+            self.notify(
+                f"Consolidated {target}: removed {result['removed_count']} duplicates",
+                severity="information",
+            )
+        except Exception as e:
+            self.notify(f"Consolidation failed: {e}", severity="error")
 
     def action_focus_search(self) -> None:
         self.query_one("#search-box").focus()

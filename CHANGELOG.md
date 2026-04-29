@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-04-28
+
+### Added
+- `rememb_consolidate` MCP tool and `consolidate_entries()` store API with two modes: `exact` (default, normalized content) and `semantic` (configurable `similarity_threshold`) to merge near-duplicates and metadata (tags/access stats).
+- `semantic_scope` option in `write_entry()` and MCP `rememb_write` to choose semantic duplicate guard scope: `global` (default) or `section`.
+- TUI action for consolidation (`Ctrl+D` shortcut and sidebar button), running semantic deduplication for the current section context.
+
 ## [0.4.0] - 2026-04-21
 
 ### Added

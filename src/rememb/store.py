@@ -33,6 +33,7 @@ __all__ = [
     "SECTIONS",
     "init",
     "write_entry",
+    "consolidate_entries",
     "read_entries",
     "search_entries",
     "delete_entry",
@@ -88,7 +89,14 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     return rememb
 
 
-def write_entry(root: Path, section: str, content: str, tags: list[str] | None = None, skip_duplicates: bool = True) -> dict:
+def write_entry(
+    root: Path,
+    section: str,
+    content: str,
+    tags: list[str] | None = None,
+    skip_duplicates: bool = True,
+    semantic_scope: str = "global",
+) -> dict:
     """Write a new entry to memory.
     
     Args:
@@ -97,6 +105,7 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
         content: Entry content (1-3 sentences recommended)
         tags: Optional list of tags for categorization
         skip_duplicates: If True, reject duplicate content in same section
+        semantic_scope: Scope for semantic duplicate guard: "global" or "section"
     
     Returns:
         Created entry dictionary with id, section, content, tags, timestamps
@@ -107,9 +116,14 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
         RemembConfigError: If max entries limit reached
         RemembStorageError: If ID generation fails
     """
-    logger.debug(f"write_entry called: section={section}, skip_duplicates={skip_duplicates}")
+    logger.debug(
+        f"write_entry called: section={section}, skip_duplicates={skip_duplicates}, semantic_scope={semantic_scope}"
+    )
     _assert_initialized(root)
     section = _validate_section(section)
+    normalized_scope = semantic_scope.lower().strip()
+    if normalized_scope not in {"global", "section"}:
+        raise RemembValidationError("Invalid semantic_scope. Use 'global' or 'section'.")
 
     content = _sanitize_content(content, root)
     tags = _sanitize_tags(tags or [], root)
@@ -129,7 +143,10 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
             try:
                 from rememb.helpers import _check_semantic_conflict
                 model = _store_context.get_model()
-                conflict = _check_semantic_conflict(root, entries, content, model)
+                semantic_entries = entries
+                if normalized_scope == "section":
+                    semantic_entries = [e for e in entries if e.get("section") == section]
+                conflict = _check_semantic_conflict(root, semantic_entries, content, model)
                 if conflict:
                     raise RemembValidationError(
                         f"🚨 Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
@@ -162,6 +179,208 @@ def write_entry(root: Path, section: str, content: str, tags: list[str] | None =
         return entry
     
     return _atomic_modify(root, add_entry)
+
+
+def consolidate_entries(
+    root: Path,
+    section: str | None = None,
+    mode: str = "exact",
+    similarity_threshold: float = 0.88,
+) -> dict:
+    """Consolidate entries with exact or semantic duplicate detection.
+
+    Args:
+        root: Project root path
+        section: Optional section filter. When provided, only that section is deduplicated.
+        mode: Consolidation mode. Supported: "exact" or "semantic".
+        similarity_threshold: Cosine similarity threshold used when mode="semantic".
+
+    Returns:
+        Dictionary with consolidation summary
+    """
+    logger.debug(
+        f"consolidate_entries called: section={section}, mode={mode}, similarity_threshold={similarity_threshold}"
+    )
+    _assert_initialized(root)
+    target_section = _validate_section(section) if section else None
+    normalized_mode = mode.lower().strip()
+
+    if normalized_mode not in {"exact", "semantic"}:
+        raise RemembValidationError("Invalid consolidation mode. Use 'exact' or 'semantic'.")
+
+    if similarity_threshold <= 0 or similarity_threshold > 1:
+        raise RemembValidationError("similarity_threshold must be > 0 and <= 1.")
+
+    def _safe_int(value: object) -> int:
+        return value if isinstance(value, int) else 0
+
+    def _safe_str(value: object) -> str:
+        return value if isinstance(value, str) else ""
+
+    def _entry_key(entry: dict) -> tuple[str, str]:
+        content = _safe_str(entry.get("content"))
+        normalized = " ".join(content.split()).strip().lower()
+        return _safe_str(entry.get("section", "context")), normalized
+
+    def _pick_created_at(current: str, incoming: str) -> str:
+        if not current:
+            return incoming
+        if not incoming:
+            return current
+        return current if current <= incoming else incoming
+
+    def _pick_updated_at(current: str, incoming: str) -> str:
+        if not current:
+            return incoming
+        if not incoming:
+            return current
+        return current if current >= incoming else incoming
+
+    def _pick_content(current: str, incoming: str) -> str:
+        if len(incoming.strip()) > len(current.strip()):
+            return incoming
+        return current
+
+    def _cosine_similarity(vec_a: object, vec_b: object) -> float:
+        if not isinstance(vec_a, (list, tuple)) or not isinstance(vec_b, (list, tuple)):
+            return 0.0
+        if len(vec_a) == 0 or len(vec_b) == 0 or len(vec_a) != len(vec_b):
+            return 0.0
+
+        dot = 0.0
+        norm_a = 0.0
+        norm_b = 0.0
+        for a, b in zip(vec_a, vec_b):
+            af = float(a)
+            bf = float(b)
+            dot += af * bf
+            norm_a += af * af
+            norm_b += bf * bf
+
+        if norm_a == 0.0 or norm_b == 0.0:
+            return 0.0
+        return dot / ((norm_a ** 0.5) * (norm_b ** 0.5))
+
+    def _consolidate(entries: list[dict]) -> dict:
+        total_before = len(entries)
+        kept: list[dict] = []
+        index_by_key: dict[tuple[str, str], int] = {}
+        semantic_refs: dict[str, list[tuple[int, object]]] = {}
+        removed_ids: list[str] = []
+        merged_groups = 0
+        model = None
+        embeddings_by_idx: dict[int, object] = {}
+
+        if normalized_mode == "semantic":
+            try:
+                model = _store_context.get_model()
+            except ImportError as e:
+                raise RemembError(str(e)) from e
+
+            target_indexes = []
+            target_texts = []
+            for idx, entry in enumerate(entries):
+                entry_section = _safe_str(entry.get("section", "context"))
+                if target_section and entry_section != target_section:
+                    continue
+                target_indexes.append(idx)
+                target_texts.append(_safe_str(entry.get("content")))
+
+            if target_texts:
+                vectors = model.encode(target_texts, show_progress_bar=False, batch_size=32)
+                for local_idx, global_idx in enumerate(target_indexes):
+                    embeddings_by_idx[global_idx] = vectors[local_idx].tolist()
+
+        for idx, entry in enumerate(entries):
+            entry_section = _safe_str(entry.get("section", "context"))
+            if target_section and entry_section != target_section:
+                kept.append(entry)
+                continue
+
+            existing_idx = None
+            if normalized_mode == "exact":
+                key = _entry_key(entry)
+                existing_idx = index_by_key.get(key)
+            else:
+                entry_vec = embeddings_by_idx.get(idx)
+                if entry_vec is not None:
+                    section_refs = semantic_refs.get(entry_section, [])
+                    best_idx = None
+                    best_score = -1.0
+                    for kept_idx, ref_vec in section_refs:
+                        score = _cosine_similarity(entry_vec, ref_vec)
+                        if score >= similarity_threshold and score > best_score:
+                            best_score = score
+                            best_idx = kept_idx
+                    existing_idx = best_idx
+
+            if existing_idx is None:
+                kept_idx = len(kept)
+                kept.append(entry)
+                if normalized_mode == "exact":
+                    key = _entry_key(entry)
+                    index_by_key[key] = kept_idx
+                else:
+                    entry_vec = embeddings_by_idx.get(idx)
+                    if entry_vec is not None:
+                        semantic_refs.setdefault(entry_section, []).append((kept_idx, entry_vec))
+                continue
+
+            merged_groups += 1
+            existing = kept[existing_idx]
+
+            existing_tags = existing.get("tags", [])
+            incoming_tags = entry.get("tags", [])
+            merged_tags = []
+            for tag in [*existing_tags, *incoming_tags]:
+                if isinstance(tag, str) and tag not in merged_tags:
+                    merged_tags.append(tag)
+            existing["tags"] = merged_tags
+
+            existing["content"] = _pick_content(
+                _safe_str(existing.get("content")),
+                _safe_str(entry.get("content")),
+            )
+            existing["created_at"] = _pick_created_at(
+                _safe_str(existing.get("created_at")),
+                _safe_str(entry.get("created_at")),
+            )
+            existing["updated_at"] = _pick_updated_at(
+                _safe_str(existing.get("updated_at")),
+                _safe_str(entry.get("updated_at")),
+            )
+
+            existing_access = _safe_int(existing.get("access_count"))
+            incoming_access = _safe_int(entry.get("access_count"))
+            total_access = existing_access + incoming_access
+            if total_access > 0:
+                existing["access_count"] = total_access
+
+            existing_last_accessed = _safe_str(existing.get("last_accessed"))
+            incoming_last_accessed = _safe_str(entry.get("last_accessed"))
+            last_accessed = _pick_updated_at(existing_last_accessed, incoming_last_accessed)
+            if last_accessed:
+                existing["last_accessed"] = last_accessed
+
+            removed_id = _safe_str(entry.get("id"))
+            if removed_id:
+                removed_ids.append(removed_id)
+
+        entries[:] = kept
+        removed_count = total_before - len(kept)
+
+        return {
+            "total_before": total_before,
+            "total_after": len(kept),
+            "removed_count": removed_count,
+            "merged_groups": merged_groups,
+            "removed_ids": removed_ids,
+            "section": target_section,
+            "mode": normalized_mode,
+            "similarity_threshold": similarity_threshold,
+        }
+
+    return _atomic_modify(root, _consolidate)
 
 
 def delete_entry(root: Path, entry_id: str) -> bool:
@@ -383,6 +602,7 @@ def format_entries(entries: list[dict], include_id: bool = False) -> str:
 
 _store_instance = type('StoreModule', (), {
     'write_entry': write_entry,
+    'consolidate_entries': consolidate_entries,
     'read_entries': read_entries,
     'search_entries': search_entries,
     'delete_entry': delete_entry,

@@ -48,7 +48,15 @@ logger = logging.getLogger(__name__)
 class MemoryStore(Protocol):
     """Abstract protocol for memory store operations."""
     
-    def write_entry(self, root: Path, section: str, content: str, tags: list[str] | None = None, skip_duplicates: bool = True) -> dict:
+    def write_entry(
+        self,
+        root: Path,
+        section: str,
+        content: str,
+        tags: list[str] | None = None,
+        skip_duplicates: bool = True,
+        semantic_scope: str = "global",
+    ) -> dict:
         """Write a new entry to memory."""
         ...
     

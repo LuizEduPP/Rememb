@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ❓ Questions & Support
+    url: https://github.com/LuizEduPP/Rememb/discussions
+    about: Ask questions or discuss rememb usage
+  - name: 📚 Documentation
+    url: https://github.com/LuizEduPP/Rememb/blob/main/README.md
+    about: Check README for guides and examples
+  - name: 🔐 Security Issues
+    url: mailto:luizedupp@gmail.com
+    about: Report security vulnerabilities via email

@@ -350,7 +350,7 @@ def write_entry(
                 conflict = _check_semantic_conflict(root, semantic_entries, content, model)
                 if conflict:
                     raise RemembValidationError(
-                        f"🚨 Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
+                        f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
                         f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
                     )
             except ImportError:
@@ -740,6 +740,7 @@ def read_entries_page(
     root: Path,
     section: str | None = None,
     *,
+    tag: str | None = None,
     offset: int = 0,
     limit: int = 100,
     sort_by: str = "storage",
@@ -750,6 +751,7 @@ def read_entries_page(
     Args:
         root: Project root path
         section: Optional section filter
+        tag: Optional exact tag filter
         offset: Zero-based start index in the filtered/sorted result set
         limit: Maximum number of entries to return
         sort_by: Sort mode, either "storage" or "recent"
@@ -763,8 +765,9 @@ def read_entries_page(
         RemembValidationError: If offset, limit, or sort_by are invalid
     """
     logger.debug(
-        "read_entries_page called: section=%s, offset=%s, limit=%s, sort_by=%s, descending=%s",
+        "read_entries_page called: section=%s, tag=%s, offset=%s, limit=%s, sort_by=%s, descending=%s",
         section,
+        tag,
         offset,
         limit,
         sort_by,
@@ -784,6 +787,9 @@ def read_entries_page(
     entries = _load_entries(root)
     if section:
         entries = [e for e in entries if e["section"] == section.lower()]
+    if tag:
+        normalized_tag = tag.lower().strip()
+        entries = [e for e in entries if normalized_tag in e.get("tags", [])]
 
     if normalized_sort == "recent":
         entries = sorted(
@@ -804,7 +810,10 @@ def read_entries_page(
         offset,
         limit,
         total,
-        f" from section '{section}'" if section else "",
+        (
+            (f" from section '{section}'" if section else "")
+            + (f" with tag '{tag}'" if tag else "")
+        ),
     )
     return {
         "items": items,
@@ -816,19 +825,38 @@ def read_entries_page(
     }
 
 
-def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
+def search_entries(
+    root: Path,
+    query: str,
+    top_k: int = 5,
+    section: str | None = None,
+    tag: str | None = None,
+) -> list[dict]:
     """Search entries by semantic similarity.
     
     Args:
         root: Project root path
         query: Search query (natural language or keywords)
         top_k: Maximum number of results to return
+        section: Optional section filter applied before semantic search
+        tag: Optional exact tag filter applied before semantic search
     
     Returns:
         List of top-k matching entries ranked by similarity
     """
-    logger.debug(f"search_entries called: query='{query}', top_k={top_k}")
+    logger.debug(
+        "search_entries called: query='%s', top_k=%s, section=%s, tag=%s",
+        query,
+        top_k,
+        section,
+        tag,
+    )
     entries = _load_entries(root)
+    if section:
+        entries = [entry for entry in entries if entry.get("section") == section.lower()]
+    if tag:
+        normalized_tag = tag.lower().strip()
+        entries = [entry for entry in entries if normalized_tag in entry.get("tags", [])]
     if not entries:
         logger.warning("No entries to search")
         return []

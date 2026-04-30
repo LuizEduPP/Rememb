@@ -167,6 +167,7 @@ class MemoryStore(Protocol):
         root: Path,
         section: str | None = None,
         *,
+        tag: str | None = None,
         offset: int = 0,
         limit: int = 100,
         sort_by: str = "storage",
@@ -183,7 +184,14 @@ class MemoryStore(Protocol):
         """Persist validated configuration updates for the given root."""
         ...
     
-    def search_entries(self, root: Path, query: str, top_k: int = 5) -> list[dict]:
+    def search_entries(
+        self,
+        root: Path,
+        query: str,
+        top_k: int = 5,
+        section: str | None = None,
+        tag: str | None = None,
+    ) -> list[dict]:
         """Search entries by content or tags."""
         ...
     

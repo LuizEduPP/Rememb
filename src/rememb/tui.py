@@ -62,6 +62,7 @@ SECTION_LABELS = {
 }
 
 STORE_PAGE_SIZE = 96
+CARD_TAG_PREVIEW_LIMIT = 4
 
 
 def _section_label(section: str | None) -> str:
@@ -141,12 +142,26 @@ def _format_timestamp(value: str | None) -> str:
         return value
 
 
+def _visible_card_tags(tags: list[str]) -> tuple[list[str], int]:
+    visible_tags = list(tags[:CARD_TAG_PREVIEW_LIMIT])
+    hidden_count = max(0, len(tags) - len(visible_tags))
+    return visible_tags, hidden_count
+
+
 class ActionTriggered(Message):
     """Posted when a button inside a card is pressed."""
     def __init__(self, action: str, entry: dict) -> None:
         super().__init__()
         self.action = action
         self.entry = entry
+
+
+class TagSelected(Message):
+    """Posted when the user clicks a tag pill."""
+
+    def __init__(self, tag: str) -> None:
+        super().__init__()
+        self.tag = tag
 
 
 class SectionItem(Static):
@@ -336,9 +351,11 @@ class TagRow(Horizontal):
 class TagPill(Label):
     """Styled tag pill used inside entry cards."""
 
-    def __init__(self, tag: str, color: str, **kwargs):
+    def __init__(self, tag: str, color: str, *, clickable: bool = True, **kwargs):
         super().__init__(f" {tag} ", **kwargs)
+        self.tag = tag
         self._color = color
+        self._clickable = clickable
 
     def on_mount(self) -> None:
         self.styles.color = self._color
@@ -349,6 +366,10 @@ class TagPill(Label):
         self.styles.shrink = True
         self.styles.height = 3
         self.styles.content_align = ("center", "middle")
+
+    def on_click(self) -> None:
+        if self._clickable:
+            self.post_message(TagSelected(self.tag))
 
 
 class EntryCard(Widget):
@@ -409,7 +430,11 @@ class EntryCard(Widget):
                     rows: list = []
                     line_len = 0
                     max_w = 36
-                    for tag in tags:
+                    visible_tags, hidden_count = _visible_card_tags(tags)
+                    render_tags = list(visible_tags)
+                    if hidden_count:
+                        render_tags.append(f"+{hidden_count}")
+                    for tag in render_tags:
                         w = len(tag) + 3
                         if line_len + w > max_w and row:
                             rows.append(row)
@@ -422,7 +447,12 @@ class EntryCard(Widget):
                     for i, row_tags in enumerate(rows):
                         with TagRow(classes="tag-row"):
                             for tag in row_tags:
-                                yield TagPill(tag, self.color, classes="tag-pill")
+                                yield TagPill(
+                                    tag,
+                                    self.color,
+                                    clickable=not tag.startswith("+"),
+                                    classes="tag-pill",
+                                )
 
     def on_mount(self) -> None:
         self.styles.height = "auto"
@@ -526,6 +556,7 @@ class RemembApp(App):
         self.current_entries = []
         self.current_section = None
         self.current_query = ""
+        self.active_tag: str | None = None
         self.latest_first = True
         self.rendered_count = 0
         self.loaded_offset = 0
@@ -567,6 +598,8 @@ class RemembApp(App):
             with Vertical(id="main-area"):
                 with Horizontal(id="search-bar"):
                     yield Input(placeholder="⌕  Search memory...", id="search-box")
+                    yield Label("Tag: all", id="tag-filter-indicator")
+                    yield ToolbarActionButton("✕  Clear Tag", id="btn-clear-tag", variant="default", flat=True, min_width=14)
                     yield ToolbarActionButton("↓  Latest First", id="btn-sort-order", variant="default", flat=True)
                 yield Rule()
                 with Horizontal(id="content-area"):
@@ -638,6 +671,14 @@ class RemembApp(App):
         search_box = self.query_one("#search-box")
         search_box.styles.width = "1fr"
 
+        tag_indicator = self.query_one("#tag-filter-indicator")
+        tag_indicator.styles.width = "auto"
+        tag_indicator.styles.min_width = 14
+        tag_indicator.styles.margin_left = 1
+        tag_indicator.styles.content_align = ("center", "middle")
+        tag_indicator.styles.height = 3
+        tag_indicator.styles.color = "#88c0d0"
+
         main_scroll = self.query_one("#main-scroll")
         main_scroll.styles.padding = (1, 0)
 
@@ -699,6 +740,7 @@ class RemembApp(App):
             container.mount(item)
 
         self._load_entries(self.current_section)
+        self._update_tag_filter_ui()
 
     def _load_tui_config(self, root) -> None:
         config = get_config(root)
@@ -745,6 +787,7 @@ class RemembApp(App):
         page = read_entries_page(
             self._get_root(),
             self.current_section,
+            tag=self.active_tag,
             offset=self.loaded_offset,
             limit=STORE_PAGE_SIZE,
             sort_by="recent",
@@ -813,6 +856,36 @@ class RemembApp(App):
         label = "↓  Latest First" if self.latest_first else "↑  Oldest First"
         self.query_one("#btn-sort-order", Button).label = label
 
+    def _update_tag_filter_ui(self) -> None:
+        indicator = self.query_one("#tag-filter-indicator", Label)
+        clear_button = self.query_one("#btn-clear-tag", Button)
+        if self.active_tag:
+            indicator.update(f"Tag: {self.active_tag}")
+            clear_button.display = True
+        else:
+            indicator.update("Tag: all")
+            clear_button.display = False
+
+    def _apply_active_filters(self) -> None:
+        self._update_tag_filter_ui()
+        if self.current_query:
+            root = self._get_root()
+            self.loaded_offset = 0
+            self.has_more_entries = False
+            self.current_entries = self._sort_entries(
+                search_entries(
+                    root,
+                    self.current_query,
+                    top_k=20,
+                    section=self.current_section,
+                    tag=self.active_tag,
+                )
+            )
+            self._render_entries(reset=True)
+            return
+
+        self._load_entries(self.current_section)
+
     def _load_entries(self, section: str | None = None) -> None:
         try:
             self.current_section = section
@@ -834,6 +907,11 @@ class RemembApp(App):
         elif message.action == "delete":
             self._delete_entry(message.entry)
 
+    @on(TagSelected)
+    def handle_tag_selected(self, message: TagSelected) -> None:
+        self.active_tag = None if self.active_tag == message.tag else message.tag
+        self._apply_active_filters()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
         if btn_id == "btn-new-entry":
@@ -842,6 +920,8 @@ class RemembApp(App):
             self.action_open_config()
         elif btn_id == "btn-refresh":
             self.action_refresh()
+        elif btn_id == "btn-clear-tag":
+            self.action_clear_tag_filter()
         elif btn_id == "btn-sort-order":
             self.action_toggle_sort_order()
         elif btn_id == "btn-consolidate":
@@ -853,14 +933,11 @@ class RemembApp(App):
     def on_search(self, event: Input.Submitted) -> None:
         query = event.value.strip()
         if not query:
-            self._refresh_ui(self.current_section)
+            self.current_query = ""
+            self._apply_active_filters()
             return
-        root = self._get_root()
         self.current_query = query
-        self.loaded_offset = 0
-        self.has_more_entries = False
-        self.current_entries = self._sort_entries(search_entries(root, query, top_k=20))
-        self._render_entries(reset=True)
+        self._apply_active_filters()
 
     def _render_entry_markdown(self, entry: dict) -> str:
         tags = ", ".join(entry.get("tags", [])) or "None"
@@ -979,6 +1056,13 @@ class RemembApp(App):
     def action_refresh(self) -> None:
         self._refresh_ui(self.current_section)
         self.notify("Memory refreshed", severity="information")
+
+    def action_clear_tag_filter(self) -> None:
+        if not self.active_tag:
+            return
+        self.active_tag = None
+        self._apply_active_filters()
+        self.notify("Tag filter cleared", severity="information")
 
     def action_toggle_sort_order(self) -> None:
         self.latest_first = not self.latest_first

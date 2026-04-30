@@ -140,7 +140,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     async def rememb_search():
         query = arguments["query"]
         top_k = arguments.get("top_k", 5)
-        entries = await asyncio.to_thread(search_entries, root, query, top_k)
+        tag = arguments.get("tag")
+        entries = await asyncio.to_thread(search_entries, root, query, top_k, None, tag)
         return [TextContent(type="text", text=format_entries(entries, include_id=True))]
 
     async def rememb_write():
@@ -297,6 +298,10 @@ def _build_tools(Tool):
                 "query": {
                     "type": "string",
                     "description": "Search query - natural language or keywords",
+                },
+                "tag": {
+                    "type": "string",
+                    "description": "Optional exact tag filter applied before semantic search",
                 },
                 "top_k": {
                     "type": "integer",

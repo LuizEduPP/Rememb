@@ -1,6 +1,9 @@
 """Textual TUI for rememb."""
 
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+import webbrowser
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Grid, ScrollableContainer, Center
@@ -16,6 +19,7 @@ from textual.widgets import (
     Select,
     Static,
     TextArea,
+    MarkdownViewer,
 )
 from textual.binding import Binding
 from textual import on
@@ -64,6 +68,16 @@ SECTION_LABELS = {
 }
 
 STORE_PAGE_SIZE = 96
+
+
+def _format_timestamp(value: str | None) -> str:
+    if not value:
+        return "N/A"
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        return parsed.strftime("%d/%m/%Y %H:%M UTC")
+    except ValueError:
+        return value
 
 
 class ActionTriggered(Message):
@@ -115,6 +129,158 @@ class SectionSelected(Message):
         self.section = section
 
 
+class SidebarActionButton(Button):
+    """Full-width action button used in the sidebar."""
+
+    def __init__(self, *args, margin_top: int = 0, margin_bottom: int = 0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._margin_top = margin_top
+        self._margin_bottom = margin_bottom
+
+    def on_mount(self) -> None:
+        self.styles.width = "100%"
+        self.styles.margin_top = self._margin_top
+        self.styles.margin_bottom = self._margin_bottom
+
+
+class ToolbarActionButton(Button):
+    """Compact action button used in the search toolbar."""
+
+    def __init__(self, *args, min_width: int = 18, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._min_width = min_width
+
+    def on_mount(self) -> None:
+        self.styles.width = "auto"
+        self.styles.min_width = self._min_width
+        self.styles.margin_left = 1
+
+
+class ModalActionButton(Button):
+    """Action button used in modal and side-panel footers."""
+
+    def on_mount(self) -> None:
+        self.styles.margin_left = 1
+
+
+class CardActionButton(Button):
+    """Compact icon button used inside entry cards."""
+
+    def on_mount(self) -> None:
+        self.styles.min_width = 5
+        self.styles.width = 5
+        self.styles.height = 3
+        self.styles.padding = (0, 0)
+        self.styles.content_align = ("center", "middle")
+        self.styles.background = "transparent"
+
+
+class SafeMarkdownViewer(MarkdownViewer):
+    """MarkdownViewer variant that handles links defensively."""
+
+    def _handle_markdown_target(self, location: str | Path) -> tuple[str, Path | str | None]:
+        target = str(location).strip()
+        parsed = urlparse(target)
+
+        if parsed.scheme in {"http", "https"}:
+            return "external", target
+        if parsed.scheme == "file":
+            return "file", Path(parsed.path)
+        if parsed.scheme:
+            return "unsupported", target
+        return "file", Path(target).expanduser()
+
+    async def go(self, location: str | Path) -> None:
+        kind, target = self._handle_markdown_target(location)
+
+        if kind == "external":
+            if getattr(self, "_open_links", False):
+                webbrowser.open(str(target))
+            else:
+                self.notify("External links are disabled", severity="warning")
+            return
+
+        if kind == "unsupported":
+            self.notify(f"Unsupported link: {target}", severity="warning")
+            return
+
+        local_path = target if isinstance(target, Path) else Path(str(target))
+        if not local_path.exists():
+            self.notify(f"Invalid link target: {local_path}", severity="warning")
+            return
+
+        await super().go(local_path)
+
+    async def _on_markdown_link_clicked(self, message) -> None:
+        message.stop()
+        await self.go(message.href)
+
+
+class FieldBlock(Vertical):
+    """Labeled form field block used across panels and modals."""
+
+    def __init__(self, label: str, control: Widget):
+        super().__init__()
+        self._label = label
+        self._control = control
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._label, classes="field-label")
+        yield self._control
+
+    def on_mount(self) -> None:
+        self.styles.height = "auto"
+        self.styles.margin_bottom = 1
+
+
+class CardSectionLabel(Label):
+    """Styled section label used inside entry cards."""
+
+    def __init__(self, text: str, color: str, **kwargs):
+        super().__init__(text, **kwargs)
+        self._color = color
+
+    def on_mount(self) -> None:
+        self.styles.color = self._color
+        self.styles.margin = (1, 0, 0, 0)
+        self.styles.height = 2
+
+
+class CardMetaLine(Label):
+    """Compact metadata line for entry timestamps."""
+
+    def on_mount(self) -> None:
+        self.styles.height = 1
+        self.styles.margin = (0, 0, 0, 0)
+        self.styles.color = "#a7b1c2"
+
+
+class TagRow(Horizontal):
+    """Horizontal row for wrapped card tag pills."""
+
+    def on_mount(self) -> None:
+        self.styles.height = 3
+        self.styles.margin_bottom = 1
+
+
+class TagPill(Label):
+    """Styled tag pill used inside entry cards."""
+
+    def __init__(self, tag: str, color: str, **kwargs):
+        super().__init__(f" {tag} ", **kwargs)
+        self._color = color
+
+    def on_mount(self) -> None:
+        self.styles.color = self._color
+        self.styles.border = ("round", self._color + "88")
+        self.styles.padding = (0, 1)
+        self.styles.margin_right = 1
+        self.styles.width = "auto"
+        self.styles.shrink = True
+        self.styles.height = 3
+        self.styles.content_align = ("center", "middle")
+
+
 class EntryCard(Widget):
     """Single card representing one memory entry."""
 
@@ -128,16 +294,6 @@ class EntryCard(Widget):
         self.color = SECTION_COLORS.get(self.section, "#888")
         self._uid = uid
 
-    @staticmethod
-    def _format_timestamp(value: str | None) -> str:
-        if not value:
-            return "N/A"
-        try:
-            parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
-            return parsed.strftime("%d/%m/%Y %H:%M UTC")
-        except ValueError:
-            return value
-
     def compose(self) -> ComposeResult:
         with Vertical(id="card-root"):
             with Vertical(id="card-body"):
@@ -146,13 +302,15 @@ class EntryCard(Widget):
                         f"[dim]#{self.entry_id[:8]}[/dim]",
                         id=f"cid-{self._uid}",
                     )
-                    yield Button("✎", id="edit-card", classes="act-btn", tooltip="Edit entry")
-                    yield Button("✕", id="delete-card", classes="act-btn del-btn", tooltip="Delete entry")
+                    yield CardActionButton("◉", id="view-card", classes="act-btn", tooltip="View entry")
+                    yield CardActionButton("✎", id="edit-card", classes="act-btn", tooltip="Edit entry")
+                    yield CardActionButton("✕", id="delete-card", classes="act-btn del-btn", tooltip="Delete entry")
 
                 section_label = SECTION_LABELS.get(self.section, self.section.capitalize())
                 icon = SECTION_ICONS.get(self.section, "◎")
-                yield Label(
+                yield CardSectionLabel(
                     f"[b]{icon}  {section_label}[/b]",
+                    self.color,
                     id=f"csec-{self._uid}",
                 )
 
@@ -162,13 +320,13 @@ class EntryCard(Widget):
                 preview = content[:150] + "…" if len(content) > 150 else content
                 yield Static(preview, id=f"ccnt-{self._uid}")
 
-                yield Label(
-                    f"[dim]Created:[/dim] {self._format_timestamp(self.entry.get('created_at'))}",
+                yield CardMetaLine(
+                    f"[dim]Created:[/dim] {_format_timestamp(self.entry.get('created_at'))}",
                     id=f"ccrt-{self._uid}",
                     classes="meta-line",
                 )
-                yield Label(
-                    f"[dim]Updated:[/dim] {self._format_timestamp(self.entry.get('updated_at'))}",
+                yield CardMetaLine(
+                    f"[dim]Updated:[/dim] {_format_timestamp(self.entry.get('updated_at'))}",
                     id=f"cupd-{self._uid}",
                     classes="meta-line",
                 )
@@ -192,9 +350,9 @@ class EntryCard(Widget):
                     if row:
                         rows.append(row)
                     for i, row_tags in enumerate(rows):
-                        with Horizontal(classes="tag-row"):
+                        with TagRow(classes="tag-row"):
                             for tag in row_tags:
-                                yield Label(f" {tag} ", classes="tag-pill")
+                                yield TagPill(tag, self.color, classes="tag-pill")
 
     def on_mount(self) -> None:
         self.styles.height = "auto"
@@ -212,19 +370,8 @@ class EntryCard(Widget):
         id_lbl.styles.height = 3
 
         for btn in self.query(".act-btn"):
-            btn.styles.min_width = 5
-            btn.styles.width = 5
-            btn.styles.height = 3
-            btn.styles.padding = (0, 0)
-            btn.styles.content_align = ("center", "middle")
-            btn.styles.background = "transparent"
             btn.styles.border = ("round", self.color + "66")
             btn.styles.color = self.color
-
-        sec_lbl = self.query_one(f"#csec-{self._uid}")
-        sec_lbl.styles.color = self.color
-        sec_lbl.styles.margin = (1, 0, 0, 0)
-        sec_lbl.styles.height = 2
 
         for rule in self.query(Rule):
             rule.styles.color = self.color + "44"
@@ -242,33 +389,19 @@ class EntryCard(Widget):
         content.styles.margin = (1, 0)
         content.styles.text_wrap = "wrap"
 
-        for meta_line in self.query(".meta-line"):
-            meta_line.styles.height = 1
-            meta_line.styles.margin = (0, 0, 0, 0)
-            meta_line.styles.color = "#a7b1c2"
-
         try:
             footer = self.query_one(f"#cftr-{self._uid}")
             footer.styles.height = "auto"
-
-            for row in self.query(".tag-row"):
-                row.styles.height = 3
-                row.styles.margin_bottom = 1
-            for pill in self.query(".tag-pill"):
-                pill.styles.color = self.color
-                pill.styles.border = ("round", self.color + "88")
-                pill.styles.padding = (0, 1)
-                pill.styles.margin_right = 1
-                pill.styles.width = "auto"
-                pill.styles.shrink = True
-                pill.styles.height = 3
-                pill.styles.content_align = ("center", "middle")
         except Exception:
             pass
 
     @on(Button.Pressed, "#edit-card")
     def on_edit(self) -> None:
         self.post_message(ActionTriggered("edit", self.entry))
+
+    @on(Button.Pressed, "#view-card")
+    def on_view(self) -> None:
+        self.post_message(ActionTriggered("view", self.entry))
 
     @on(Button.Pressed, "#delete-card")
     def on_delete(self) -> None:
@@ -300,7 +433,7 @@ class RemembApp(App):
 
     CSS = """
     #body    { width: 100%; height: 1fr; }
-    #sidebar { width: 26; height: 1fr; }
+    #sidebar { width: 30; height: 1fr; }
     #main-area { width: 1fr; height: 1fr; }
     #content-area { width: 1fr; height: 1fr; }
     #entries-grid { layout: grid; grid-size: 3; grid-gutter: 1; height: auto; }
@@ -335,20 +468,20 @@ class RemembApp(App):
         yield Header(show_clock=True)
         with Horizontal(id="body"):
             with Vertical(id="sidebar"):
-                yield Button("＋  New Entry", id="btn-new-entry", variant="primary", flat=True)
+                yield SidebarActionButton("＋  New Entry", id="btn-new-entry", variant="primary", flat=True, margin_bottom=1)
                 yield Rule()
                 yield Label(" SECTIONS", id="sections-title")
                 yield Rule()
                 yield ScrollableContainer(id="sidebar-sections")
                 yield Rule()
-                yield Button("↻  Refresh", id="btn-refresh", variant="warning", flat=True)
-                yield Button("⇵  Consolidate", id="btn-consolidate", variant="success", flat=True)
-                yield Button("⏻  Quit", id="btn-quit", variant="error", flat=True)
+                yield SidebarActionButton("↻  Refresh", id="btn-refresh", variant="warning", flat=True, margin_top=1)
+                yield SidebarActionButton("⇵  Consolidate", id="btn-consolidate", variant="success", flat=True, margin_top=1)
+                yield SidebarActionButton("⏻  Quit", id="btn-quit", variant="error", flat=True, margin_top=1)
 
             with Vertical(id="main-area"):
                 with Horizontal(id="search-bar"):
                     yield Input(placeholder="⌕  Search memory...", id="search-box")
-                    yield Button("↓  Latest First", id="btn-sort-order", variant="default", flat=True)
+                    yield ToolbarActionButton("↓  Latest First", id="btn-sort-order", variant="default", flat=True)
                 yield Rule()
                 with Horizontal(id="content-area"):
                     with EntryScrollContainer(self._maybe_load_more_entries, id="main-scroll"):
@@ -356,26 +489,25 @@ class RemembApp(App):
                     with ScrollableContainer(id="side-panel"):
                         yield Label("", id="panel-title")
                         yield Rule()
-                        yield Static("")
-                        yield Label("Content", classes="field-label")
-                        yield Static("")
-                        yield TextArea("", id="panel-content")
-                        yield Static("")
-                        yield Static("")
-                        yield Label("Section", classes="field-label")
-                        yield Static("")
-                        yield Select(SECTION_OPTIONS, value="context", id="panel-section", allow_blank=False)
-                        yield Static("")
-                        yield Static("")
-                        yield Label("Tags  (comma-separated)", classes="field-label")
-                        yield Static("")
-                        yield Input(placeholder="tag1, tag2", id="panel-tags")
-                        yield Static("")
-                        yield Static("")
+                        yield FieldBlock("Content", TextArea("", id="panel-content"))
+                        yield FieldBlock(
+                            "Section",
+                            Select(SECTION_OPTIONS, value="context", id="panel-section", allow_blank=False),
+                        )
+                        yield FieldBlock(
+                            "Tags  (comma-separated)",
+                            Input(placeholder="tag1, tag2", id="panel-tags"),
+                        )
+                        yield SafeMarkdownViewer(
+                            "",
+                            id="panel-markdown-viewer",
+                            show_table_of_contents=False,
+                            open_links=False,
+                        )
                         yield Rule()
                         with Horizontal(id="panel-buttons"):
-                            yield Button("Cancel", id="panel-cancel", variant="default", flat=True)
-                            yield Button("Save", id="panel-save", variant="success", flat=True)
+                            yield ModalActionButton("Cancel", id="panel-cancel", variant="default", flat=True)
+                            yield ModalActionButton("Save", id="panel-save", variant="success", flat=True)
 
         yield Footer()
 
@@ -393,10 +525,6 @@ class RemembApp(App):
         sidebar.styles.border_right = ("solid", BORDER_DIM)
         sidebar.styles.padding = (1, 1)
 
-        new_btn = self.query_one("#btn-new-entry")
-        new_btn.styles.width = "100%"
-        new_btn.styles.margin_bottom = 1
-
         sec_title = self.query_one("#sections-title")
         sec_title.styles.text_style = "bold dim"
         sec_title.styles.height = 1
@@ -404,18 +532,6 @@ class RemembApp(App):
 
         sections_area = self.query_one("#sidebar-sections")
         sections_area.styles.height = "1fr"
-
-        refresh_btn = self.query_one("#btn-refresh")
-        refresh_btn.styles.width = "100%"
-        refresh_btn.styles.margin_top = 1
-
-        consolidate_btn = self.query_one("#btn-consolidate")
-        consolidate_btn.styles.width = "100%"
-        consolidate_btn.styles.margin_top = 1
-
-        quit_btn = self.query_one("#btn-quit")
-        quit_btn.styles.width = "100%"
-        quit_btn.styles.margin_top = 1
 
     def _apply_main_styles(self) -> None:
         BORDER_DIM = "#2e343b"
@@ -431,11 +547,6 @@ class RemembApp(App):
         search_box = self.query_one("#search-box")
         search_box.styles.width = "1fr"
 
-        sort_btn = self.query_one("#btn-sort-order")
-        sort_btn.styles.width = "auto"
-        sort_btn.styles.min_width = 18
-        sort_btn.styles.margin_left = 1
-
         main_scroll = self.query_one("#main-scroll")
         main_scroll.styles.padding = (1, 0)
 
@@ -450,6 +561,13 @@ class RemembApp(App):
         panel_ta = self.query_one("#panel-content", TextArea)
         panel_ta.styles.height = 10
 
+        panel_markdown_viewer = self.query_one("#panel-markdown-viewer", SafeMarkdownViewer)
+        panel_markdown_viewer.styles.height = "1fr"
+        panel_markdown_viewer.styles.display = "none"
+        panel_markdown_viewer.styles.margin_bottom = 1
+        if hasattr(panel_markdown_viewer, "code_indent_guides"):
+            panel_markdown_viewer.code_indent_guides = False
+
         for lbl in panel.query(".field-label"):
             lbl.styles.height = 2
             lbl.styles.content_align = ("left", "middle")
@@ -458,8 +576,6 @@ class RemembApp(App):
         panel_btns.styles.height = 4
         panel_btns.styles.align = ("right", "middle")
         panel_btns.styles.margin_top = 2
-        for btn in panel_btns.query(Button):
-            btn.styles.margin_left = 1
 
     def _get_root(self):
         if self._root_path: return self._root_path
@@ -616,7 +732,9 @@ class RemembApp(App):
 
     @on(ActionTriggered)
     def handle_card_action(self, message: ActionTriggered) -> None:
-        if message.action == "edit":
+        if message.action == "view":
+            self._view_entry(message.entry)
+        elif message.action == "edit":
             self._edit_entry(message.entry)
         elif message.action == "delete":
             self._delete_entry(message.entry)
@@ -647,6 +765,22 @@ class RemembApp(App):
         self.current_entries = self._sort_entries(search_entries(root, query, top_k=20))
         self._render_entries(reset=True)
 
+    def _render_entry_markdown(self, entry: dict) -> str:
+        tags = ", ".join(entry.get("tags", [])) or "None"
+        return "\n".join(
+            [
+                f"# Memory {entry['id'][:8]}",
+                f"- **Section:** {SECTION_LABELS.get(entry.get('section', 'context'), 'Context')}",
+                f"- **Tags:** {tags}",
+                f"- **Created:** {_format_timestamp(entry.get('created_at'))}",
+                f"- **Updated:** {_format_timestamp(entry.get('updated_at'))}",
+                "",
+                "---",
+                "",
+                entry.get("content", ""),
+            ]
+        )
+
     def _open_panel(self, mode: str, entry: dict | None = None) -> None:
         self._panel_mode = mode
         self._panel_entry = entry
@@ -654,7 +788,23 @@ class RemembApp(App):
         panel.display = True
 
         title = self.query_one("#panel-title")
-        title.update("❆  New Entry" if mode == "new" else f"✎  Edit  [dim]#{entry['id'][:8]}[/dim]")
+        if mode == "new":
+            title.update("❆  New Entry")
+        elif mode == "view" and entry:
+            title.update(f"◉  View  [dim]#{entry['id'][:8]}[/dim]")
+        else:
+            title.update(f"✎  Edit  [dim]#{entry['id'][:8]}[/dim]")
+
+        panel_markdown_viewer = self.query_one("#panel-markdown-viewer", SafeMarkdownViewer)
+        cancel_btn = self.query_one("#panel-cancel", Button)
+        save_btn = self.query_one("#panel-save", Button)
+
+        is_view_mode = mode == "view"
+        for field in panel.query(FieldBlock):
+            field.display = not is_view_mode
+        panel_markdown_viewer.display = is_view_mode
+        save_btn.display = not is_view_mode
+        cancel_btn.label = "Close" if is_view_mode else "Cancel"
 
         content_ta = self.query_one("#panel-content", TextArea)
         content_ta.clear()
@@ -667,8 +817,17 @@ class RemembApp(App):
         tags_input = self.query_one("#panel-tags", Input)
         tags_input.value = ", ".join(entry["tags"]) if mode == "edit" and entry else ""
 
+        if is_view_mode and entry:
+            markdown = self._render_entry_markdown(entry)
+            self.call_after_refresh(lambda: panel_markdown_viewer.document.update(markdown))
+        else:
+            self.call_after_refresh(lambda: panel_markdown_viewer.document.update(""))
+
         self._update_grid_columns()
-        self.query_one("#panel-content").focus()
+        if is_view_mode:
+            self.call_after_refresh(panel_markdown_viewer.focus)
+        else:
+            self.query_one("#panel-content").focus()
 
     def _close_panel(self) -> None:
         self.query_one("#side-panel").display = False
@@ -698,6 +857,9 @@ class RemembApp(App):
 
     def action_new_entry(self) -> None:
         self._open_panel("new")
+
+    def _view_entry(self, entry: dict) -> None:
+        self._open_panel("view", entry)
 
     def _edit_entry(self, entry: dict) -> None:
         self._open_panel("edit", entry)
@@ -804,16 +966,16 @@ class NewEntryScreen(_ModalBase):
             with Vertical(id="modal"):
                 yield Label("❆  New Memory Entry", id="modal-title")
                 yield Rule()
-                yield Label("Content", classes="field-label")
-                yield TextArea(id="content-input")
-                yield Label("Section", classes="field-label")
-                yield Select(SECTION_OPTIONS, value="context", id="section-input", allow_blank=False)
-                yield Label("Tags  (comma-separated)", classes="field-label")
-                yield Input(placeholder="tag1, tag2, tag3", id="tags-input")
+                yield FieldBlock("Content", TextArea(id="content-input"))
+                yield FieldBlock(
+                    "Section",
+                    Select(SECTION_OPTIONS, value="context", id="section-input", allow_blank=False),
+                )
+                yield FieldBlock("Tags  (comma-separated)", Input(placeholder="tag1, tag2, tag3", id="tags-input"))
                 yield Rule()
                 with Horizontal(classes="modal-buttons"):
-                    yield Button("Cancel", id="btn-cancel", variant="default")
-                    yield Button("Save", id="btn-save", variant="success")
+                    yield ModalActionButton("Cancel", id="btn-cancel", variant="default")
+                    yield ModalActionButton("Save", id="btn-save", variant="success")
 
     @on(Button.Pressed, "#btn-save")
     def save(self) -> None:
@@ -841,16 +1003,19 @@ class EditEntryScreen(_ModalBase):
             with Vertical(id="modal"):
                 yield Label(f"✎  Edit  [dim]#{self._entry['id'][:8]}[/dim]", id="modal-title")
                 yield Rule()
-                yield Label("Content", classes="field-label")
-                yield TextArea(self._entry["content"], id="content-input")
-                yield Label("Section", classes="field-label")
-                yield Select(SECTION_OPTIONS, value=self._entry["section"], id="section-input", allow_blank=False)
-                yield Label("Tags  (comma-separated)", classes="field-label")
-                yield Input(value=", ".join(self._entry["tags"]), id="tags-input")
+                yield FieldBlock("Content", TextArea(self._entry["content"], id="content-input"))
+                yield FieldBlock(
+                    "Section",
+                    Select(SECTION_OPTIONS, value=self._entry["section"], id="section-input", allow_blank=False),
+                )
+                yield FieldBlock(
+                    "Tags  (comma-separated)",
+                    Input(value=", ".join(self._entry["tags"]), id="tags-input"),
+                )
                 yield Rule()
                 with Horizontal(classes="modal-buttons"):
-                    yield Button("Cancel", id="btn-cancel", variant="default")
-                    yield Button("Update", id="btn-save", variant="primary")
+                    yield ModalActionButton("Cancel", id="btn-cancel", variant="default")
+                    yield ModalActionButton("Update", id="btn-save", variant="primary")
 
     @on(Button.Pressed, "#btn-save")
     def update(self) -> None:
@@ -884,8 +1049,8 @@ class DeleteConfirmScreen(_ModalBase):
                 yield Rule()
                 yield Label("[bold red]This action is irreversible.[/bold red]", classes="field-label")
                 with Horizontal(classes="modal-buttons"):
-                    yield Button("No, go back", id="btn-cancel", variant="default", flat=True)
-                    yield Button("Yes, remove", id="btn-confirm", variant="error", flat=True)
+                    yield ModalActionButton("No, go back", id="btn-cancel", variant="default", flat=True)
+                    yield ModalActionButton("Yes, remove", id="btn-confirm", variant="error", flat=True)
 
     @on(Button.Pressed, "#btn-confirm")
     def delete(self) -> None:

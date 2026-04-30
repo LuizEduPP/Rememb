@@ -55,6 +55,14 @@ Zero friction. No CLI commands. Native IDE integration.
 
 The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
 
+If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
+
+```bash
+rememb mcp --transport sse --host 127.0.0.1 --port 8765
+```
+
+This keeps one MCP process alive, so repeated clients can hit the same loaded embedding model through `http://127.0.0.1:8765/sse` and `http://127.0.0.1:8765/messages/`.
+
 ### Without MCP
 
 ```bash
@@ -140,7 +148,8 @@ Features:
 
 ```bash
 rememb          # Open the TUI
-rememb mcp      # Start MCP server for AI agent integration
+rememb mcp      # Start MCP server for AI agent integration over stdio
+rememb mcp --transport sse --host 127.0.0.1 --port 8765   # Start one persistent local MCP process
 rememb --version, -v    # Show version
 rememb --help, -h       # Show help
 ```

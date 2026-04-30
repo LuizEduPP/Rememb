@@ -67,7 +67,7 @@ def _show_help():
     cmd_table.add_column("Command", style="bold green", width=16)
     cmd_table.add_column("Description", style="white")
     cmd_table.add_row("rememb", "Launch interactive TUI")
-    cmd_table.add_row("mcp", "Start MCP server for AI agents")
+    cmd_table.add_row("mcp", "Start MCP server (stdio or local SSE)")
     cmd_table.add_row("fetch-model", "Download local embedding model for offline use")
     
     console.print(Panel(
@@ -114,12 +114,41 @@ def main(
 
 
 @app.command()
-def mcp():
+def mcp(
+    transport: str = typer.Option(
+        "stdio",
+        "--transport",
+        help="MCP transport to start: stdio or sse.",
+    ),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help="Host for persistent SSE transport.",
+    ),
+    port: int = typer.Option(
+        8765,
+        "--port",
+        min=1,
+        max=65535,
+        help="Port for persistent SSE transport.",
+    ),
+):
     """Start MCP server for AI agent integration."""
     import asyncio
     try:
         from rememb.mcp_server import run_server as mcp_run_server
-        asyncio.run(mcp_run_server())
+        normalized_transport = transport.lower().strip()
+        if normalized_transport not in {"stdio", "sse"}:
+            console.print("[bold red]Error:[/bold red] Unsupported transport. Use [cyan]stdio[/cyan] or [cyan]sse[/cyan].")
+            raise typer.Exit(1)
+
+        if normalized_transport == "sse":
+            console.print(
+                f"Starting persistent MCP SSE server at [bold cyan]http://{host}:{port}[/bold cyan]"
+            )
+            console.print("[dim]Connect clients to /sse and post messages to /messages/ to reuse this same process.[/dim]")
+
+        asyncio.run(mcp_run_server(transport=normalized_transport, host=host, port=port))
     except ImportError as e:
         print(f"MCP support requires additional dependencies: {e}")
         raise typer.Exit(1)

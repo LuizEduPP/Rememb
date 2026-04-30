@@ -26,8 +26,19 @@ from textual import on
 from textual.message import Message
 from typing import Callable
 
+from rememb.config import (
+    DEFAULT_ALL_SECTION_COLOR,
+    DEFAULT_CUSTOM_SECTION_ICON,
+    DEFAULT_REMOVED_SECTION_NAME,
+    DEFAULT_SECTION_COLORS,
+    DEFAULT_SECTION_ICONS,
+    DEFAULT_SECTIONS,
+    SECTION_ICON_CHOICES,
+    SEMANTIC_MODEL_CHOICES,
+)
 from rememb.store import (
     get_config,
+    update_config,
     read_entries_page,
     search_entries,
     get_stats,
@@ -35,28 +46,11 @@ from rememb.store import (
     edit_entry,
     delete_entry,
     consolidate_entries,
-    SECTIONS,
 )
 from rememb.utils import find_root, global_root, is_initialized
 
-SECTION_ICONS = {
-    "project": "◈",
-    "actions": "↯",
-    "systems": "⛭",
-    "requests": "✉",
-    "user": "☻",
-    "context": "✦",
-}
-
-SECTION_COLORS = {
-    "project": "#d84848",
-    "actions": "#d08020",
-    "systems": "#d4c430",
-    "requests": "#40c040",
-    "user": "#20d4c4",
-    "context": "#c060f0",
-    "all": "#95a5a6",
-}
+CURRENT_SECTION_ICONS = dict(DEFAULT_SECTION_ICONS)
+CURRENT_SECTION_COLORS = dict(DEFAULT_SECTION_COLORS)
 
 SECTION_LABELS = {
     "project": "Project",
@@ -68,6 +62,73 @@ SECTION_LABELS = {
 }
 
 STORE_PAGE_SIZE = 96
+
+
+def _section_label(section: str | None) -> str:
+    if not section:
+        return "All"
+    return SECTION_LABELS.get(section, section.replace("_", " ").replace("-", " ").title())
+
+
+def _section_icon(section: str | None) -> str:
+    if not section:
+        return "◉"
+    return CURRENT_SECTION_ICONS.get(section, DEFAULT_CUSTOM_SECTION_ICON)
+
+
+def _section_color(section: str | None) -> str:
+    if not section:
+        return DEFAULT_ALL_SECTION_COLOR
+    return CURRENT_SECTION_COLORS.get(section, DEFAULT_ALL_SECTION_COLOR)
+
+
+def _apply_section_appearance_config(config: dict) -> None:
+    CURRENT_SECTION_ICONS.clear()
+    CURRENT_SECTION_ICONS.update(DEFAULT_SECTION_ICONS)
+    CURRENT_SECTION_ICONS.update(config.get("section_icons", {}))
+
+    CURRENT_SECTION_COLORS.clear()
+    CURRENT_SECTION_COLORS.update(DEFAULT_SECTION_COLORS)
+    CURRENT_SECTION_COLORS.update(config.get("section_colors", {}))
+
+
+def _section_options(sections: list[str], current: str | None = None) -> list[tuple[str, str]]:
+    ordered = [section for section in sections if section]
+    if current and current not in ordered:
+        ordered.append(current)
+    return [(f"{_section_icon(section)}  {_section_label(section)}", section) for section in ordered]
+
+
+def _default_section(sections: list[str]) -> str:
+    if "context" in sections:
+        return "context"
+    return sections[0] if sections else "context"
+
+
+def _semantic_model_options(current: str | None = None) -> list[tuple[str, str]]:
+    options = [
+        (f"{choice['label']} ({choice['name']})", choice["name"])
+        for choice in SEMANTIC_MODEL_CHOICES
+    ]
+    names = {value for _, value in options}
+    if current and current not in names:
+        options.append((f"Custom ({current})", current))
+    return options
+
+
+def _semantic_model_help(model_name: str) -> str:
+    for choice in SEMANTIC_MODEL_CHOICES:
+        if choice["name"] == model_name:
+            return choice["description"]
+    return "Custom sentence-transformers model name loaded from local cache or Hugging Face."
+
+
+def _section_icon_select_options(current: str | None = None) -> list[tuple[str, str]]:
+    options = [(f"{item['icon']}  {item['label']}", item["icon"]) for item in SECTION_ICON_CHOICES]
+    known_icons = {value for _, value in options}
+    if current and current not in known_icons:
+        options.append((f"{current}  Custom", current))
+    return options
 
 
 def _format_timestamp(value: str | None) -> str:
@@ -96,9 +157,9 @@ class SectionItem(Static):
         self.section_name = section
         self.count = count
         self._active = active
-        self._color = SECTION_COLORS.get(section if section else "all", "#95a5a6")
-        name = SECTION_LABELS.get(section, "All") if section else "All"
-        icon = SECTION_ICONS.get(section, "◉") if section else "◉"
+        self._color = _section_color(section)
+        name = _section_label(section)
+        icon = _section_icon(section)
         self._label_text = f"{icon}  {name}"
 
     def render(self) -> str:
@@ -219,18 +280,27 @@ class SafeMarkdownViewer(MarkdownViewer):
 class FieldBlock(Vertical):
     """Labeled form field block used across panels and modals."""
 
-    def __init__(self, label: str, control: Widget):
+    def __init__(self, label: str, control: Widget, help_text: str | None = None):
         super().__init__()
         self._label = label
         self._control = control
+        self._help_text = help_text
 
     def compose(self) -> ComposeResult:
         yield Label(self._label, classes="field-label")
         yield self._control
+        if self._help_text:
+            yield Label(self._help_text, classes="field-help")
 
     def on_mount(self) -> None:
         self.styles.height = "auto"
-        self.styles.margin_bottom = 1
+        self.styles.margin = (1, 0, 2, 0)
+        for field_label in self.query(".field-label"):
+            field_label.styles.margin_bottom = 1
+        for help_label in self.query(".field-help"):
+            help_label.styles.color = "#a7b1c2"
+            help_label.styles.height = "auto"
+            help_label.styles.margin_top = 1
 
 
 class CardSectionLabel(Label):
@@ -291,7 +361,7 @@ class EntryCard(Widget):
         self.entry = entry
         self.entry_id = entry.get("id", "???")
         self.section = entry.get("section", "context")
-        self.color = SECTION_COLORS.get(self.section, "#888")
+        self.color = _section_color(self.section)
         self._uid = uid
 
     def compose(self) -> ComposeResult:
@@ -306,8 +376,8 @@ class EntryCard(Widget):
                     yield CardActionButton("✎", id="edit-card", classes="act-btn", tooltip="Edit entry")
                     yield CardActionButton("✕", id="delete-card", classes="act-btn del-btn", tooltip="Delete entry")
 
-                section_label = SECTION_LABELS.get(self.section, self.section.capitalize())
-                icon = SECTION_ICONS.get(self.section, "◎")
+                section_label = _section_label(self.section)
+                icon = _section_icon(self.section)
                 yield CardSectionLabel(
                     f"[b]{icon}  {section_label}[/b]",
                     self.color,
@@ -443,6 +513,7 @@ class RemembApp(App):
 
     BINDINGS = [
         Binding("ctrl+n", "new_entry", "New", show=True),
+        Binding("f2", "open_config", "Config", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
         Binding("ctrl+d", "consolidate", "Consolidate", show=True),
         Binding("/", "focus_search", "Search", show=True),
@@ -459,10 +530,24 @@ class RemembApp(App):
         self.rendered_count = 0
         self.loaded_offset = 0
         self.has_more_entries = False
+        self.sections = list(DEFAULT_SECTIONS)
         self.entry_batch_size = 24
         self.entry_load_threshold = 6
         self._panel_mode: str | None = None
         self._panel_entry: dict | None = None
+
+    def _visible_sections(self, stats: dict) -> list[str]:
+        visible = list(self.sections)
+        for section in stats.get("by_section", {}):
+            if section not in visible:
+                visible.append(section)
+        return visible
+
+    def _sync_section_select(self, select_id: str, *, current: str | None = None) -> None:
+        select = self.query_one(select_id, Select)
+        select.set_options(_section_options(self.sections, current))
+        default_section = _default_section(self.sections)
+        select.value = current if current else default_section
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -474,6 +559,7 @@ class RemembApp(App):
                 yield Rule()
                 yield ScrollableContainer(id="sidebar-sections")
                 yield Rule()
+                yield SidebarActionButton("⚙  Config", id="btn-config", variant="default", flat=True, margin_top=1)
                 yield SidebarActionButton("↻  Refresh", id="btn-refresh", variant="warning", flat=True, margin_top=1)
                 yield SidebarActionButton("⇵  Consolidate", id="btn-consolidate", variant="success", flat=True, margin_top=1)
                 yield SidebarActionButton("⏻  Quit", id="btn-quit", variant="error", flat=True, margin_top=1)
@@ -492,7 +578,12 @@ class RemembApp(App):
                         yield FieldBlock("Content", TextArea("", id="panel-content"))
                         yield FieldBlock(
                             "Section",
-                            Select(SECTION_OPTIONS, value="context", id="panel-section", allow_blank=False),
+                            Select(
+                                _section_options(self.sections),
+                                value=_default_section(self.sections),
+                                id="panel-section",
+                                allow_blank=False,
+                            ),
                         )
                         yield FieldBlock(
                             "Tags  (comma-separated)",
@@ -589,27 +680,30 @@ class RemembApp(App):
 
     def _refresh_ui(self, section: str | None = None) -> None:
         self.current_query = ""
-        self.current_section = section
         root = self._get_root()
         self._load_tui_config(root)
         stats = get_stats(root)
+        visible_sections = self._visible_sections(stats)
+        self.current_section = section if section in visible_sections or section is None else None
         self._update_sort_button()
 
         container = self.query_one("#sidebar-sections")
         container.remove_children()
 
-        all_item = SectionItem(None, stats["total"], active=(section is None))
+        all_item = SectionItem(None, stats["total"], active=(self.current_section is None))
         container.mount(all_item)
 
-        for sec_name in SECTIONS:
+        for sec_name in visible_sections:
             count = stats["by_section"].get(sec_name, 0)
-            item = SectionItem(sec_name, count, active=(section == sec_name))
+            item = SectionItem(sec_name, count, active=(self.current_section == sec_name))
             container.mount(item)
 
-        self._load_entries(section)
+        self._load_entries(self.current_section)
 
     def _load_tui_config(self, root) -> None:
         config = get_config(root)
+        _apply_section_appearance_config(config)
+        self.sections = list(config.get("sections", DEFAULT_SECTIONS))
         batch_size = config.get("entry_batch_size", self.entry_batch_size)
         load_threshold = config.get("entry_load_threshold", self.entry_load_threshold)
 
@@ -624,6 +718,7 @@ class RemembApp(App):
             self.entry_load_threshold = 6
 
         self.query_one("#main-scroll", EntryScrollContainer).set_threshold(self.entry_load_threshold)
+        self._sync_section_select("#panel-section", current=self.query_one("#panel-section", Select).value)
 
     def _sort_entries(self, entries: list[dict]) -> list[dict]:
         return sorted(
@@ -743,6 +838,8 @@ class RemembApp(App):
         btn_id = event.button.id
         if btn_id == "btn-new-entry":
             self.action_new_entry()
+        elif btn_id == "btn-config":
+            self.action_open_config()
         elif btn_id == "btn-refresh":
             self.action_refresh()
         elif btn_id == "btn-sort-order":
@@ -770,7 +867,7 @@ class RemembApp(App):
         return "\n".join(
             [
                 f"# Memory {entry['id'][:8]}",
-                f"- **Section:** {SECTION_LABELS.get(entry.get('section', 'context'), 'Context')}",
+                f"- **Section:** {_section_label(entry.get('section', 'context'))}",
                 f"- **Tags:** {tags}",
                 f"- **Created:** {_format_timestamp(entry.get('created_at'))}",
                 f"- **Updated:** {_format_timestamp(entry.get('updated_at'))}",
@@ -811,8 +908,8 @@ class RemembApp(App):
         if mode == "edit" and entry:
             content_ta.insert(entry["content"])
 
-        sel = self.query_one("#panel-section", Select)
-        sel.value = (entry["section"] if mode == "edit" and entry else "context")
+        current_section = entry["section"] if mode == "edit" and entry else _default_section(self.sections)
+        self._sync_section_select("#panel-section", current=current_section)
 
         tags_input = self.query_one("#panel-tags", Input)
         tags_input.value = ", ".join(entry["tags"]) if mode == "edit" and entry else ""
@@ -857,6 +954,18 @@ class RemembApp(App):
 
     def action_new_entry(self) -> None:
         self._open_panel("new")
+
+    def action_open_config(self) -> None:
+        root = self._get_root()
+        self.push_screen(ConfigScreen(root, get_config(root)), self._handle_config_saved)
+
+    def _handle_config_saved(self, saved_config: dict | None) -> None:
+        if not saved_config:
+            return
+        if self.current_section and self.current_section not in saved_config.get("sections", []):
+            self.current_section = None
+        self._refresh_ui(self.current_section)
+        self.notify("Configuration updated", severity="information")
 
     def _view_entry(self, entry: dict) -> None:
         self._open_panel("view", entry)
@@ -924,6 +1033,8 @@ class _ModalBase(Screen):
     """Base class for centered modal screens."""
 
     def on_mount(self) -> None:
+        self.styles.align = ("center", "middle")
+
         modal = self.query_one("#modal")
         modal.styles.border = ("round", "#5e81ac")
         modal.styles.padding = (2, 3)
@@ -937,7 +1048,6 @@ class _ModalBase(Screen):
 
         for lbl in self.query(".field-label"):
             lbl.styles.text_style = "bold"
-            lbl.styles.margin_top = 1
 
         try:
             btn_row = self.query_one(".modal-buttons")
@@ -950,16 +1060,11 @@ class _ModalBase(Screen):
             pass
 
 
-SECTION_OPTIONS = [
-    (f"{SECTION_ICONS.get(s, '◎')}  {SECTION_LABELS.get(s, s.capitalize())}", s)
-    for s in ["project", "actions", "systems", "requests", "user", "context"]
-]
-
-
 class NewEntryScreen(_ModalBase):
-    def __init__(self, root):
+    def __init__(self, root, sections: list[str]):
         super().__init__()
         self._root = root
+        self._sections = sections
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -969,7 +1074,12 @@ class NewEntryScreen(_ModalBase):
                 yield FieldBlock("Content", TextArea(id="content-input"))
                 yield FieldBlock(
                     "Section",
-                    Select(SECTION_OPTIONS, value="context", id="section-input", allow_blank=False),
+                    Select(
+                        _section_options(self._sections),
+                        value=_default_section(self._sections),
+                        id="section-input",
+                        allow_blank=False,
+                    ),
                 )
                 yield FieldBlock("Tags  (comma-separated)", Input(placeholder="tag1, tag2, tag3", id="tags-input"))
                 yield Rule()
@@ -993,10 +1103,11 @@ class NewEntryScreen(_ModalBase):
 
 
 class EditEntryScreen(_ModalBase):
-    def __init__(self, root, entry):
+    def __init__(self, root, entry, sections: list[str]):
         super().__init__()
         self._root = root
         self._entry = entry
+        self._sections = sections
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -1006,7 +1117,12 @@ class EditEntryScreen(_ModalBase):
                 yield FieldBlock("Content", TextArea(self._entry["content"], id="content-input"))
                 yield FieldBlock(
                     "Section",
-                    Select(SECTION_OPTIONS, value=self._entry["section"], id="section-input", allow_blank=False),
+                    Select(
+                        _section_options(self._sections, self._entry["section"]),
+                        value=self._entry["section"],
+                        id="section-input",
+                        allow_blank=False,
+                    ),
                 )
                 yield FieldBlock(
                     "Tags  (comma-separated)",
@@ -1060,6 +1176,147 @@ class DeleteConfirmScreen(_ModalBase):
     @on(Button.Pressed, "#btn-cancel")
     def cancel(self) -> None:
         self.dismiss(False)
+
+
+class ConfigScreen(_ModalBase):
+    def __init__(self, root, config: dict):
+        super().__init__()
+        self._root = root
+        self._config = config
+        self._sections = list(config.get("sections", DEFAULT_SECTIONS))
+
+    @staticmethod
+    def _section_icon_select_id(section: str) -> str:
+        return f"cfg-section-icon-{section}"
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Vertical(id="modal"):
+                yield Label("⚙  Configuration", id="modal-title")
+                yield Rule()
+                with ScrollableContainer(id="config-scroll"):
+                    yield FieldBlock(
+                        "Sections  (one per line)",
+                        TextArea("\n".join(self._config.get("sections", [])), id="cfg-sections"),
+                        f"Names are normalized to lowercase and duplicate sections are ignored after normalization. If you remove a section that still has entries, those entries move automatically to '{DEFAULT_REMOVED_SECTION_NAME}'. New sections get a random color and start with the generic icon until you reopen this screen to customize them.",
+                    )
+                    for section in self._sections:
+                        yield FieldBlock(
+                            f"Icon for {_section_label(section)}",
+                            Select(
+                                _section_icon_select_options(str(self._config.get("section_icons", {}).get(section, _section_icon(section)))),
+                                value=str(self._config.get("section_icons", {}).get(section, _section_icon(section))),
+                                id=self._section_icon_select_id(section),
+                                allow_blank=False,
+                            ),
+                            f"Current color: {self._config.get('section_colors', {}).get(section, _section_color(section))}.",
+                        )
+                    yield FieldBlock(
+                        "Semantic Model",
+                        Select(
+                            _semantic_model_options(str(self._config.get("semantic_model_name", ""))),
+                            value=str(self._config.get("semantic_model_name", "")),
+                            id="cfg-semantic-model-name",
+                            allow_blank=False,
+                        ),
+                        _semantic_model_help(str(self._config.get("semantic_model_name", ""))),
+                    )
+                    yield FieldBlock(
+                        "Semantic Model Idle TTL (seconds)",
+                        Input(
+                            value=str(self._config.get("semantic_model_idle_ttl_seconds", "")),
+                            id="cfg-semantic-model-idle-ttl-seconds",
+                        ),
+                        "How long the embedding model stays loaded after use before being released from memory. Use 0 to unload immediately.",
+                    )
+                    yield FieldBlock(
+                        "Max Content Length",
+                        Input(value=str(self._config.get("max_content_length", "")), id="cfg-max-content-length"),
+                        "Maximum number of characters allowed in a single memory entry.",
+                    )
+                    yield FieldBlock(
+                        "Max Tag Length",
+                        Input(value=str(self._config.get("max_tag_length", "")), id="cfg-max-tag-length"),
+                        "Maximum length for each tag after sanitization.",
+                    )
+                    yield FieldBlock(
+                        "Max Tags Per Entry",
+                        Input(value=str(self._config.get("max_tags_per_entry", "")), id="cfg-max-tags-per-entry"),
+                        "Maximum number of tags accepted on one memory entry.",
+                    )
+                    yield FieldBlock(
+                        "Max Entries",
+                        Input(value=str(self._config.get("max_entries", "")), id="cfg-max-entries"),
+                        "Hard cap for stored entries. New writes are blocked after this limit.",
+                    )
+                    yield FieldBlock(
+                        "Entry Batch Size",
+                        Input(value=str(self._config.get("entry_batch_size", "")), id="cfg-entry-batch-size"),
+                        "How many cards the TUI renders at a time while scrolling.",
+                    )
+                    yield FieldBlock(
+                        "Entry Load Threshold",
+                        Input(
+                            value=str(self._config.get("entry_load_threshold", "")),
+                            id="cfg-entry-load-threshold",
+                        ),
+                        "Distance from the bottom that triggers the next lazy-load batch in the TUI.",
+                    )
+                yield Rule()
+                with Horizontal(classes="modal-buttons"):
+                    yield ModalActionButton("Cancel", id="btn-cancel", variant="default")
+                    yield ModalActionButton("Save", id="btn-save", variant="primary")
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        modal = self.query_one("#modal")
+        modal.styles.width = 112
+        modal.styles.height = 38
+
+        scroll = self.query_one("#config-scroll", ScrollableContainer)
+        scroll.styles.height = "1fr"
+        scroll.styles.padding = (0, 1, 0, 0)
+
+        sections = self.query_one("#cfg-sections", TextArea)
+        sections.styles.height = 10
+
+        for field in self.query(Input):
+            field.styles.width = "100%"
+
+        for field in self.query(Select):
+            field.styles.width = "100%"
+
+    @on(Button.Pressed, "#btn-save")
+    def save(self) -> None:
+        sections_text = self.query_one("#cfg-sections", TextArea).text
+        sections = [line.strip() for line in sections_text.replace(",", "\n").splitlines() if line.strip()]
+        section_icons = {}
+        for section in self._sections:
+            if section in sections:
+                section_icons[section] = self.query_one(f"#{self._section_icon_select_id(section)}", Select).value
+
+        updates = {
+            "sections": sections,
+            "section_icons": section_icons,
+            "semantic_model_name": self.query_one("#cfg-semantic-model-name", Select).value,
+            "semantic_model_idle_ttl_seconds": self.query_one("#cfg-semantic-model-idle-ttl-seconds", Input).value,
+            "max_content_length": self.query_one("#cfg-max-content-length", Input).value,
+            "max_tag_length": self.query_one("#cfg-max-tag-length", Input).value,
+            "max_tags_per_entry": self.query_one("#cfg-max-tags-per-entry", Input).value,
+            "max_entries": self.query_one("#cfg-max-entries", Input).value,
+            "entry_batch_size": self.query_one("#cfg-entry-batch-size", Input).value,
+            "entry_load_threshold": self.query_one("#cfg-entry-load-threshold", Input).value,
+        }
+        try:
+            saved_config = update_config(self._root, updates)
+        except Exception as error:
+            self.notify(f"Config save failed: {error}", severity="error")
+            return
+        self.dismiss(saved_config)
+
+    @on(Button.Pressed, "#btn-cancel")
+    def cancel(self) -> None:
+        self.dismiss(None)
 
 
 def run_tui(root_path=None):

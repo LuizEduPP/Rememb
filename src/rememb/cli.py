@@ -8,7 +8,6 @@ import typer
 
 from rememb import __version__
 from rememb.config import DEFAULT_SEMANTIC_MODEL_NAME
-from rememb.store import SECTIONS
 from rememb.utils import console, box, Columns, Panel, Table, Text
 
 

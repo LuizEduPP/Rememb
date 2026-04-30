@@ -4,13 +4,14 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from rememb.config import DEFAULT_SECTIONS
 from rememb.store import (
-    SECTIONS,
     clear_entries,
     consolidate_entries,
     delete_entry,
     edit_entry,
     format_entries,
+    get_config,
     get_stats,
     init,
     read_entries,
@@ -102,6 +103,22 @@ def _get_root() -> Path:
     return root
 
 
+def _get_mcp_sections() -> list[str]:
+    """Return the current section list for MCP schemas, with safe fallback."""
+    try:
+        root = _get_root()
+        return list(get_config(root).get("sections", DEFAULT_SECTIONS))
+    except Exception:
+        return list(DEFAULT_SECTIONS)
+
+
+def _get_default_mcp_section() -> str:
+    sections = _get_mcp_sections()
+    if "context" in sections:
+        return "context"
+    return sections[0]
+
+
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     """Handle MCP tool invocation.
 
@@ -128,7 +145,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_write():
         content = arguments["content"]
-        section = arguments.get("section", "context")
+        section = arguments.get("section", _get_default_mcp_section())
         tags = arguments.get("tags", [])
         semantic_scope = arguments.get("semantic_scope", "global")
         entry = await asyncio.to_thread(write_entry, root, section, content, tags, True, semantic_scope)
@@ -171,7 +188,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Oldest entry: {stats['oldest']}",
             f"Newest entry: {stats['newest']}",
             "",
-        ] + [f"{sec}: {stats['by_section'][sec]}" for sec in SECTIONS]
+        ] + [f"{sec}: {count}" for sec, count in stats["by_section"].items()]
         return [TextContent(type="text", text="\n".join(lines))]
 
     async def rememb_consolidate():
@@ -258,6 +275,9 @@ def _build_tools(Tool):
             inputSchema=_schema(properties or {}, required),
         )
 
+    sections = _get_mcp_sections()
+    default_section = _get_default_mcp_section()
+
     return [
         _tool(
             name="rememb_read",
@@ -265,8 +285,8 @@ def _build_tools(Tool):
             properties={
                 "section": {
                     "type": "string",
-                    "enum": SECTIONS,
-                    "description": f"Filter by section: {', '.join(SECTIONS)}",
+                    "enum": sections,
+                    "description": f"Filter by section: {', '.join(sections)}",
                 }
             },
         ),
@@ -296,9 +316,9 @@ def _build_tools(Tool):
                 },
                 "section": {
                     "type": "string",
-                    "enum": SECTIONS,
-                    "default": "context",
-                    "description": f"Section: {', '.join(SECTIONS)}",
+                    "enum": sections,
+                    "default": default_section,
+                    "description": f"Section: {', '.join(sections)}",
                 },
                 "tags": {
                     "type": "array",
@@ -328,7 +348,7 @@ def _build_tools(Tool):
                 },
                 "section": {
                     "type": "string",
-                    "enum": SECTIONS,
+                    "enum": sections,
                     "description": "Move to different section",
                 },
                 "tags": {
@@ -372,8 +392,8 @@ def _build_tools(Tool):
             properties={
                 "section": {
                     "type": "string",
-                    "enum": SECTIONS,
-                    "description": f"Optional section filter: {', '.join(SECTIONS)}",
+                    "enum": sections,
+                    "description": f"Optional section filter: {', '.join(sections)}",
                 },
                 "mode": {
                     "type": "string",
@@ -404,11 +424,10 @@ def _build_tools(Tool):
 def _create_server(Server, Tool, TextContent):
     """Create an MCP server instance with all rememb tools registered."""
     server = Server("rememb")
-    tools = _build_tools(Tool)
 
     @server.list_tools()
     async def list_tools():
-        return tools
+        return _build_tools(Tool)
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]):

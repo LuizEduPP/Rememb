@@ -104,12 +104,16 @@ rememb now writes the full configuration set to .rememb/config.json during initi
   "max_tag_length": 500,
   "max_tags_per_entry": 100,
   "max_entries": 100000,
+  "entry_batch_size": 24,
+  "entry_load_threshold": 6,
   "semantic_model_idle_ttl_seconds": 15,
   "semantic_model_name": "paraphrase-MiniLM-L3-v2"
 }
 ```
 
 Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as paraphrase-MiniLM-L3-v2.
+
+entry_batch_size and entry_load_threshold control how aggressively the TUI lazy-loads cards from the local store.
 
 Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS and REMEMB_SEMANTIC_MODEL_NAME.
 

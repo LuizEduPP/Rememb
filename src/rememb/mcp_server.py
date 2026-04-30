@@ -237,168 +237,165 @@ def _build_tools(Tool):
     
     Starts the MCP server and handles stdio communication.
     """
+    def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": properties,
+        }
+        if required:
+            schema["required"] = required
+        return schema
+
+    def _tool(
+        name: str,
+        description: str,
+        properties: dict[str, Any] | None = None,
+        required: list[str] | None = None,
+    ):
+        return Tool(
+            name=name,
+            description=description,
+            inputSchema=_schema(properties or {}, required),
+        )
+
     return [
-        Tool(
+        _tool(
             name="rememb_read",
             description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Use this at the start of every session to load context. Prefer rememb_search when looking for specific information by keyword or topic.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "section": {
-                        "type": "string",
-                        "enum": SECTIONS,
-                        "description": f"Filter by section: {', '.join(SECTIONS)}",
-                    }
-                },
+            properties={
+                "section": {
+                    "type": "string",
+                    "enum": SECTIONS,
+                    "description": f"Filter by section: {', '.join(SECTIONS)}",
+                }
             },
         ),
-        Tool(
+        _tool(
             name="rememb_search",
             description="Search memory entries by content or tags using semantic similarity with keyword fallback. Safe, read-only operation with no side effects. Use instead of rememb_read when you need to find specific entries by topic rather than loading all entries. Returns the top_k most relevant results ranked by similarity.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query - natural language or keywords",
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "default": 5,
-                        "description": "Maximum number of results",
-                    },
+            properties={
+                "query": {
+                    "type": "string",
+                    "description": "Search query - natural language or keywords",
                 },
-                "required": ["query"],
+                "top_k": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Maximum number of results",
+                },
             },
+            required=["query"],
         ),
-        Tool(
+        _tool(
             name="rememb_write",
             description="Save a new memory entry. Creates a new entry and returns its ID — does not overwrite existing entries. Use when you learn something new worth remembering across sessions. Use rememb_edit instead to update an existing entry by ID. semantic_scope controls whether semantic duplicate blocking checks globally or only inside the target section.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "Content to remember (1-3 sentences)",
-                    },
-                    "section": {
-                        "type": "string",
-                        "enum": SECTIONS,
-                        "default": "context",
-                        "description": f"Section: {', '.join(SECTIONS)}",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Tags to categorize this entry",
-                    },
-                    "semantic_scope": {
-                        "type": "string",
-                        "enum": ["global", "section"],
-                        "default": "global",
-                        "description": "Semantic duplicate guard scope: global (all sections) or section (target section only)",
-                    },
+            properties={
+                "content": {
+                    "type": "string",
+                    "description": "Content to remember (1-3 sentences)",
                 },
-                "required": ["content"],
+                "section": {
+                    "type": "string",
+                    "enum": SECTIONS,
+                    "default": "context",
+                    "description": f"Section: {', '.join(SECTIONS)}",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags to categorize this entry",
+                },
+                "semantic_scope": {
+                    "type": "string",
+                    "enum": ["global", "section"],
+                    "default": "global",
+                    "description": "Semantic duplicate guard scope: global (all sections) or section (target section only)",
+                },
             },
+            required=["content"],
         ),
-        Tool(
+        _tool(
             name="rememb_edit",
             description="Update an existing memory entry in-place by its ID. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: the entry is updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove one.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "Entry ID (8 hex characters)",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "New content",
-                    },
-                    "section": {
-                        "type": "string",
-                        "enum": SECTIONS,
-                        "description": "Move to different section",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Replace tags",
-                    },
+            properties={
+                "entry_id": {
+                    "type": "string",
+                    "description": "Entry ID (8 hex characters)",
                 },
-                "required": ["entry_id"],
+                "content": {
+                    "type": "string",
+                    "description": "New content",
+                },
+                "section": {
+                    "type": "string",
+                    "enum": SECTIONS,
+                    "description": "Move to different section",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Replace tags",
+                },
             },
+            required=["entry_id"],
         ),
-        Tool(
+        _tool(
             name="rememb_delete",
             description="Permanently delete a single memory entry by its ID. Deletion is irreversible — the entry cannot be recovered. No cascading side effects. Use rememb_edit to update instead. Use rememb_clear to delete all entries at once.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "Entry ID to delete",
-                    }
-                },
-                "required": ["entry_id"],
+            properties={
+                "entry_id": {
+                    "type": "string",
+                    "description": "Entry ID to delete",
+                }
             },
+            required=["entry_id"],
         ),
-        Tool(
+        _tool(
             name="rememb_clear",
             description="Permanently delete ALL memory entries at once. Irreversible — no recovery is possible after this operation. Requires confirm=true as a safety guard. Use rememb_delete to remove a single entry by ID instead. Only use this to fully reset the memory store.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be true to confirm deletion",
-                    }
-                },
-                "required": ["confirm"],
+            properties={
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to confirm deletion",
+                }
             },
+            required=["confirm"],
         ),
-        Tool(
+        _tool(
             name="rememb_stats",
             description="Return memory usage statistics: total entries, size in KB, oldest and newest entry dates, and count per section. Safe, read-only operation with no side effects. Use to give the user an overview of their memory store or to decide if cleanup is needed.",
-            inputSchema={"type": "object", "properties": {}},
+            properties={},
         ),
-        Tool(
+        _tool(
             name="rememb_consolidate",
             description="Consolidate duplicate entries and merge metadata (tags and access data). Supports exact mode (default, normalized content match) and semantic mode (cosine similarity threshold). This mutates storage by removing redundant entries and keeping one consolidated record per duplicate group.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "section": {
-                        "type": "string",
-                        "enum": SECTIONS,
-                        "description": f"Optional section filter: {', '.join(SECTIONS)}",
-                    },
-                    "mode": {
-                        "type": "string",
-                        "enum": ["exact", "semantic"],
-                        "default": "exact",
-                        "description": "Consolidation mode: exact (normalized content) or semantic (similarity threshold)",
-                    },
-                    "similarity_threshold": {
-                        "type": "number",
-                        "default": 0.88,
-                        "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)",
-                    },
+            properties={
+                "section": {
+                    "type": "string",
+                    "enum": SECTIONS,
+                    "description": f"Optional section filter: {', '.join(SECTIONS)}",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["exact", "semantic"],
+                    "default": "exact",
+                    "description": "Consolidation mode: exact (normalized content) or semantic (similarity threshold)",
+                },
+                "similarity_threshold": {
+                    "type": "number",
+                    "default": 0.88,
+                    "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)",
                 },
             },
         ),
-        Tool(
+        _tool(
             name="rememb_init",
             description="Initialize a local rememb memory store in the current directory, creating a .rememb/ folder. Idempotent — safe to call even if already initialized (returns status without overwriting). Call this once per project before using other tools. Falls back to ~/.rememb/ globally if not initialized.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "project_name": {
-                        "type": "string",
-                        "description": "Optional project name",
-                    }
-                },
+            properties={
+                "project_name": {
+                    "type": "string",
+                    "description": "Optional project name",
+                }
             },
         ),
     ]

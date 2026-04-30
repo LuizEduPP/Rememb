@@ -1,5 +1,7 @@
 """Textual TUI for rememb."""
 
+from datetime import datetime
+
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Grid, ScrollableContainer, Center
 from textual.screen import Screen
@@ -18,9 +20,11 @@ from textual.widgets import (
 from textual.binding import Binding
 from textual import on
 from textual.message import Message
+from typing import Callable
 
 from rememb.store import (
-    read_entries,
+    get_config,
+    read_entries_page,
     search_entries,
     get_stats,
     write_entry,
@@ -59,9 +63,11 @@ SECTION_LABELS = {
     "context": "Context",
 }
 
+STORE_PAGE_SIZE = 96
+
 
 class ActionTriggered(Message):
-    """Enviada quando um botão dentro do card é clicado."""
+    """Posted when a button inside a card is pressed."""
     def __init__(self, action: str, entry: dict) -> None:
         super().__init__()
         self.action = action
@@ -69,7 +75,7 @@ class ActionTriggered(Message):
 
 
 class SectionItem(Static):
-    """Item de seção clicável na sidebar."""
+    """Clickable section item in the sidebar."""
 
     def __init__(self, section: str | None, count: int = 0, active: bool = False):
         super().__init__()
@@ -103,14 +109,14 @@ class SectionItem(Static):
 
 
 class SectionSelected(Message):
-    """Emitida quando o usuário clica numa seção."""
+    """Posted when the user clicks a section."""
     def __init__(self, section: str | None) -> None:
         super().__init__()
         self.section = section
 
 
 class EntryCard(Widget):
-    """Card individual representando uma entrada de memória."""
+    """Single card representing one memory entry."""
 
     def __init__(self, entry: dict):
         import uuid
@@ -121,6 +127,16 @@ class EntryCard(Widget):
         self.section = entry.get("section", "context")
         self.color = SECTION_COLORS.get(self.section, "#888")
         self._uid = uid
+
+    @staticmethod
+    def _format_timestamp(value: str | None) -> str:
+        if not value:
+            return "N/A"
+        try:
+            parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+            return parsed.strftime("%d/%m/%Y %H:%M UTC")
+        except ValueError:
+            return value
 
     def compose(self) -> ComposeResult:
         with Vertical(id="card-root"):
@@ -145,6 +161,17 @@ class EntryCard(Widget):
                 content = self.entry.get("content", "")
                 preview = content[:150] + "…" if len(content) > 150 else content
                 yield Static(preview, id=f"ccnt-{self._uid}")
+
+                yield Label(
+                    f"[dim]Created:[/dim] {self._format_timestamp(self.entry.get('created_at'))}",
+                    id=f"ccrt-{self._uid}",
+                    classes="meta-line",
+                )
+                yield Label(
+                    f"[dim]Updated:[/dim] {self._format_timestamp(self.entry.get('updated_at'))}",
+                    id=f"cupd-{self._uid}",
+                    classes="meta-line",
+                )
 
             tags = self.entry.get("tags", [])
             if tags:
@@ -215,6 +242,11 @@ class EntryCard(Widget):
         content.styles.margin = (1, 0)
         content.styles.text_wrap = "wrap"
 
+        for meta_line in self.query(".meta-line"):
+            meta_line.styles.height = 1
+            meta_line.styles.margin = (0, 0, 0, 0)
+            meta_line.styles.color = "#a7b1c2"
+
         try:
             footer = self.query_one(f"#cftr-{self._uid}")
             footer.styles.height = "auto"
@@ -243,8 +275,25 @@ class EntryCard(Widget):
         self.post_message(ActionTriggered("delete", self.entry))
 
 
+class EntryScrollContainer(ScrollableContainer):
+    """Container com callback ao se aproximar do fim da rolagem."""
+
+    def __init__(self, on_near_end: Callable[[], None], *children, threshold: int = 6, **kwargs):
+        super().__init__(*children, **kwargs)
+        self._on_near_end = on_near_end
+        self._threshold = threshold
+
+    def set_threshold(self, threshold: int) -> None:
+        self._threshold = max(0, threshold)
+
+    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
+        super().watch_scroll_y(old_value, new_value)
+        if self.max_scroll_y - new_value <= self._threshold:
+            self._on_near_end()
+
+
 class RemembApp(App):
-    """Interface moderna para o rememb com Grid de Cards."""
+    """Modern rememb interface built around a card grid."""
 
     TITLE = "Rememb"
     SUB_TITLE = "Persistent memory standard for AI agents"
@@ -272,6 +321,13 @@ class RemembApp(App):
         self._root_path = root_path
         self.current_entries = []
         self.current_section = None
+        self.current_query = ""
+        self.latest_first = True
+        self.rendered_count = 0
+        self.loaded_offset = 0
+        self.has_more_entries = False
+        self.entry_batch_size = 24
+        self.entry_load_threshold = 6
         self._panel_mode: str | None = None
         self._panel_entry: dict | None = None
 
@@ -292,9 +348,10 @@ class RemembApp(App):
             with Vertical(id="main-area"):
                 with Horizontal(id="search-bar"):
                     yield Input(placeholder="⌕  Search memory...", id="search-box")
+                    yield Button("↓  Latest First", id="btn-sort-order", variant="default", flat=True)
                 yield Rule()
                 with Horizontal(id="content-area"):
-                    with ScrollableContainer(id="main-scroll"):
+                    with EntryScrollContainer(self._maybe_load_more_entries, id="main-scroll"):
                         yield Grid(id="entries-grid")
                     with ScrollableContainer(id="side-panel"):
                         yield Label("", id="panel-title")
@@ -374,6 +431,11 @@ class RemembApp(App):
         search_box = self.query_one("#search-box")
         search_box.styles.width = "1fr"
 
+        sort_btn = self.query_one("#btn-sort-order")
+        sort_btn.styles.width = "auto"
+        sort_btn.styles.min_width = 18
+        sort_btn.styles.margin_left = 1
+
         main_scroll = self.query_one("#main-scroll")
         main_scroll.styles.padding = (1, 0)
 
@@ -410,9 +472,12 @@ class RemembApp(App):
             return root
 
     def _refresh_ui(self, section: str | None = None) -> None:
+        self.current_query = ""
         self.current_section = section
         root = self._get_root()
+        self._load_tui_config(root)
         stats = get_stats(root)
+        self._update_sort_button()
 
         container = self.query_one("#sidebar-sections")
         container.remove_children()
@@ -427,17 +492,123 @@ class RemembApp(App):
 
         self._load_entries(section)
 
-    def _load_entries(self, section: str | None = None) -> None:
-        root = self._get_root()
-        try:
-            self.current_entries = read_entries(root, section)
-        except Exception:
-            self.current_entries = []
+    def _load_tui_config(self, root) -> None:
+        config = get_config(root)
+        batch_size = config.get("entry_batch_size", self.entry_batch_size)
+        load_threshold = config.get("entry_load_threshold", self.entry_load_threshold)
 
+        try:
+            self.entry_batch_size = max(1, int(batch_size))
+        except (TypeError, ValueError):
+            self.entry_batch_size = 24
+
+        try:
+            self.entry_load_threshold = max(0, int(load_threshold))
+        except (TypeError, ValueError):
+            self.entry_load_threshold = 6
+
+        self.query_one("#main-scroll", EntryScrollContainer).set_threshold(self.entry_load_threshold)
+
+    def _sort_entries(self, entries: list[dict]) -> list[dict]:
+        return sorted(
+            entries,
+            key=lambda entry: entry.get("updated_at") or entry.get("created_at") or "",
+            reverse=self.latest_first,
+        )
+
+    def _reset_loaded_entries(self) -> None:
+        self.current_entries = []
+        self.rendered_count = 0
+        self.loaded_offset = 0
+        self.has_more_entries = False
+
+    def _load_next_store_page(self, reset: bool = False) -> None:
+        if self.current_query:
+            return
+
+        if reset:
+            self._reset_loaded_entries()
+        elif not self.has_more_entries and self.loaded_offset > 0:
+            return
+
+        page = read_entries_page(
+            self._get_root(),
+            self.current_section,
+            offset=self.loaded_offset,
+            limit=STORE_PAGE_SIZE,
+            sort_by="recent",
+            descending=self.latest_first,
+        )
+
+        if reset:
+            self.current_entries = list(page["items"])
+        else:
+            self.current_entries.extend(page["items"])
+        self.loaded_offset = page["next_offset"]
+        self.has_more_entries = page["has_more"]
+
+    def _render_entries(self, reset: bool = False) -> None:
+        if reset:
+            self.rendered_count = 0
+            self.query_one("#entries-grid", Grid).remove_children()
+            self.query_one("#main-scroll", EntryScrollContainer).scroll_home(animate=False, immediate=True, x_axis=False)
+
+        self._render_next_batch()
+        if reset:
+            self.call_after_refresh(self._ensure_viewport_filled)
+
+    def _render_next_batch(self) -> None:
+        if self.rendered_count >= len(self.current_entries):
+            return
+
+        next_count = min(self.rendered_count + self.entry_batch_size, len(self.current_entries))
         grid = self.query_one("#entries-grid", Grid)
-        grid.remove_children()
-        for entry in self.current_entries:
+        for entry in self.current_entries[self.rendered_count:next_count]:
             grid.mount(EntryCard(entry))
+        self.rendered_count = next_count
+
+    def _ensure_viewport_filled(self) -> None:
+        main_scroll = self.query_one("#main-scroll", EntryScrollContainer)
+        if main_scroll.max_scroll_y > 0:
+            return
+
+        if self.rendered_count < len(self.current_entries):
+            previous_count = self.rendered_count
+            self._render_next_batch()
+            if self.rendered_count > previous_count:
+                self.call_after_refresh(self._ensure_viewport_filled)
+            return
+
+        if self.has_more_entries:
+            previous_count = len(self.current_entries)
+            self._load_next_store_page()
+            if len(self.current_entries) > previous_count:
+                self._render_next_batch()
+                self.call_after_refresh(self._ensure_viewport_filled)
+
+    def _maybe_load_more_entries(self) -> None:
+        if self.rendered_count < len(self.current_entries):
+            self._render_next_batch()
+            return
+
+        if self.has_more_entries:
+            previous_count = len(self.current_entries)
+            self._load_next_store_page()
+            if len(self.current_entries) > previous_count:
+                self._render_next_batch()
+                self.call_after_refresh(self._ensure_viewport_filled)
+
+    def _update_sort_button(self) -> None:
+        label = "↓  Latest First" if self.latest_first else "↑  Oldest First"
+        self.query_one("#btn-sort-order", Button).label = label
+
+    def _load_entries(self, section: str | None = None) -> None:
+        try:
+            self.current_section = section
+            self._load_next_store_page(reset=True)
+        except Exception:
+            self._reset_loaded_entries()
+        self._render_entries(reset=True)
 
     @on(SectionSelected)
     def handle_section_selected(self, message: SectionSelected) -> None:
@@ -456,6 +627,8 @@ class RemembApp(App):
             self.action_new_entry()
         elif btn_id == "btn-refresh":
             self.action_refresh()
+        elif btn_id == "btn-sort-order":
+            self.action_toggle_sort_order()
         elif btn_id == "btn-consolidate":
             self.action_consolidate()
         elif btn_id == "btn-quit":
@@ -468,11 +641,11 @@ class RemembApp(App):
             self._refresh_ui(self.current_section)
             return
         root = self._get_root()
-        results = search_entries(root, query, top_k=20)
-        grid = self.query_one("#entries-grid", Grid)
-        grid.remove_children()
-        for entry in results:
-            grid.mount(EntryCard(entry))
+        self.current_query = query
+        self.loaded_offset = 0
+        self.has_more_entries = False
+        self.current_entries = self._sort_entries(search_entries(root, query, top_k=20))
+        self._render_entries(reset=True)
 
     def _open_panel(self, mode: str, entry: dict | None = None) -> None:
         self._panel_mode = mode
@@ -536,6 +709,17 @@ class RemembApp(App):
         self._refresh_ui(self.current_section)
         self.notify("Memory refreshed", severity="information")
 
+    def action_toggle_sort_order(self) -> None:
+        self.latest_first = not self.latest_first
+        self._update_sort_button()
+        if self.current_query:
+            self.current_entries = self._sort_entries(self.current_entries)
+            self._render_entries(reset=True)
+        else:
+            self._load_entries(self.current_section)
+        mode = "latest first" if self.latest_first else "oldest first"
+        self.notify(f"Order changed: {mode}", severity="information")
+
     def action_consolidate(self) -> None:
         try:
             result = consolidate_entries(
@@ -571,10 +755,11 @@ class RemembApp(App):
 
     def on_resize(self, event) -> None:
         self._update_grid_columns()
+        self.call_after_refresh(self._ensure_viewport_filled)
 
 
 class _ModalBase(Screen):
-    """Base para telas modais centralizadas."""
+    """Base class for centered modal screens."""
 
     def on_mount(self) -> None:
         modal = self.query_one("#modal")

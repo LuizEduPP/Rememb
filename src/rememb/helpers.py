@@ -81,6 +81,23 @@ class MemoryStore(Protocol):
     def read_entries(self, root: Path, section: str | None = None) -> list[dict]:
         """Read entries from memory."""
         ...
+
+    def read_entries_page(
+        self,
+        root: Path,
+        section: str | None = None,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        sort_by: str = "storage",
+        descending: bool = False,
+    ) -> dict[str, Any]:
+        """Read one page of entries from memory."""
+        ...
+
+    def get_config(self, root: Path) -> dict[str, Any]:
+        """Load the effective configuration for the given root."""
+        ...
     
     def search_entries(self, root: Path, query: str, top_k: int = 5) -> list[dict]:
         """Search entries by content or tags."""

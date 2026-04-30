@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "SECTIONS",
     "init",
+    "get_config",
     "write_entry",
     "consolidate_entries",
     "read_entries",
+    "read_entries_page",
     "search_entries",
     "delete_entry",
     "edit_entry",
@@ -195,6 +197,12 @@ def write_entry(
     return _atomic_modify(root, add_entry)
 
 
+def get_config(root: Path) -> dict:
+    """Return the effective configuration for the given root."""
+    _assert_initialized(root)
+    return dict(_store_context.get_config(root))
+
+
 def consolidate_entries(
     root: Path,
     section: str | None = None,
@@ -236,19 +244,14 @@ def consolidate_entries(
         normalized = " ".join(content.split()).strip().lower()
         return _safe_str(entry.get("section", "context")), normalized
 
-    def _pick_created_at(current: str, incoming: str) -> str:
+    def _pick_timestamp(current: str, incoming: str, *, prefer_latest: bool) -> str:
         if not current:
             return incoming
         if not incoming:
             return current
+        if prefer_latest:
+            return current if current >= incoming else incoming
         return current if current <= incoming else incoming
-
-    def _pick_updated_at(current: str, incoming: str) -> str:
-        if not current:
-            return incoming
-        if not incoming:
-            return current
-        return current if current >= incoming else incoming
 
     def _pick_content(current: str, incoming: str) -> str:
         if len(incoming.strip()) > len(current.strip()):
@@ -357,13 +360,15 @@ def consolidate_entries(
                 _safe_str(existing.get("content")),
                 _safe_str(entry.get("content")),
             )
-            existing["created_at"] = _pick_created_at(
+            existing["created_at"] = _pick_timestamp(
                 _safe_str(existing.get("created_at")),
                 _safe_str(entry.get("created_at")),
+                prefer_latest=False,
             )
-            existing["updated_at"] = _pick_updated_at(
+            existing["updated_at"] = _pick_timestamp(
                 _safe_str(existing.get("updated_at")),
                 _safe_str(entry.get("updated_at")),
+                prefer_latest=True,
             )
 
             existing_access = _safe_int(existing.get("access_count"))
@@ -374,7 +379,11 @@ def consolidate_entries(
 
             existing_last_accessed = _safe_str(existing.get("last_accessed"))
             incoming_last_accessed = _safe_str(entry.get("last_accessed"))
-            last_accessed = _pick_updated_at(existing_last_accessed, incoming_last_accessed)
+            last_accessed = _pick_timestamp(
+                existing_last_accessed,
+                incoming_last_accessed,
+                prefer_latest=True,
+            )
             if last_accessed:
                 existing["last_accessed"] = last_accessed
 
@@ -516,6 +525,86 @@ def read_entries(root: Path, section: str | None = None) -> list[dict]:
     return entries
 
 
+def read_entries_page(
+    root: Path,
+    section: str | None = None,
+    *,
+    offset: int = 0,
+    limit: int = 100,
+    sort_by: str = "storage",
+    descending: bool = False,
+) -> dict:
+    """Read a page of entries from memory.
+
+    Args:
+        root: Project root path
+        section: Optional section filter
+        offset: Zero-based start index in the filtered/sorted result set
+        limit: Maximum number of entries to return
+        sort_by: Sort mode, either "storage" or "recent"
+        descending: If True, return the selected sort in descending order
+
+    Returns:
+        Dictionary with items, total, offset, limit, next_offset, and has_more
+
+    Raises:
+        RemembNotInitializedError: If rememb not initialized
+        RemembValidationError: If offset, limit, or sort_by are invalid
+    """
+    logger.debug(
+        "read_entries_page called: section=%s, offset=%s, limit=%s, sort_by=%s, descending=%s",
+        section,
+        offset,
+        limit,
+        sort_by,
+        descending,
+    )
+    _assert_initialized(root)
+
+    if offset < 0:
+        raise RemembValidationError("offset must be >= 0")
+    if limit <= 0:
+        raise RemembValidationError("limit must be > 0")
+
+    normalized_sort = sort_by.lower().strip()
+    if normalized_sort not in {"storage", "recent"}:
+        raise RemembValidationError("sort_by must be 'storage' or 'recent'")
+
+    entries = _load_entries(root)
+    if section:
+        entries = [e for e in entries if e["section"] == section.lower()]
+
+    if normalized_sort == "recent":
+        entries = sorted(
+            entries,
+            key=lambda entry: entry.get("updated_at") or entry.get("created_at") or "",
+            reverse=descending,
+        )
+    elif descending:
+        entries = list(reversed(entries))
+
+    total = len(entries)
+    items = entries[offset:offset + limit]
+    next_offset = offset + len(items)
+
+    logger.info(
+        "Read page of %s entries (offset=%s, limit=%s, total=%s)%s",
+        len(items),
+        offset,
+        limit,
+        total,
+        f" from section '{section}'" if section else "",
+    )
+    return {
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "next_offset": next_offset,
+        "has_more": next_offset < total,
+    }
+
+
 def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
     """Search entries by semantic similarity.
     
@@ -620,9 +709,11 @@ def format_entries(entries: list[dict], include_id: bool = False) -> str:
     return "\n".join(lines)
 
 _store_instance = type('StoreModule', (), {
+    'get_config': get_config,
     'write_entry': write_entry,
     'consolidate_entries': consolidate_entries,
     'read_entries': read_entries,
+    'read_entries_page': read_entries_page,
     'search_entries': search_entries,
     'delete_entry': delete_entry,
     'edit_entry': edit_entry,

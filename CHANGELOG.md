@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-04-30
+
+### Added
+- Full TUI configuration screen (`F2`) for editing dynamic sections, section icons, semantic model selection, and paging limits.
+- Exact tag filtering in the TUI by clicking tag pills, combined with the active text search and current section.
+- Optional `tag` filter for the `rememb_search` MCP tool.
+- Per-section appearance config in `.rememb/config.json` with icon selection and automatic random colors for new custom sections.
+
+### Changed
+- Card rendering now caps visible tags and collapses the remainder into a `+N` indicator to prevent oversized cards.
+- Section updates are normalized more aggressively: case-insensitive duplicates collapse to a single normalized section name.
+- Removing a section with existing entries now migrates those entries to `uncategorized` instead of rejecting the config update.
+
+### Fixed
+- `meta.json` section metadata is now kept in sync automatically when the effective section list changes.
+
 ## [0.4.1] - 2026-04-28
 
 ### Added

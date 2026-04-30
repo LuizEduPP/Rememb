@@ -81,6 +81,7 @@ Copy the output to your editor's rules file (`.windsurfrules`, `.cursorrules`, `
 .rememb/
   entries.json   ← structured memory (project, actions, systems, user, context)
   meta.json      ← project metadata
+  config.json    ← limits, sections, TUI behavior, semantic model settings
 ```
 
 A JSON file in your project. Your agent reads it at the start of every session.
@@ -104,6 +105,15 @@ rememb now writes the full configuration set to .rememb/config.json during initi
   "max_tag_length": 500,
   "max_tags_per_entry": 100,
   "max_entries": 100000,
+  "sections": ["project", "actions", "systems", "requests", "user", "context"],
+  "section_icons": {
+    "project": "◈",
+    "actions": "↯"
+  },
+  "section_colors": {
+    "project": "#d84848",
+    "actions": "#d08020"
+  },
   "entry_batch_size": 24,
   "entry_load_threshold": 6,
   "semantic_model_idle_ttl_seconds": 15,
@@ -114,6 +124,8 @@ rememb now writes the full configuration set to .rememb/config.json during initi
 Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as paraphrase-MiniLM-L3-v2.
 
 entry_batch_size and entry_load_threshold control how aggressively the TUI lazy-loads cards from the local store.
+
+Section names are normalized to lowercase, duplicates are ignored after normalization, and removing a section with existing entries automatically migrates those entries to `uncategorized`. `meta.json` is kept in sync with the current effective section list.
 
 Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS and REMEMB_SEMANTIC_MODEL_NAME.
 
@@ -144,9 +156,17 @@ Features:
 - **Grid of memory cards** — browse all entries organized by section
 - **Sidebar navigation** — filter by section with entry counts
 - **Inline search** — press `/` to search across all entries
+- **Tag filter** — click a tag pill to combine exact tag filtering with the current text search
 - **Side panel** — create or edit entries without leaving the screen
+- **Full config screen** — edit sections, section icons, semantic model, limits, and lazy-loading behavior with `F2`
 - **Dynamic layout** — grid adapts to terminal width (1–4 columns)
 - **Keyboard shortcuts** — `Ctrl+N` new, `Ctrl+R` refresh, `/` search, `Q` quit
+
+Cards keep their content preview and timestamps, but tag rendering is intentionally capped so entries with many tags do not grow unbounded in the grid.
+
+New custom sections get a random color automatically and start with a generic icon until you customize them in the config screen.
+
+The semantic search MCP tool also accepts an optional exact `tag` filter, so IDE clients can restrict semantic matches before ranking.
 
 ---
 

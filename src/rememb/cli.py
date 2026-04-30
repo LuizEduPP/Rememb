@@ -139,14 +139,27 @@ def mcp(
         from rememb.mcp_server import run_server as mcp_run_server
         normalized_transport = transport.lower().strip()
         if normalized_transport not in {"stdio", "sse"}:
-            console.print("[bold red]Error:[/bold red] Unsupported transport. Use [cyan]stdio[/cyan] or [cyan]sse[/cyan].")
+            typer.echo("Error: Unsupported transport. Use stdio or sse.", err=True)
             raise typer.Exit(1)
 
         if normalized_transport == "sse":
-            console.print(
-                f"Starting persistent MCP SSE server at [bold cyan]http://{host}:{port}[/bold cyan]"
+            if not sys.stdout.isatty():
+                typer.echo(
+                    "Error: SSE transport cannot be started through a stdio MCP client. "
+                    "Start `rememb mcp --transport sse --host 127.0.0.1 --port 8765` separately "
+                    "and connect to the HTTP/SSE endpoint with a client that supports it.",
+                    err=True,
+                )
+                raise typer.Exit(2)
+
+            typer.echo(
+                f"Starting persistent MCP SSE server at http://{host}:{port}",
+                err=True,
             )
-            console.print("[dim]Connect clients to /sse and post messages to /messages/ to reuse this same process.[/dim]")
+            typer.echo(
+                "Connect clients to /sse and post messages to /messages/ to reuse this same process.",
+                err=True,
+            )
 
         asyncio.run(mcp_run_server(transport=normalized_transport, host=host, port=port))
     except ImportError as e:

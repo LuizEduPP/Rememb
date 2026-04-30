@@ -63,6 +63,8 @@ rememb mcp --transport sse --host 127.0.0.1 --port 8765
 
 This keeps one MCP process alive, so repeated clients can hit the same loaded embedding model through `http://127.0.0.1:8765/sse` and `http://127.0.0.1:8765/messages/`.
 
+Do not put `--transport sse` inside a stdio MCP client config. `stdio` clients expect JSON-RPC on stdin/stdout; the SSE mode exposes an HTTP endpoint and must be started separately.
+
 ### Without MCP
 
 ```bash

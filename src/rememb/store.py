@@ -23,6 +23,7 @@ from rememb.helpers import (
     _normalize_sections,
     _normalize_section_colors,
     _normalize_section_icons,
+    _save_json_object,
     _semantic_search,
     _sanitize_content,
     _sanitize_tags,
@@ -117,6 +118,25 @@ def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None
         return None
 
     _atomic_modify(root, restore)
+
+
+def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
+    meta_file = _meta_path(root)
+    existing_meta: dict[str, object] = {}
+    if meta_file.exists():
+        try:
+            loaded_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if isinstance(loaded_meta, dict):
+                existing_meta = dict(loaded_meta)
+        except (json.JSONDecodeError, OSError):
+            existing_meta = {}
+
+    meta = dict(existing_meta)
+    meta["version"] = str(meta.get("version") or "1")
+    meta["project"] = str(meta.get("project") or project_name or root.name)
+    meta["created_at"] = str(meta.get("created_at") or _now())
+    meta["sections"] = list(sections)
+    _save_json_object(meta_file, meta)
 
 
 def _validate_config_updates(
@@ -246,17 +266,12 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     if not entries_file.exists():
         entries_file.write_text(json.dumps([], indent=2), encoding="utf-8")
 
-    meta_file = _meta_path(root)
-    if not meta_file.exists():
-        meta = {
-            "version": "1",
-            "project": project_name or ("global" if global_mode else root.name),
-            "created_at": _now(),
-            "sections": config_data.get("sections", DEFAULT_SECTIONS),
-        }
-        meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
     config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+    _sync_meta_sections(
+        root,
+        list(config_data.get("sections", DEFAULT_SECTIONS)),
+        project_name=project_name or ("global" if global_mode else root.name),
+    )
     _store_context.clear_config_cache(root)
 
     if not global_mode:
@@ -387,7 +402,9 @@ def update_config(root: Path, updates: dict[str, object]) -> dict:
     try:
         if used_removed_sections and migration_target:
             moved_entries = _migrate_entries_to_section(root, used_removed_sections, migration_target)
-        return _store_context.update_config(root, validated_config)
+        updated_config = _store_context.update_config(root, validated_config)
+        _sync_meta_sections(root, list(updated_config.get("sections", DEFAULT_SECTIONS)))
+        return updated_config
     except Exception:
         if moved_entries:
             try:

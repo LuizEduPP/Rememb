@@ -142,7 +142,7 @@ def write_entry(
                     
             try:
                 from rememb.helpers import _check_semantic_conflict
-                model = _store_context.get_model()
+                model = _store_context.get_model(root)
                 semantic_entries = entries
                 if normalized_scope == "section":
                     semantic_entries = [e for e in entries if e.get("section") == section]
@@ -154,6 +154,8 @@ def write_entry(
                     )
             except ImportError:
                 pass
+            finally:
+                _store_context.schedule_model_release(root)
         
         existing_ids = {e["id"] for e in entries}
         new_id = str(uuid.uuid4())[:8]
@@ -273,23 +275,25 @@ def consolidate_entries(
 
         if normalized_mode == "semantic":
             try:
-                model = _store_context.get_model()
+                model = _store_context.get_model(root)
             except ImportError as e:
                 raise RemembError(str(e)) from e
+            try:
+                target_indexes = []
+                target_texts = []
+                for idx, entry in enumerate(entries):
+                    entry_section = _safe_str(entry.get("section", "context"))
+                    if target_section and entry_section != target_section:
+                        continue
+                    target_indexes.append(idx)
+                    target_texts.append(_safe_str(entry.get("content")))
 
-            target_indexes = []
-            target_texts = []
-            for idx, entry in enumerate(entries):
-                entry_section = _safe_str(entry.get("section", "context"))
-                if target_section and entry_section != target_section:
-                    continue
-                target_indexes.append(idx)
-                target_texts.append(_safe_str(entry.get("content")))
-
-            if target_texts:
-                vectors = model.encode(target_texts, show_progress_bar=False, batch_size=32)
-                for local_idx, global_idx in enumerate(target_indexes):
-                    embeddings_by_idx[global_idx] = vectors[local_idx].tolist()
+                if target_texts:
+                    vectors = model.encode(target_texts, show_progress_bar=False, batch_size=32)
+                    for local_idx, global_idx in enumerate(target_indexes):
+                        embeddings_by_idx[global_idx] = vectors[local_idx].tolist()
+            finally:
+                _store_context.schedule_model_release(root)
 
         for idx, entry in enumerate(entries):
             entry_section = _safe_str(entry.get("section", "context"))
@@ -518,8 +522,11 @@ def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
         return []
 
     try:
-        model = _store_context.get_model()
-        results = _semantic_search(root, entries, query, top_k, model)
+        model = _store_context.get_model(root)
+        try:
+            results = _semantic_search(root, entries, query, top_k, model)
+        finally:
+            _store_context.schedule_model_release(root)
     except ImportError as e:
         raise RemembError(str(e)) from e
         

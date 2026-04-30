@@ -1,5 +1,6 @@
 """Helper functions and classes for rememb operations."""
 
+import gc
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -17,6 +18,7 @@ import json
 import logging
 import platform
 import re
+import threading
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,6 +36,8 @@ from rememb.config import (
     DEFAULT_MAX_TAG_LENGTH,
     DEFAULT_MAX_TAGS_PER_ENTRY,
     DEFAULT_MAX_ENTRIES,
+    DEFAULT_SEMANTIC_MODEL_NAME,
+    DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
 )
 from rememb.utils import _rememb_path, _entries_path, is_initialized
 from rememb.exceptions import (
@@ -90,13 +94,97 @@ class StoreContext:
     def __init__(self):
         self._model_cache: dict = {}
         self._config_cache: dict = {}
-    
-    def get_model(self):
+        self._model_lock = threading.Lock()
+        self._model_release_timer: threading.Timer | None = None
+
+    @staticmethod
+    def _parse_non_negative_int(value: object) -> int | None:
+        if value is None:
+            return None
+        try:
+            parsed = int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed >= 0 else None
+
+    def get_semantic_model_name(self, root: Path | None = None) -> str:
+        env_model_name = os.getenv("REMEMB_SEMANTIC_MODEL_NAME")
+        if env_model_name and env_model_name.strip():
+            return env_model_name.strip()
+
+        if root is not None:
+            config = self.get_config(root)
+            config_model_name = str(config.get("semantic_model_name", "")).strip()
+            if config_model_name:
+                return config_model_name
+
+        return DEFAULT_SEMANTIC_MODEL_NAME
+
+    def get_model_idle_ttl_seconds(self, root: Path | None = None) -> int:
+        env_ttl = self._parse_non_negative_int(os.getenv("REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS"))
+        if env_ttl is not None:
+            return env_ttl
+
+        if root is not None:
+            config = self.get_config(root)
+            config_ttl = self._parse_non_negative_int(config.get("semantic_model_idle_ttl_seconds"))
+            if config_ttl is not None:
+                return config_ttl
+
+        return DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS
+
+    def _cancel_release_timer_locked(self) -> None:
+        if self._model_release_timer is not None:
+            self._model_release_timer.cancel()
+            self._model_release_timer = None
+
+    def release_model(self) -> None:
+        """Release the embedding model cache to free resident memory."""
+        with self._model_lock:
+            self._cancel_release_timer_locked()
+            model = self._model_cache.pop("model", None)
+            self._model_cache.pop("model_name", None)
+
+        if model is not None:
+            del model
+            gc.collect()
+
+    def schedule_model_release(self, root: Path | None = None) -> None:
+        """Schedule embedding model eviction after the configured idle window."""
+        idle_ttl_seconds = self.get_model_idle_ttl_seconds(root)
+        if idle_ttl_seconds == 0:
+            self.release_model()
+            return
+
+        with self._model_lock:
+            if "model" not in self._model_cache:
+                return
+
+            self._cancel_release_timer_locked()
+            timer = threading.Timer(idle_ttl_seconds, self.release_model)
+            timer.daemon = True
+            self._model_release_timer = timer
+            timer.start()
+
+    def get_model(self, root: Path | None = None):
         """Get or create embedding model.
         
         Returns:
             SentenceTransformer model instance (cached)
         """
+        model_name = self.get_semantic_model_name(root)
+
+        with self._model_lock:
+            self._cancel_release_timer_locked()
+            cached_model = self._model_cache.get("model")
+            cached_model_name = self._model_cache.get("model_name")
+
+        if cached_model is not None and cached_model_name == model_name:
+            return cached_model
+
+        if cached_model is not None and cached_model_name != model_name:
+            self.release_model()
+
         if "model" not in self._model_cache:
             try:
                 import torch
@@ -104,8 +192,11 @@ class StoreContext:
             except ImportError:
                 pass
             from sentence_transformers import SentenceTransformer
-            self._model_cache["model"] = SentenceTransformer("all-MiniLM-L6-v2")
-        return self._model_cache["model"]
+            model = SentenceTransformer(model_name)
+            with self._model_lock:
+                self._model_cache["model"] = model
+                self._model_cache["model_name"] = model_name
+                return self._model_cache["model"]
     
     def get_config(self, root: Path) -> dict:
         """Load configuration from .rememb/config.json or use defaults.
@@ -134,6 +225,8 @@ class StoreContext:
             "max_tag_length": DEFAULT_MAX_TAG_LENGTH,
             "max_tags_per_entry": DEFAULT_MAX_TAGS_PER_ENTRY,
             "max_entries": DEFAULT_MAX_ENTRIES,
+            "semantic_model_name": DEFAULT_SEMANTIC_MODEL_NAME,
+            "semantic_model_idle_ttl_seconds": DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
         }
         
         for key, value in defaults.items():

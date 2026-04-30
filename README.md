@@ -84,7 +84,20 @@ Agent: [rememb_read]  → Context loaded
 Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 ```
 
-Search uses local semantic embeddings (no API, no cloud). Falls back to keyword search if embeddings aren't available.
+Search uses local semantic embeddings (no API, no cloud). The embedding model is unloaded after a short idle window by default, so the process does not keep the full model resident forever.
+
+You can tune this in .rememb/config.json:
+
+```json
+{
+  "semantic_model_idle_ttl_seconds": 15,
+  "semantic_model_name": "paraphrase-MiniLM-L3-v2"
+}
+```
+
+Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as paraphrase-MiniLM-L3-v2.
+
+Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS and REMEMB_SEMANTIC_MODEL_NAME.
 
 ---
 

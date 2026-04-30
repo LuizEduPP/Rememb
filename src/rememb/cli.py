@@ -7,6 +7,7 @@ import sys
 import typer
 
 from rememb import __version__
+from rememb.config import DEFAULT_SEMANTIC_MODEL_NAME
 from rememb.store import SECTIONS
 from rememb.utils import console, box, Columns, Panel, Table, Text
 
@@ -126,7 +127,7 @@ def mcp():
 @app.command(name="fetch-model")
 def fetch_model():
     """Download embedding model for offline semantic search."""
-    console.print("Downloading [bold cyan]all-MiniLM-L6-v2[/bold cyan] (~80MB)...")
+    console.print(f"Downloading [bold cyan]{DEFAULT_SEMANTIC_MODEL_NAME}[/bold cyan]...")
     
     try:
         from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -137,7 +138,7 @@ def fetch_model():
         ) as progress:
             progress.add_task(description="Downloading model weights from HuggingFace...", total=None)
             from sentence_transformers import SentenceTransformer
-            model = SentenceTransformer("all-MiniLM-L6-v2")
+            SentenceTransformer(DEFAULT_SEMANTIC_MODEL_NAME)
             console.print("[bold green]✓[/bold green] Model downloaded successfully.")
             console.print("[dim]You can now use semantic search offline.[/dim]")
     except ImportError:

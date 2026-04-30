@@ -86,10 +86,14 @@ Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 
 Search uses local semantic embeddings (no API, no cloud). The embedding model is unloaded after a short idle window by default, so the process does not keep the full model resident forever.
 
-You can tune this in .rememb/config.json:
+rememb now writes the full configuration set to .rememb/config.json during initialization, so all supported knobs live in one place:
 
 ```json
 {
+  "max_content_length": 1000000,
+  "max_tag_length": 500,
+  "max_tags_per_entry": 100,
+  "max_entries": 100000,
   "semantic_model_idle_ttl_seconds": 15,
   "semantic_model_name": "paraphrase-MiniLM-L3-v2"
 }

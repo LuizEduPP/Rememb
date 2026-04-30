@@ -12,7 +12,7 @@ from rememb.exceptions import (
     RemembConfigError,
     RemembError,
 )
-from rememb.config import META_FILE, SECTIONS
+from rememb.config import CONFIG_FILE, DEFAULT_CONFIG, META_FILE, SECTIONS
 from rememb.utils import _rememb_path, _entries_path, _meta_path, _now
 from rememb.helpers import (
     MemoryStore,
@@ -72,6 +72,18 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
             "sections": SECTIONS,
         }
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+    config_file = rememb / CONFIG_FILE
+    config_data = DEFAULT_CONFIG.copy()
+    if config_file.exists():
+        try:
+            loaded_config = json.loads(config_file.read_text(encoding="utf-8"))
+            if isinstance(loaded_config, dict):
+                config_data.update(loaded_config)
+        except (json.JSONDecodeError, OSError):
+            pass
+    config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+    _store_context.clear_config_cache(root)
 
     if not global_mode:
         gitignore = root / ".gitignore"

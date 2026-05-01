@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-04-30
+
+### Added
+- Unified configuration management in `.rememb/config.json`, consolidating tunable limits, dynamic sections, section icons/colors, semantic model settings, and TUI paging controls in one persisted file.
+- Full TUI configuration screen (`F2`) for editing dynamic sections, section icons, semantic model selection, and paging limits.
+- Per-section appearance config with icon selection and automatic random colors for new custom sections.
+- Exact tag filtering in the TUI by clicking tag pills, combined with the active text search and current section.
+- Optional `tag` filter for the `rememb_search` MCP tool.
+- Helper support for configuration persistence and normalization, including atomic config saves plus normalization/validation of section names, icons, and colors.
+- Persistent local SSE transport for `rememb mcp`, with configurable host and port for reusing one MCP process across multiple local clients.
+
+### Changed
+- CLI help text and command descriptions now reflect the transport split between stdio and persistent SSE, and the model download command follows the configuration-driven semantic model default.
+- README expanded to document persistent SSE usage, the richer `.rememb/config.json` format, and environment overrides for semantic model settings.
+- Workspace agent/instruction surfaces under `.github/` were aligned with the newer TUI/MCP/config toolset.
+- `MemoryStore` protocol now reflects configuration management and paginated reads used by the current TUI and store implementation.
+- Card rendering now caps visible tags and collapses the remainder into a `+N` indicator to prevent oversized cards.
+- Section updates are normalized more aggressively: case-insensitive duplicates collapse to a single normalized section name.
+- Removing a section with existing entries now migrates those entries to `uncategorized` instead of rejecting the config update.
+
+### Fixed
+- `meta.json` section metadata is now kept in sync automatically when the effective section list changes.
+
+### Documentation
+- README and release notes were updated to describe the unified configuration system, MCP SSE transport, dynamic section customization, and tag-aware search/filter behavior more accurately.
+
 ## [0.4.1] - 2026-04-28
 
 ### Added

@@ -12,12 +12,18 @@ from rememb.exceptions import (
     RemembConfigError,
     RemembError,
 )
-from rememb.config import META_FILE, SECTIONS
+from rememb.config import CONFIG_FILE, DEFAULT_CONFIG, DEFAULT_REMOVED_SECTION_NAME, DEFAULT_SECTIONS, META_FILE
 from rememb.utils import _rememb_path, _entries_path, _meta_path, _now
 from rememb.helpers import (
     MemoryStore,
     _load_entries,
     _atomic_modify,
+    _get_sections,
+    _is_hex_color,
+    _normalize_sections,
+    _normalize_section_colors,
+    _normalize_section_icons,
+    _save_json_object,
     _semantic_search,
     _sanitize_content,
     _sanitize_tags,
@@ -29,12 +35,199 @@ from rememb.helpers import (
 logger = logging.getLogger(__name__)
 
 
+SECTIONS = list(DEFAULT_SECTIONS)
+
+
+_POSITIVE_INT_CONFIG_KEYS = {
+    "max_content_length",
+    "max_tag_length",
+    "max_tags_per_entry",
+    "max_entries",
+    "entry_batch_size",
+}
+
+_NON_NEGATIVE_INT_CONFIG_KEYS = {
+    "semantic_model_idle_ttl_seconds",
+    "entry_load_threshold",
+}
+
+
+def _validate_sections_config(root: Path, raw_sections: object) -> list[str]:
+    if not isinstance(raw_sections, list):
+        raise RemembValidationError("sections must be a list of section names.")
+
+    for item in raw_sections:
+        if not isinstance(item, str):
+            raise RemembValidationError("sections must contain only strings.")
+
+    normalized = _normalize_sections(raw_sections)
+
+    if not normalized:
+        raise RemembValidationError("At least one section is required.")
+
+    return normalized
+
+
+def _plan_section_migration(
+    root: Path,
+    current_sections: list[str],
+    requested_sections: list[str],
+) -> tuple[list[str], set[str], str | None]:
+    entries = _load_entries(root)
+    removed_sections = set(current_sections) - set(requested_sections)
+    used_removed_sections = {
+        str(entry.get("section", "")).strip().lower()
+        for entry in entries
+        if str(entry.get("section", "")).strip().lower() in removed_sections
+    }
+
+    final_sections = list(requested_sections)
+    migration_target: str | None = None
+    if used_removed_sections:
+        migration_target = DEFAULT_REMOVED_SECTION_NAME
+        if migration_target not in final_sections:
+            final_sections.append(migration_target)
+
+    return final_sections, used_removed_sections, migration_target
+
+
+def _migrate_entries_to_section(root: Path, source_sections: set[str], target_section: str) -> dict[str, str]:
+    def migrate(entries: list[dict]) -> dict[str, str]:
+        moved_entries: dict[str, str] = {}
+        for entry in entries:
+            current_section = str(entry.get("section", "")).strip().lower()
+            if current_section in source_sections:
+                moved_entries[str(entry.get("id", ""))] = current_section
+                entry["section"] = target_section
+                entry["updated_at"] = _now()
+        return moved_entries
+
+    return _atomic_modify(root, migrate)
+
+
+def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None:
+    if not moved_entries:
+        return
+
+    def restore(entries: list[dict]) -> None:
+        for entry in entries:
+            entry_id = str(entry.get("id", ""))
+            if entry_id in moved_entries:
+                entry["section"] = moved_entries[entry_id]
+                entry["updated_at"] = _now()
+        return None
+
+    _atomic_modify(root, restore)
+
+
+def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
+    meta_file = _meta_path(root)
+    existing_meta: dict[str, object] = {}
+    if meta_file.exists():
+        try:
+            loaded_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if isinstance(loaded_meta, dict):
+                existing_meta = dict(loaded_meta)
+        except (json.JSONDecodeError, OSError):
+            existing_meta = {}
+
+    meta = dict(existing_meta)
+    meta["version"] = str(meta.get("version") or "1")
+    meta["project"] = str(meta.get("project") or project_name or root.name)
+    meta["created_at"] = str(meta.get("created_at") or _now())
+    meta["sections"] = list(sections)
+    _save_json_object(meta_file, meta)
+
+
+def _validate_config_updates(
+    root: Path,
+    current_config: dict[str, object],
+    updates: dict[str, object],
+) -> dict[str, object]:
+    if not isinstance(updates, dict) or not updates:
+        raise RemembValidationError("Provide at least one configuration field to update.")
+
+    next_config: dict[str, object] = dict(current_config)
+    for key, value in updates.items():
+        if key not in current_config:
+            raise RemembValidationError(f"Unknown config key: {key}")
+
+        if key in _POSITIVE_INT_CONFIG_KEYS:
+            try:
+                parsed = int(str(value).strip())
+            except (TypeError, ValueError):
+                raise RemembValidationError(f"{key} must be a positive integer.") from None
+            if parsed <= 0:
+                raise RemembValidationError(f"{key} must be a positive integer.")
+            next_config[key] = parsed
+            continue
+
+        if key in _NON_NEGATIVE_INT_CONFIG_KEYS:
+            try:
+                parsed = int(str(value).strip())
+            except (TypeError, ValueError):
+                raise RemembValidationError(f"{key} must be a non-negative integer.") from None
+            if parsed < 0:
+                raise RemembValidationError(f"{key} must be a non-negative integer.")
+            next_config[key] = parsed
+            continue
+
+        if key == "semantic_model_name":
+            model_name = str(value).strip()
+            if not model_name:
+                raise RemembValidationError("semantic_model_name cannot be empty.")
+            next_config[key] = model_name
+            continue
+
+        if key == "sections":
+            next_config[key] = _validate_sections_config(root, value)
+            continue
+
+        if key == "section_icons":
+            if not isinstance(value, dict):
+                raise RemembValidationError("section_icons must be a dictionary keyed by section name.")
+            for section_name, icon in value.items():
+                if not isinstance(section_name, str) or not isinstance(icon, str) or not icon.strip():
+                    raise RemembValidationError("section_icons values must be non-empty strings.")
+            next_config[key] = dict(value)
+            continue
+
+        if key == "section_colors":
+            if not isinstance(value, dict):
+                raise RemembValidationError("section_colors must be a dictionary keyed by section name.")
+            for section_name, color in value.items():
+                if not isinstance(section_name, str) or not _is_hex_color(color):
+                    raise RemembValidationError("section_colors values must be hex colors like #12abef.")
+            next_config[key] = {str(section_name): str(color).strip().lower() for section_name, color in value.items()}
+            continue
+
+        next_config[key] = value
+
+    current_sections = _validate_sections_config(root, current_config.get("sections", DEFAULT_SECTIONS))
+    requested_sections = _validate_sections_config(root, next_config.get("sections", current_sections))
+    final_sections, used_removed_sections, migration_target = _plan_section_migration(
+        root,
+        current_sections,
+        requested_sections,
+    )
+    next_config["sections"] = final_sections
+    next_config["section_icons"] = _normalize_section_icons(next_config.get("section_icons"), final_sections)
+    next_config["section_colors"] = _normalize_section_colors(next_config.get("section_colors"), final_sections)
+    next_config["_used_removed_sections"] = used_removed_sections
+    next_config["_migration_target"] = migration_target
+
+    return next_config
+
+
 __all__ = [
     "SECTIONS",
     "init",
+    "get_config",
+    "update_config",
     "write_entry",
     "consolidate_entries",
     "read_entries",
+    "read_entries_page",
     "search_entries",
     "delete_entry",
     "edit_entry",
@@ -59,19 +252,27 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     rememb = _rememb_path(root)
     rememb.mkdir(parents=True, exist_ok=True)
 
+    config_file = rememb / CONFIG_FILE
+    config_data = DEFAULT_CONFIG.copy()
+    if config_file.exists():
+        try:
+            loaded_config = json.loads(config_file.read_text(encoding="utf-8"))
+            if isinstance(loaded_config, dict):
+                config_data.update(loaded_config)
+        except (json.JSONDecodeError, OSError):
+            pass
+
     entries_file = _entries_path(root)
     if not entries_file.exists():
         entries_file.write_text(json.dumps([], indent=2), encoding="utf-8")
 
-    meta_file = _meta_path(root)
-    if not meta_file.exists():
-        meta = {
-            "version": "1",
-            "project": project_name or ("global" if global_mode else root.name),
-            "created_at": _now(),
-            "sections": SECTIONS,
-        }
-        meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+    _sync_meta_sections(
+        root,
+        list(config_data.get("sections", DEFAULT_SECTIONS)),
+        project_name=project_name or ("global" if global_mode else root.name),
+    )
+    _store_context.clear_config_cache(root)
 
     if not global_mode:
         gitignore = root / ".gitignore"
@@ -101,7 +302,7 @@ def write_entry(
     
     Args:
         root: Project root path
-        section: Section name (one of SECTIONS)
+        section: Section name (one of the configured sections)
         content: Entry content (1-3 sentences recommended)
         tags: Optional list of tags for categorization
         skip_duplicates: If True, reject duplicate content in same section
@@ -120,7 +321,7 @@ def write_entry(
         f"write_entry called: section={section}, skip_duplicates={skip_duplicates}, semantic_scope={semantic_scope}"
     )
     _assert_initialized(root)
-    section = _validate_section(section)
+    section = _validate_section(section, root)
     normalized_scope = semantic_scope.lower().strip()
     if normalized_scope not in {"global", "section"}:
         raise RemembValidationError("Invalid semantic_scope. Use 'global' or 'section'.")
@@ -149,7 +350,7 @@ def write_entry(
                 conflict = _check_semantic_conflict(root, semantic_entries, content, model)
                 if conflict:
                     raise RemembValidationError(
-                        f"🚨 Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
+                        f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
                         f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
                     )
             except ImportError:
@@ -183,6 +384,36 @@ def write_entry(
     return _atomic_modify(root, add_entry)
 
 
+def get_config(root: Path) -> dict:
+    """Return the effective configuration for the given root."""
+    _assert_initialized(root)
+    return dict(_store_context.get_config(root))
+
+
+def update_config(root: Path, updates: dict[str, object]) -> dict:
+    """Persist validated configuration updates for the given root."""
+    _assert_initialized(root)
+    current_config = _store_context.get_config(root)
+    validated_config = _validate_config_updates(root, current_config, updates)
+    used_removed_sections = set(validated_config.pop("_used_removed_sections", set()))
+    migration_target = validated_config.pop("_migration_target", None)
+    moved_entries: dict[str, str] = {}
+
+    try:
+        if used_removed_sections and migration_target:
+            moved_entries = _migrate_entries_to_section(root, used_removed_sections, migration_target)
+        updated_config = _store_context.update_config(root, validated_config)
+        _sync_meta_sections(root, list(updated_config.get("sections", DEFAULT_SECTIONS)))
+        return updated_config
+    except Exception:
+        if moved_entries:
+            try:
+                _restore_migrated_entries(root, moved_entries)
+            except Exception:
+                logger.exception("Failed to restore entries after configuration update error.")
+        raise
+
+
 def consolidate_entries(
     root: Path,
     section: str | None = None,
@@ -204,7 +435,7 @@ def consolidate_entries(
         f"consolidate_entries called: section={section}, mode={mode}, similarity_threshold={similarity_threshold}"
     )
     _assert_initialized(root)
-    target_section = _validate_section(section) if section else None
+    target_section = _validate_section(section, root) if section else None
     normalized_mode = mode.lower().strip()
 
     if normalized_mode not in {"exact", "semantic"}:
@@ -224,19 +455,14 @@ def consolidate_entries(
         normalized = " ".join(content.split()).strip().lower()
         return _safe_str(entry.get("section", "context")), normalized
 
-    def _pick_created_at(current: str, incoming: str) -> str:
+    def _pick_timestamp(current: str, incoming: str, *, prefer_latest: bool) -> str:
         if not current:
             return incoming
         if not incoming:
             return current
+        if prefer_latest:
+            return current if current >= incoming else incoming
         return current if current <= incoming else incoming
-
-    def _pick_updated_at(current: str, incoming: str) -> str:
-        if not current:
-            return incoming
-        if not incoming:
-            return current
-        return current if current >= incoming else incoming
 
     def _pick_content(current: str, incoming: str) -> str:
         if len(incoming.strip()) > len(current.strip()):
@@ -345,13 +571,15 @@ def consolidate_entries(
                 _safe_str(existing.get("content")),
                 _safe_str(entry.get("content")),
             )
-            existing["created_at"] = _pick_created_at(
+            existing["created_at"] = _pick_timestamp(
                 _safe_str(existing.get("created_at")),
                 _safe_str(entry.get("created_at")),
+                prefer_latest=False,
             )
-            existing["updated_at"] = _pick_updated_at(
+            existing["updated_at"] = _pick_timestamp(
                 _safe_str(existing.get("updated_at")),
                 _safe_str(entry.get("updated_at")),
+                prefer_latest=True,
             )
 
             existing_access = _safe_int(existing.get("access_count"))
@@ -362,7 +590,11 @@ def consolidate_entries(
 
             existing_last_accessed = _safe_str(existing.get("last_accessed"))
             incoming_last_accessed = _safe_str(entry.get("last_accessed"))
-            last_accessed = _pick_updated_at(existing_last_accessed, incoming_last_accessed)
+            last_accessed = _pick_timestamp(
+                existing_last_accessed,
+                incoming_last_accessed,
+                prefer_latest=True,
+            )
             if last_accessed:
                 existing["last_accessed"] = last_accessed
 
@@ -470,7 +702,7 @@ def edit_entry(root: Path, entry_id: str, content: str | None = None, section: s
                 if content is not None:
                     e["content"] = _sanitize_content(content, root)
                 if section is not None:
-                    e["section"] = _validate_section(section)
+                    e["section"] = _validate_section(section, root)
                 if tags is not None:
                     e["tags"] = _sanitize_tags(tags, root)
                 e["updated_at"] = _now()
@@ -504,19 +736,127 @@ def read_entries(root: Path, section: str | None = None) -> list[dict]:
     return entries
 
 
-def search_entries(root: Path, query: str, top_k: int = 5) -> list[dict]:
+def read_entries_page(
+    root: Path,
+    section: str | None = None,
+    *,
+    tag: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+    sort_by: str = "storage",
+    descending: bool = False,
+) -> dict:
+    """Read a page of entries from memory.
+
+    Args:
+        root: Project root path
+        section: Optional section filter
+        tag: Optional exact tag filter
+        offset: Zero-based start index in the filtered/sorted result set
+        limit: Maximum number of entries to return
+        sort_by: Sort mode, either "storage" or "recent"
+        descending: If True, return the selected sort in descending order
+
+    Returns:
+        Dictionary with items, total, offset, limit, next_offset, and has_more
+
+    Raises:
+        RemembNotInitializedError: If rememb not initialized
+        RemembValidationError: If offset, limit, or sort_by are invalid
+    """
+    logger.debug(
+        "read_entries_page called: section=%s, tag=%s, offset=%s, limit=%s, sort_by=%s, descending=%s",
+        section,
+        tag,
+        offset,
+        limit,
+        sort_by,
+        descending,
+    )
+    _assert_initialized(root)
+
+    if offset < 0:
+        raise RemembValidationError("offset must be >= 0")
+    if limit <= 0:
+        raise RemembValidationError("limit must be > 0")
+
+    normalized_sort = sort_by.lower().strip()
+    if normalized_sort not in {"storage", "recent"}:
+        raise RemembValidationError("sort_by must be 'storage' or 'recent'")
+
+    entries = _load_entries(root)
+    if section:
+        entries = [e for e in entries if e["section"] == section.lower()]
+    if tag:
+        normalized_tag = tag.lower().strip()
+        entries = [e for e in entries if normalized_tag in e.get("tags", [])]
+
+    if normalized_sort == "recent":
+        entries = sorted(
+            entries,
+            key=lambda entry: entry.get("updated_at") or entry.get("created_at") or "",
+            reverse=descending,
+        )
+    elif descending:
+        entries = list(reversed(entries))
+
+    total = len(entries)
+    items = entries[offset:offset + limit]
+    next_offset = offset + len(items)
+
+    logger.info(
+        "Read page of %s entries (offset=%s, limit=%s, total=%s)%s",
+        len(items),
+        offset,
+        limit,
+        total,
+        (
+            (f" from section '{section}'" if section else "")
+            + (f" with tag '{tag}'" if tag else "")
+        ),
+    )
+    return {
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "next_offset": next_offset,
+        "has_more": next_offset < total,
+    }
+
+
+def search_entries(
+    root: Path,
+    query: str,
+    top_k: int = 5,
+    section: str | None = None,
+    tag: str | None = None,
+) -> list[dict]:
     """Search entries by semantic similarity.
     
     Args:
         root: Project root path
         query: Search query (natural language or keywords)
         top_k: Maximum number of results to return
+        section: Optional section filter applied before semantic search
+        tag: Optional exact tag filter applied before semantic search
     
     Returns:
         List of top-k matching entries ranked by similarity
     """
-    logger.debug(f"search_entries called: query='{query}', top_k={top_k}")
+    logger.debug(
+        "search_entries called: query='%s', top_k=%s, section=%s, tag=%s",
+        query,
+        top_k,
+        section,
+        tag,
+    )
     entries = _load_entries(root)
+    if section:
+        entries = [entry for entry in entries if entry.get("section") == section.lower()]
+    if tag:
+        normalized_tag = tag.lower().strip()
+        entries = [entry for entry in entries if normalized_tag in entry.get("tags", [])]
     if not entries:
         logger.warning("No entries to search")
         return []
@@ -560,11 +900,12 @@ def get_stats(root: Path) -> dict:
     """
     entries = _load_entries(root)
     total = len(entries)
-    by_section = {s: 0 for s in SECTIONS}
+    by_section = {s: 0 for s in _get_sections(root)}
     for e in entries:
         sec = e.get("section", "context")
-        if sec in by_section:
-            by_section[sec] += 1
+        if sec not in by_section:
+            by_section[sec] = 0
+        by_section[sec] += 1
     entries_path = _entries_path(root)
     size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
     timestamps = sorted(e.get("created_at", "") for e in entries if e.get("created_at"))
@@ -608,9 +949,12 @@ def format_entries(entries: list[dict], include_id: bool = False) -> str:
     return "\n".join(lines)
 
 _store_instance = type('StoreModule', (), {
+    'get_config': get_config,
+    'update_config': update_config,
     'write_entry': write_entry,
     'consolidate_entries': consolidate_entries,
     'read_entries': read_entries,
+    'read_entries_page': read_entries_page,
     'search_entries': search_entries,
     'delete_entry': delete_entry,
     'edit_entry': edit_entry,

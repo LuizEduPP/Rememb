@@ -180,40 +180,30 @@ def escape(text: str) -> str:
     return html.escape(text)
 
 
+def _print_message(message: str, prefix: str = "") -> None:
+    """Print a formatted terminal message with an optional prefix."""
+    rendered = f"{prefix}{message}" if prefix else message
+    print(f"\n{rendered}\n")
+
+
 def _print_error(message: str, **kwargs) -> None:
-    """Print error message.
-    
-    Args:
-        message: Error message to display
-    """
-    print(f"\n✗ Error: {message}\n")
+    """Print error message."""
+    _print_message(message, "✗ Error: ")
 
 
 def _print_success(message: str, **kwargs) -> None:
-    """Print success message.
-    
-    Args:
-        message: Success message to display
-    """
-    print(f"\n✓ {message}\n")
+    """Print success message."""
+    _print_message(message, "✓ ")
 
 
 def _print_warning(message: str, **kwargs) -> None:
-    """Print warning message.
-    
-    Args:
-        message: Warning message to display
-    """
-    print(f"\n⚠ {message}\n")
+    """Print warning message."""
+    _print_message(message, "⚠ ")
 
 
 def _print_info(message: str, **kwargs) -> None:
-    """Print info message.
-    
-    Args:
-        message: Info message to display
-    """
-    print(f"\n{message}\n")
+    """Print info message."""
+    _print_message(message)
 
 
 def _handle_error(func, *args, **kwargs) -> Any:

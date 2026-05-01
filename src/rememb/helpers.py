@@ -17,12 +17,13 @@ import hashlib
 import json
 import logging
 import platform
+import random
 import re
 import threading
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 try:
     import numpy as np
@@ -30,14 +31,16 @@ except ImportError:
     np = None
 
 from rememb.config import (
-    SECTIONS,
+    DEFAULT_ALL_SECTION_COLOR,
+    DEFAULT_CUSTOM_SECTION_ICON,
+    DEFAULT_SECTION_COLORS,
+    DEFAULT_SECTION_ICONS,
+    DEFAULT_SECTIONS,
     CONFIG_FILE,
-    DEFAULT_MAX_CONTENT_LENGTH,
-    DEFAULT_MAX_TAG_LENGTH,
-    DEFAULT_MAX_TAGS_PER_ENTRY,
-    DEFAULT_MAX_ENTRIES,
+    DEFAULT_CONFIG,
     DEFAULT_SEMANTIC_MODEL_NAME,
     DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
+    SECTION_COLOR_PALETTE,
 )
 from rememb.utils import _rememb_path, _entries_path, is_initialized
 from rememb.exceptions import (
@@ -47,6 +50,97 @@ from rememb.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_sections(value: object) -> list[str]:
+    """Normalize configured sections to a unique lowercase list."""
+    if not isinstance(value, list):
+        return list(DEFAULT_SECTIONS)
+
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        section = item.strip().lower()
+        if not section:
+            continue
+        section = "".join(char for char in section if char.isalnum() or char in "_-")
+        if section and section not in normalized:
+            normalized.append(section)
+
+    return normalized or list(DEFAULT_SECTIONS)
+
+
+def _copy_config_value(value: object) -> object:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, dict):
+        return dict(value)
+    return value
+
+
+def _is_hex_color(value: object) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"#[0-9a-fA-F]{6}", value.strip()))
+
+
+def _pick_random_section_color(used_colors: set[str]) -> str:
+    palette = [color for color in SECTION_COLOR_PALETTE if color not in used_colors]
+    chooser = random.SystemRandom()
+    if palette:
+        return chooser.choice(palette)
+
+    while True:
+        color = "#" + "".join(f"{chooser.randint(64, 224):02x}" for _ in range(3))
+        if color not in used_colors:
+            return color
+
+
+def _normalize_section_icons(value: object, sections: list[str]) -> dict[str, str]:
+    icon_map = value if isinstance(value, dict) else {}
+    normalized: dict[str, str] = {}
+    for section in sections:
+        icon = icon_map.get(section)
+        if isinstance(icon, str) and icon.strip():
+            normalized[section] = icon.strip()
+        else:
+            normalized[section] = DEFAULT_SECTION_ICONS.get(section, DEFAULT_CUSTOM_SECTION_ICON)
+    return normalized
+
+
+def _normalize_section_colors(value: object, sections: list[str]) -> dict[str, str]:
+    color_map = value if isinstance(value, dict) else {}
+    normalized: dict[str, str] = {}
+    used_colors: set[str] = set()
+
+    for section in sections:
+        color = color_map.get(section)
+        if _is_hex_color(color):
+            normalized_color = str(color).strip().lower()
+        elif section in DEFAULT_SECTION_COLORS:
+            normalized_color = DEFAULT_SECTION_COLORS[section]
+        else:
+            normalized_color = _pick_random_section_color(used_colors)
+        normalized[section] = normalized_color
+        used_colors.add(normalized_color)
+
+    return normalized
+
+
+def _save_json_object(filepath: Path, data: dict[str, Any]) -> None:
+    """Save a JSON object atomically."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(data, indent=2)
+    tmp_path = filepath.parent / (filepath.name + ".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp_path.replace(filepath)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
 
 @runtime_checkable
 class MemoryStore(Protocol):
@@ -67,8 +161,37 @@ class MemoryStore(Protocol):
     def read_entries(self, root: Path, section: str | None = None) -> list[dict]:
         """Read entries from memory."""
         ...
+
+    def read_entries_page(
+        self,
+        root: Path,
+        section: str | None = None,
+        *,
+        tag: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        sort_by: str = "storage",
+        descending: bool = False,
+    ) -> dict[str, Any]:
+        """Read one page of entries from memory."""
+        ...
+
+    def get_config(self, root: Path) -> dict[str, Any]:
+        """Load the effective configuration for the given root."""
+        ...
+
+    def update_config(self, root: Path, updates: dict[str, Any]) -> dict[str, Any]:
+        """Persist validated configuration updates for the given root."""
+        ...
     
-    def search_entries(self, root: Path, query: str, top_k: int = 5) -> list[dict]:
+    def search_entries(
+        self,
+        root: Path,
+        query: str,
+        top_k: int = 5,
+        section: str | None = None,
+        tag: str | None = None,
+    ) -> list[dict]:
         """Search entries by content or tags."""
         ...
     
@@ -92,10 +215,16 @@ class StoreContext:
     to enable dependency injection and easier testing.
     """
     def __init__(self):
-        self._model_cache: dict = {}
-        self._config_cache: dict = {}
+        self._model_cache: dict[str, Any] = {}
+        self._config_cache: dict[str, dict[str, Any]] = {}
         self._model_lock = threading.Lock()
         self._model_release_timer: threading.Timer | None = None
+
+    def clear_config_cache(self, root: Path | None = None) -> None:
+        if root is None:
+            self._config_cache.clear()
+            return
+        self._config_cache.pop(str(root), None)
 
     @staticmethod
     def _parse_non_negative_int(value: object) -> int | None:
@@ -198,7 +327,7 @@ class StoreContext:
                 self._model_cache["model_name"] = model_name
                 return self._model_cache["model"]
     
-    def get_config(self, root: Path) -> dict:
+    def get_config(self, root: Path) -> dict[str, Any]:
         """Load configuration from .rememb/config.json or use defaults.
         
         Args:
@@ -212,35 +341,68 @@ class StoreContext:
             return self._config_cache[root_key]
         
         config_path = _rememb_path(root) / CONFIG_FILE
+        config_needs_write = False
         if config_path.exists():
             try:
-                config = json.loads(config_path.read_text(encoding="utf-8"))
+                loaded_config = json.loads(config_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_config, dict):
+                    config = dict(loaded_config)
+                else:
+                    config = {}
+                    config_needs_write = True
             except (json.JSONDecodeError, OSError):
                 config = {}
+                config_needs_write = True
         else:
             config = {}
-        
-        defaults = {
-            "max_content_length": DEFAULT_MAX_CONTENT_LENGTH,
-            "max_tag_length": DEFAULT_MAX_TAG_LENGTH,
-            "max_tags_per_entry": DEFAULT_MAX_TAGS_PER_ENTRY,
-            "max_entries": DEFAULT_MAX_ENTRIES,
-            "semantic_model_name": DEFAULT_SEMANTIC_MODEL_NAME,
-            "semantic_model_idle_ttl_seconds": DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
-        }
-        
-        for key, value in defaults.items():
+            config_needs_write = True
+
+        for key, value in DEFAULT_CONFIG.items():
             if key not in config:
-                config[key] = value
+                config[key] = _copy_config_value(value)
+                config_needs_write = True
+
+        normalized_sections = _normalize_sections(config.get("sections"))
+        if config.get("sections") != normalized_sections:
+            config["sections"] = normalized_sections
+            config_needs_write = True
+
+        normalized_icons = _normalize_section_icons(config.get("section_icons"), normalized_sections)
+        if config.get("section_icons") != normalized_icons:
+            config["section_icons"] = normalized_icons
+            config_needs_write = True
+
+        normalized_colors = _normalize_section_colors(config.get("section_colors"), normalized_sections)
+        if config.get("section_colors") != normalized_colors:
+            config["section_colors"] = normalized_colors
+            config_needs_write = True
+
+        if config_needs_write:
+            _save_json_object(config_path, config)
         
         self._config_cache[root_key] = config
         return config
+
+    def update_config(self, root: Path, config: dict[str, Any]) -> dict[str, Any]:
+        """Persist validated configuration and refresh cache."""
+        config_path = _rememb_path(root) / CONFIG_FILE
+        _save_json_object(config_path, config)
+        root_key = str(root)
+        self._config_cache[root_key] = dict(config)
+        return dict(config)
 
 
 _store_context = StoreContext()
 
 
-def _validate_section(section: str) -> str:
+def _get_sections(root: Path | None = None) -> list[str]:
+    """Return the effective section list for the given root."""
+    if root is None:
+        return list(DEFAULT_SECTIONS)
+    return list(_store_context.get_config(root).get("sections", DEFAULT_SECTIONS))
+
+
+def _validate_section(section: str, root: Path | None = None) -> str:
     """Validate and normalize section name.
 
     Args:
@@ -250,11 +412,12 @@ def _validate_section(section: str) -> str:
         Lowercase section name
 
     Raises:
-        RemembValidationError: If section is not in SECTIONS
+        RemembValidationError: If section is not in the configured section list
     """
     section = section.lower()
-    if section not in SECTIONS:
-        raise RemembValidationError(f"Invalid section '{section}'. Choose from: {', '.join(SECTIONS)}")
+    sections = _get_sections(root)
+    if section not in sections:
+        raise RemembValidationError(f"Invalid section '{section}'. Choose from: {', '.join(sections)}")
     return section
 
 

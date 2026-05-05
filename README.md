@@ -209,7 +209,7 @@ Short version:
 ```bash
 git clone https://github.com/LuizEduPP/Rememb
 cd rememb
-pip install -e ".[dev,mcp,semantic,pdf]"
+pip install -e ".[dev]"
 ```
 
 PRs welcome. Issues welcome. Stars welcome. 🌟

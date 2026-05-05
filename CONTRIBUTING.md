@@ -18,7 +18,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. Install in development mode:
 ```bash
-pip install -e ".[dev,semantic,pdf,mcp]"
+pip install -e ".[dev]"
 ```
 
 ## Code Style
@@ -34,15 +34,14 @@ pip install -e ".[dev,semantic,pdf,mcp]"
 ```
 src/rememb/
 ├── __init__.py          # Version
+├── cli.py               # CLI entrypoints and help output
+├── config.py            # Default config and constants
 ├── exceptions.py        # Custom exceptions
-├── models.py            # Protocols and contexts
-├── storage.py           # File I/O and locking
-├── search.py            # Semantic search
-├── validation.py        # Input sanitization
-├── cli_utils.py         # CLI helpers
-├── store.py             # Core API
-├── cli.py               # CLI commands
-└── mcp_server.py        # MCP server
+├── helpers.py           # Persistence, validation and search helpers
+├── mcp_server.py        # MCP server surface
+├── store.py             # Core memory API
+├── tui.py               # Textual UI
+└── utils.py             # Shared utilities
 ```
 
 ## Making Changes
@@ -70,9 +69,11 @@ git push origin feature/your-feature-name
 
 3. Describe your changes in the PR description
 
+Release automation and Trusted Publishing are documented in RELEASE.md.
+
 ## Guidelines
 
-- **Keep it simple**: rememb is designed to be lightweight and dependency-free
+- **Keep it simple**: rememb is designed to stay local-first and lightweight to operate
 - **Local-first**: Prefer local storage over remote services
 - **Fail-fast**: Explicit errors over silent fallbacks
 - **Type safety**: Use type hints for all public APIs

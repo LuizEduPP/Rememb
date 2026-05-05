@@ -36,12 +36,17 @@ dependencies = [
 rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
-dev = ["build", "twine"]
+dev = ["build", "twine", "pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [project.urls]
 Homepage = "https://github.com/LuizEduPP/rememb"
+Documentation = "https://github.com/LuizEduPP/rememb/blob/main/README.md"
 Repository = "https://github.com/LuizEduPP/rememb"
 Issues = "https://github.com/LuizEduPP/rememb/issues"
+Changelog = "https://github.com/LuizEduPP/rememb/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -183,5 +183,5 @@ def fetch_model():
             console.print("[bold green]✓[/bold green] Model downloaded successfully.")
             console.print("[dim]You can now use semantic search offline.[/dim]")
     except ImportError:
-        console.print("[bold red]Error:[/bold red] sentence-transformers not installed. Run: [cyan]pip install rememb[semantic][/cyan]")
+        console.print("[bold red]Error:[/bold red] sentence-transformers is missing from the current environment. Reinstall with: [cyan]pip install rememb[/cyan]")
         raise typer.Exit(1)

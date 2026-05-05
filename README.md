@@ -65,13 +65,12 @@ This keeps one MCP process alive, so repeated clients can hit the same loaded em
 
 Do not put `--transport sse` inside a stdio MCP client config. `stdio` clients expect JSON-RPC on stdin/stdout; the SSE mode exposes an HTTP endpoint and must be started separately.
 
-### Without MCP
+### Local usage without MCP
 
 ```bash
-rememb rules   # Print generic rules for AI agents
+rememb          # Open the TUI
+rememb fetch-model   # Download the local embedding model for semantic search
 ```
-
-Copy the output to your editor's rules file (`.windsurfrules`, `.cursorrules`, `CLAUDE.md`, etc.)
 
 ---
 
@@ -182,6 +181,20 @@ rememb --help, -h       # Show help
 
 ---
 
+## Compatibility
+
+The current compatibility surface is tracked explicitly in [COMPATIBILITY.md](COMPATIBILITY.md).
+
+Short version:
+
+- Python 3.9 to 3.12 are covered by CI
+- CLI contract and MCP tool schema have automated test coverage
+- stdio MCP is the primary documented integration path
+- SSE MCP is documented, but not yet covered by end-to-end automated client tests
+- release automation and Trusted Publishing are documented in [RELEASE.md](RELEASE.md)
+
+---
+
 ## Design
 
 - **Local first** — plain JSON file in your project
@@ -196,7 +209,7 @@ rememb --help, -h       # Show help
 ```bash
 git clone https://github.com/LuizEduPP/Rememb
 cd rememb
-pip install -e ".[dev]"
+pip install -e ".[dev,mcp,semantic,pdf]"
 ```
 
 PRs welcome. Issues welcome. Stars welcome. 🌟

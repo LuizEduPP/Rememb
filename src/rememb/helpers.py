@@ -651,12 +651,12 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
     if np is None:
         raise ImportError(
             "Semantic search requires numpy and sentence-transformers.\n"
-            "Install with: pip install rememb[semantic]"
+            "Install with: pip install rememb"
         )
     if model is None:
         raise ImportError(
             "Semantic search requires sentence-transformers.\n"
-            "Install with: pip install rememb[semantic]"
+            "Install with: pip install rememb"
         )
 
     texts = [e["content"] for e in entries]

@@ -12,7 +12,6 @@ It is intentionally conservative. Anything listed here should be read as one of 
 
 | Surface | Status | Notes |
 |---------|--------|-------|
-| Python 3.9 | CI target | Covered by `.github/workflows/ci.yml` |
 | Python 3.10 | CI target | Covered by `.github/workflows/ci.yml` |
 | Python 3.11 | CI target | Covered by `.github/workflows/ci.yml` |
 | Python 3.12 | CI target | Covered by `.github/workflows/ci.yml` |

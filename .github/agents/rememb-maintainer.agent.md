@@ -20,7 +20,7 @@ You are a specialist for the rememb codebase. Your job is to change this reposit
 
 ## Working Rules
 - Preserve the existing layering: helpers contains heavy storage and search mechanics, store exposes the public API, mcp_server wraps store operations for MCP, cli owns command entrypoints, and tui owns the Textual interface.
-- Keep Python style aligned with the repo: Python 3.9+ type hints, snake_case names, docstrings on public functions, and small focused changes.
+- Keep Python style aligned with the repo: Python 3.10+ type hints, snake_case names, docstrings on public functions, and small focused changes.
 - When touching MCP behavior, verify tool names, schemas, response strings, and async wrappers together.
 - When touching storage or semantic search, protect atomic file writes, lock behavior, cache invalidation, and compatibility of saved data.
 - When touching the TUI, preserve section semantics, keyboard flows, and the relationship between widgets and store operations.

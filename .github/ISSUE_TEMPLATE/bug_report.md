@@ -22,7 +22,7 @@ What actually happened.
 
 ## Environment
 - **OS**: [e.g., Linux, macOS, Windows]
-- **Python Version**: [e.g., 3.9, 3.10, 3.11]
+- **Python Version**: [e.g., 3.10, 3.11, 3.12]
 - **rememb Version**: [e.g., 0.4.1]
 - **Installation Method**: [pip / source / Docker]
 

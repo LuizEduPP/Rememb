@@ -23,7 +23,7 @@ pip install -e ".[dev]"
 
 ## Code Style
 
-- Use Python 3.9+ type hints (`list[str]` instead of `List[str]`)
+- Use Python 3.10+ type hints (`list[str]` instead of `List[str]`)
 - Follow PEP 8 guidelines
 - Use snake_case for function and variable names
 - Add docstrings to all public functions

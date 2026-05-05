@@ -5,10 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.3][0.4.4] - 2026-05-01
+## [0.4.4] - 2026-05-05
+
+### Added
+- GitHub Actions CI now validates the project on Python 3.10, 3.11, and 3.12.
+- GitHub release workflow and Trusted Publishing documentation were added to support a reproducible release process.
+- Initial compatibility matrix and explicit public metadata links for documentation and changelog were added.
+
+### Changed
+- Installation and packaging docs were aligned to the current mandatory dependency model.
+- Declared Python support now matches the real MCP constraint: Python 3.10+.
 
 ### Fixed
 - Glama now discovers all 9 MCP tools (`rememb_consolidate` and `rememb_init` were missing from the published package).
+- CLI test handling now strips ANSI formatting before assertions, avoiding false negatives in CI.
 
 ## [0.4.2] - 2026-04-30
 

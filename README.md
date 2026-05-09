@@ -6,7 +6,7 @@
 AI agents forget everything between sessions. `rememb` gives them persistent memory — local, portable, and works with any agent.
 
 ![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
-
+[![MCP Badge](https://lobehub.com/badge/mcp/luizedupp-rememb)](https://lobehub.com/mcp/luizedupp-rememb)
 ---
 
 ## The problem

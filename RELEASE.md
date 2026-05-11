@@ -43,9 +43,14 @@ Create a Trusted Publisher on PyPI with these values:
 
 - project name: `rememb`
 - repository owner: `LuizEduPP`
-- repository name: `rememb`
+- repository name: `Rememb`
 - workflow file: `.github/workflows/release.yml`
 - environment: `pypi`
+
+Important:
+
+- The PyPI project name is lowercase: `rememb`.
+- The GitHub repository name must match the repository claims exactly: `Rememb`.
 
 Strongly recommended:
 
@@ -57,7 +62,7 @@ Create a second Trusted Publisher on TestPyPI with these values:
 
 - project name: `rememb`
 - repository owner: `LuizEduPP`
-- repository name: `rememb`
+- repository name: `Rememb`
 - workflow file: `.github/workflows/release.yml`
 - environment: `testpypi`
 

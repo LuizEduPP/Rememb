@@ -52,6 +52,11 @@ from rememb.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+def _requires_exclusive_lock(mode: str) -> bool:
+    """Return whether the file mode can mutate file contents."""
+    return any(flag in mode for flag in ("+", "w", "a", "x"))
+
+
 def _normalize_sections(value: object) -> list[str]:
     """Normalize configured sections to a unique lowercase list."""
     if not isinstance(value, list):
@@ -449,20 +454,21 @@ def _file_lock(filepath: Path, mode: str = "r+"):
         filepath.write_text("[]", encoding="utf-8")
     
     f = open(filepath, mode, encoding="utf-8")
+    wants_exclusive_lock = _requires_exclusive_lock(mode)
     is_windows = platform.system() == "Windows"
     try:
         if is_windows:
             import msvcrt
-            lock_mode = 2 if "w" in mode else 0
-            msvcrt.locking(f.fileno(), lock_mode, -1)
+            lock_mode = msvcrt.LK_LOCK if wants_exclusive_lock else msvcrt.LK_RLCK
+            msvcrt.locking(f.fileno(), lock_mode, 1)
         else:
             import fcntl
-            fcntl.flock(f, fcntl.LOCK_EX if "w" in mode else fcntl.LOCK_SH)
+            fcntl.flock(f, fcntl.LOCK_EX if wants_exclusive_lock else fcntl.LOCK_SH)
         yield f
     finally:
         if is_windows:
             import msvcrt
-            msvcrt.locking(f.fileno(), 0, -1)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
         else:
             import fcntl
             fcntl.flock(f, fcntl.LOCK_UN)

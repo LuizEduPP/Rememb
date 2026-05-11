@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
+import queue
+from pathlib import Path
 
 import pytest
 
+from rememb.helpers import _file_lock
 from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembValidationError
 from rememb.store import clear_entries, get_stats, init, read_entries, update_config, write_entry
+
+
+def _hold_file_lock(path_str: str, mode: str, entered_conn, release_conn) -> None:
+    with _file_lock(Path(path_str), mode=mode):
+        entered_conn.send("entered")
+        release_conn.recv()
+    entered_conn.close()
+    release_conn.close()
 
 
 def test_init_creates_expected_files_and_gitignore(tmp_path):
@@ -74,3 +86,41 @@ def test_clear_entries_requires_explicit_confirmation(tmp_path):
 
     assert cleared == 1
     assert read_entries(root) == []
+
+
+def test_file_lock_uses_exclusive_lock_for_r_plus_mode(tmp_path):
+    entries_path = tmp_path / "entries.json"
+    entries_path.write_text("[]", encoding="utf-8")
+
+    ctx = multiprocessing.get_context("spawn")
+    first_entered_parent, first_entered_child = ctx.Pipe(duplex=False)
+    second_entered_parent, second_entered_child = ctx.Pipe(duplex=False)
+    first_release_child, first_release_parent = ctx.Pipe(duplex=False)
+    second_release_child, second_release_parent = ctx.Pipe(duplex=False)
+
+    first = ctx.Process(target=_hold_file_lock, args=(str(entries_path), "r+", first_entered_child, first_release_child))
+    second = ctx.Process(target=_hold_file_lock, args=(str(entries_path), "r+", second_entered_child, second_release_child))
+
+    first.start()
+    assert first_entered_parent.recv() == "entered"
+
+    second.start()
+
+    with pytest.raises(queue.Empty):
+        if second_entered_parent.poll(0.3):
+            raise AssertionError("second writer acquired r+ lock before first released it")
+        raise queue.Empty()
+
+    first_release_parent.send("release")
+    first.join(timeout=5)
+    assert first.exitcode == 0
+
+    assert second_entered_parent.recv() == "entered"
+    second_release_parent.send("release")
+    second.join(timeout=5)
+    assert second.exitcode == 0
+
+    first_entered_parent.close()
+    first_release_parent.close()
+    second_entered_parent.close()
+    second_release_parent.close()

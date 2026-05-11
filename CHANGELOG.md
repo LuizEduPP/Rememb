@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-05-11
+
+### Fixed
+- Write locks now treat all mutating file modes, including `r+`, as exclusive, preventing concurrent writers from corrupting `.rememb/entries.json` during large delete or consolidation operations.
+- Added a regression test that verifies a second process cannot acquire a writable lock while another `r+` operation is still in progress.
+
 ## [0.4.4] - 2026-05-05
 
 ### Added

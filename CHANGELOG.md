@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-05-21
+
+### Changed
+- Package and release metadata were aligned to version `0.4.6` across the Python package, Docker image install target, and MCP registry metadata.
+- README was refreshed to reflect the current Web UI and now includes real screenshots for the main memories view, stats view, and settings view.
+
+### Fixed
+- Semantic embedding cache persistence now avoids being overwritten by filtered or section-scoped operations, preventing stale subset embeddings from poisoning the shared on-disk cache.
+- Store edit and delete operations now require an initialized root before mutating state, avoiding partially initialized `.rememb/` directories.
+- Entry formatting now distinguishes summary output from full output correctly, and the Web UI settings flow now falls back safely when numeric pagination inputs parse to invalid values.
+
 ## [0.4.5] - 2026-05-11
 
 ### Fixed

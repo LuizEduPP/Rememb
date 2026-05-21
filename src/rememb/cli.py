@@ -1,4 +1,4 @@
-"""CLI for rememb - Launches TUI by default, MCP server available."""
+"""CLI for rememb - Launches web UI by default, MCP server available."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _show_help():
     cmd_table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", border_style="green")
     cmd_table.add_column("Command", style="bold green", width=16)
     cmd_table.add_column("Description", style="white")
-    cmd_table.add_row("rememb", "Launch interactive TUI")
+    cmd_table.add_row("rememb", "Launch web UI (opens in browser)")
     cmd_table.add_row("mcp", "Start MCP server (stdio or local SSE)")
     cmd_table.add_row("fetch-model", "Download local embedding model for offline use")
     
@@ -91,7 +91,7 @@ def _show_help():
         padding=(1, 2)
     ))
     
-    console.print("\n[dim]Tip: Run without arguments to start the interactive TUI.[/dim]\n")
+    console.print("\n[dim]Tip: Run without arguments to open the web UI in your browser.[/dim]\n")
 
 
 @app.callback(invoke_without_command=True)
@@ -100,14 +100,16 @@ def main(
     version: bool | None = typer.Option(
         None, "--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the web UI server."),
+    port: int = typer.Option(8080, "--port", min=1, max=65535, help="Port for the web UI server."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Start server without opening the browser."),
 ) -> None:
     if ctx.invoked_subcommand is None:
-
         try:
-            from rememb.tui import run_tui
-            run_tui()
+            from rememb.web import run_web
+            run_web(host=host, port=port, open_browser=not no_browser)
         except ImportError as e:
-            print(f"Error loading TUI: {e}")
+            print(f"Error loading web UI: {e}")
             _show_help()
             raise typer.Exit(1)
 

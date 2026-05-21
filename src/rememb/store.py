@@ -22,7 +22,6 @@ from rememb.helpers import (
     _is_hex_color,
     _normalize_sections,
     _normalize_section_colors,
-    _normalize_section_icons,
     _save_json_object,
     _semantic_search,
     _sanitize_content,
@@ -194,15 +193,6 @@ def _validate_config_updates(
             next_config[key] = _validate_sections_config(root, value)
             continue
 
-        if key == "section_icons":
-            if not isinstance(value, dict):
-                raise RemembValidationError("section_icons must be a dictionary keyed by section name.")
-            for section_name, icon in value.items():
-                if not isinstance(section_name, str) or not isinstance(icon, str) or not icon.strip():
-                    raise RemembValidationError("section_icons values must be non-empty strings.")
-            next_config[key] = dict(value)
-            continue
-
         if key == "section_colors":
             if not isinstance(value, dict):
                 raise RemembValidationError("section_colors must be a dictionary keyed by section name.")
@@ -222,7 +212,6 @@ def _validate_config_updates(
         requested_sections,
     )
     next_config["sections"] = final_sections
-    next_config["section_icons"] = _normalize_section_icons(next_config.get("section_icons"), final_sections)
     next_config["section_colors"] = _normalize_section_colors(next_config.get("section_colors"), final_sections)
     next_config["_used_removed_sections"] = used_removed_sections
     next_config["_migration_target"] = migration_target

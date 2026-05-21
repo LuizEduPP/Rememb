@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>rememb</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=MuseoModerno:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Variables ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:        #FBFDF9;
+  --surface:   #122146;
+  --card:      #FFFFFF;
+  --card-h:    #EEF2F8;
+  --border:    #C6D0E0;
+  --border-h:  #96AACB;
+  --text:      #122146;
+  --muted:     #6A7B8A;
+  --accent:    #04D8E7;
+  --accent-h:  #122146;
+  --accent-dim:#04D8E714;
+  --navy:      #122146;
+  --danger:    #c04040;
+  --danger-h:  #e05050;
+  --danger-dim:#c0404028; /* danger tinted bg for hover */
+  --success:   #30b870;
+  --navy-h:    #1A2E60;   /* primary button hover bg */
+  --accent-border: #04D8E730; /* subtle accent border */
+  --radius:    10px;
+  --radius-sm: 6px;
+  --shadow:    0 2px 16px #12214620;
+  --font:      "MuseoModerno", system-ui, sans-serif;
+  --mono:      "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  --sidebar-w: 220px;
+  --header-h:  60px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+#app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+header {
+  height: var(--header-h);
+  background: rgba(251, 253, 249, 0.88);
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
+  border-bottom: 1px solid rgba(198, 208, 224, 0.55);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 24px rgba(18, 33, 70, 0.06), 0 0 0 1px rgba(4, 216, 231, 0.04);
+}
+
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; white-space: nowrap; }
+.logo img { height: 30px; width: auto; display: block; }
+.logo-text { display: flex; align-items: center; gap: 7px; line-height: 1; }
+.logo-name { font-weight: 700; font-size: 15px; color: var(--text); font-family: var(--font); letter-spacing: 0.02em; }
+.logo-version {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent); background: var(--accent-dim);
+  border: 1px solid var(--accent-border); border-radius: 99px;
+  padding: 1px 6px; line-height: 1.5;
+}
+.header-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; margin: 0 2px; }
+
+.search-wrap { flex: 1; max-width: 400px; position: relative; }
+.search-wrap input {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 7px 42px 7px 34px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  font-family: var(--font);
+}
+.search-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.search-wrap input::placeholder { color: var(--muted); }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.kbd-hint {
+  position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; font-family: var(--mono); color: var(--muted);
+  background: var(--card-h); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; pointer-events: none;
+  transition: opacity .2s; letter-spacing: 0;
+  line-height: 1.6;
+}
+.search-wrap input:focus ~ .kbd-hint { opacity: 0; }
+
+.header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; letter-spacing: .01em;
+  transition: background .18s cubic-bezier(.2,.8,.2,1), color .18s, box-shadow .18s cubic-bezier(.2,.8,.2,1), transform .14s cubic-bezier(.2,.8,.2,1);
+  white-space: nowrap; font-family: var(--font);
+  outline: none; position: relative;
+}
+.btn:focus-visible { box-shadow: 0 0 0 3px var(--accent-dim) !important; }
+.btn:active { transform: scale(0.96) !important; }
+
+.btn-primary {
+  background: var(--navy); color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-border), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.btn-primary:hover {
+  background: var(--navy-h); color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-border), 0 4px 18px rgba(4,216,231,0.28), inset 0 1px 0 rgba(255,255,255,0.08);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: transparent; color: var(--muted);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.btn-ghost:hover {
+  background: var(--card-h); color: var(--text);
+  box-shadow: 0 0 0 1px var(--border-h);
+}
+
+.btn-danger {
+  background: var(--danger); color: #fff;
+  box-shadow: 0 0 0 1px rgba(192,64,64,0.30), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.btn-danger:hover {
+  background: var(--danger-h);
+  box-shadow: 0 0 0 1px rgba(224,80,80,0.40), 0 4px 16px rgba(192,64,64,0.28);
+  transform: translateY(-1px);
+}
+
+.btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 8px; }
+
+#main-body { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────── */
+aside {
+  width: var(--sidebar-w);
+  background: #F3F7FC;
+  border-right: 1px solid #DDE6F0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 0;
+}
+.sidebar-sections { flex: 1; overflow-y: auto; min-height: 0; padding: 14px 0 8px; }
+.sidebar-bottom { flex-shrink: 0; }
+
+.sidebar-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--muted); padding: 0 12px 8px 16px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar-label::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--border);
+}
+
+.section-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px;
+  margin: 1px 8px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background .18s, box-shadow .18s, transform .1s;
+  user-select: none;
+}
+.section-item:hover { background: rgba(18,33,70,0.06); }
+.section-item:active { transform: scale(0.97); }
+.section-item.active {
+  background: rgba(4,216,231,0.10);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.section-item.active .section-name { color: var(--navy); font-weight: 600; }
+.section-item.active .section-icon { color: var(--accent); }
+
+.section-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.section-icon {
+  font-size: 14px; width: 18px; text-align: center; flex-shrink: 0;
+  color: var(--muted); transition: color .18s;
+}
+.section-name { flex: 1; font-size: 13px; color: var(--muted); transition: color .18s; }
+.section-count {
+  font-size: 10px; color: var(--muted);
+  background: rgba(18,33,70,0.06);
+  border: 1px solid var(--border);
+  padding: 1px 7px; border-radius: 99px;
+  font-family: var(--mono); line-height: 1.6;
+  opacity: 0.7; transition: opacity .18s, background .18s, border-color .18s, color .18s;
+}
+.section-item:hover .section-count,
+.section-item.active .section-count {
+  opacity: 1; color: var(--navy);
+  border-color: rgba(4,216,231,0.35);
+  background: rgba(4,216,231,0.08);
+}
+
+.sidebar-divider { display: none; }
+
+.stats-block {
+  margin: 6px 8px 10px;
+  background: rgba(18,33,70,0.04);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 8px 6px;
+}
+.stats-block .sidebar-label { padding: 0 0 8px 0; }
+.stat-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 4px; border-radius: 6px;
+  transition: background .12s;
+}
+.stat-row:hover { background: rgba(18,33,70,0.04); }
+.stat-label { font-size: 11px; color: var(--muted); }
+.stat-value { font-size: 11px; font-family: var(--mono); color: var(--text); }
+
+.sidebar-footer {
+  padding: 10px 8px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+.sidebar-footer .btn { width: 100%; justify-content: center; }
+
+/* ── Main content ──────────────────────────────────────────────────── */
+main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--bg);
+}
+
+.section-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.section-header h2 { font-size: 17px; font-weight: 700; }
+.section-header .total-badge {
+  font-size: 11px; color: var(--muted); background: var(--card);
+  padding: 2px 9px; border-radius: 99px;
+  border: 1px solid var(--border);
+}
+
+/* ── Cards grid ────────────────────────────────────────────────────── */
+#cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+/* Card shell — no padding; each zone owns its spacing */
+.entry-card {
+  background: var(--card);
+  border: none;
+  border-radius: 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 2px 8px rgba(18,33,70,0.05);
+  transition:
+    box-shadow .22s ease,
+    transform .22s cubic-bezier(.2,.8,.2,1);
+  cursor: pointer;
+}
+
+/* Top accent line — emerges on hover */
+.entry-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sec-color, var(--accent)) 85%, transparent) 0%,
+    color-mix(in srgb, var(--sec-color, var(--accent)) 18%, transparent) 100%
+  );
+  opacity: 0; transition: opacity .22s; z-index: 1;
+}
+.entry-card:hover::before { opacity: 1; }
+
+.entry-card:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--sec-color, var(--border)) 45%, var(--border)),
+    0 8px 28px rgba(18,33,70,0.09),
+    0 2px 8px color-mix(in srgb, var(--sec-color, transparent) 14%, transparent);
+  transform: translateY(-2px);
+}
+.entry-card:active { transform: translateY(0) scale(0.99); transition-duration: .08s; }
+
+/* ── Zone 1: Header band — tinted with section color ── */
+.card-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--sec-color, var(--border)) 11%, var(--card-h));
+  border-bottom: 1px solid color-mix(in srgb, var(--sec-color, var(--border)) 20%, var(--border));
+  transition: background .2s;
+}
+.entry-card:hover .card-header {
+  background: color-mix(in srgb, var(--sec-color, var(--border)) 16%, var(--card-h));
+}
+.card-meta { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* ── Zone 2: Body — content + tags ── */
+.card-body {
+  padding: 14px 14px 0;
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 1;
+}
+
+/* ── Zone 3: Footer — access + id ── */
+.card-footer {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px 12px;
+  margin-top: auto;
+  border-top: 1px solid rgba(18,33,70,0.06);
+}
+
+/* Shared elements */
+.score-badge {
+  font-size: 11px; font-weight: 600;
+  color: color-mix(in srgb, var(--sec-color, var(--navy)) 80%, var(--text));
+  background: rgba(255,255,255,0.65);
+  border: 1px solid color-mix(in srgb, var(--sec-color, var(--accent)) 30%, var(--border));
+  padding: 1px 7px; border-radius: 99px;
+}
+.sort-select {
+  margin-left: auto; font-size: 12px; padding: 3px 8px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--card); color: var(--text); cursor: pointer;
+}
+.sort-select:focus { outline: none; border-color: var(--accent); }
+.section-badge {
+  font-size: 11px; padding: 2px 9px; border-radius: 99px;
+  background: rgba(255,255,255,0.62);
+  border: 1px solid color-mix(in srgb, var(--sec-color, #888) 26%, var(--border));
+  font-weight: 500;
+  display: flex; align-items: center; gap: 4px;
+}
+.section-badge-dot { width: 6px; height: 6px; border-radius: 50%; }
+.card-time { font-size: 11px; color: var(--muted); }
+.card-time-edited { color: var(--accent-h); }
+.access-badge { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+.card-content {
+  font-size: 13px; line-height: 1.6; color: var(--text);
+  max-height: 130px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+}
+.card-content::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 40px;
+  background: linear-gradient(transparent, var(--card));
+  pointer-events: none;
+}
+
+.card-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag-pill-more {
+  color: var(--muted);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--sec-color, #888) 18%, var(--border));
+  font-style: normal;
+  letter-spacing: .02em;
+}
+.tag-pill {
+  font-size: 11px; padding: 2px 9px;
+  background: color-mix(in srgb, var(--sec-color, var(--accent)) 10%, var(--card));
+  color: color-mix(in srgb, var(--sec-color, var(--navy)) 85%, var(--text));
+  border-radius: 99px;
+  border: 1px solid color-mix(in srgb, var(--sec-color, var(--accent)) 25%, var(--border));
+  transition: border-color .18s, background .18s;
+}
+.entry-card:hover .tag-pill {
+  border-color: color-mix(in srgb, var(--sec-color, var(--accent)) 42%, var(--border));
+  background: color-mix(in srgb, var(--sec-color, var(--accent)) 14%, var(--card));
+}
+
+.card-id {
+  font-size: 10px; color: var(--muted); font-family: var(--mono);
+  margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  opacity: 0.4; transition: opacity .18s;
+}
+.entry-card:hover .card-id { opacity: 0.8; }
+
+
+/* ── Markdown body ──────────────────────────────────────────────────── */
+.md-body { font-size: 13.5px; line-height: 1.65; color: var(--text); }
+.md-body p { margin: 0 0 10px; }
+.md-body p:last-child { margin-bottom: 0; }
+.md-body h1,.md-body h2,.md-body h3,.md-body h4 { font-weight: 700; color: var(--navy); margin: 18px 0 6px; font-family: var(--font); letter-spacing: -.01em; }
+.md-body h1:first-child,.md-body h2:first-child,.md-body h3:first-child { margin-top: 0; }
+.md-body h1 { font-size: 18px; } .md-body h2 { font-size: 15px; border-bottom: 1px solid var(--border); padding-bottom: 6px; } .md-body h3 { font-size: 13.5px; color: var(--muted); font-weight: 600; }
+.md-body ul { list-style-type: disc; padding-left: 20px; margin: 0 0 10px; }
+.md-body ol { list-style-type: decimal; padding-left: 20px; margin: 0 0 10px; }
+.md-body ul ul { list-style-type: circle; margin: 2px 0; }
+.md-body li { margin: 4px 0; display: list-item; }
+.md-body code { font-family: var(--mono); font-size: 11.5px; background: rgba(18,33,70,0.07); color: var(--navy); padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); }
+.md-body pre { background: #0f1624; border: none; border-radius: 10px; padding: 14px 16px; margin: 10px 0; overflow-x: auto; box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.18); }
+.md-body pre code { background: none; padding: 0; border: none; color: #b8cfe8; font-size: 12px; }
+.md-body blockquote { border-left: 3px solid var(--accent); padding: 6px 0 6px 14px; color: var(--muted); margin: 10px 0; background: var(--accent-dim); border-radius: 0 8px 8px 0; }
+.md-body blockquote p { margin: 0; }
+.md-body strong { color: var(--navy); font-weight: 700; }
+.md-body em { font-style: italic; color: var(--muted); }
+.md-body a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-border); transition: border-color .15s, color .15s; }
+.md-body a:hover { color: var(--navy); border-bottom-color: var(--navy); }
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.md-body table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.md-body th,.md-body td { border-bottom: 1px solid var(--border); padding: 7px 12px; text-align: left; }
+.md-body th { background: var(--card-h); font-weight: 600; color: var(--navy); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 2px solid var(--border-h); }
+.md-body tr:last-child td { border-bottom: none; }
+.md-body tr:nth-child(even) td { background: rgba(18,33,70,0.025); }
+/* ── hljs syntax theme (dark, matches app palette) ─────────────── */
+.hljs { background: #0d1220 !important; color: #c8d8f0 !important; }
+.hljs-keyword,.hljs-operator,.hljs-punctuation { color: #04D8E7; font-weight: 600; }
+.hljs-string,.hljs-attr,.hljs-attribute { color: #8ae68a; }
+.hljs-comment,.hljs-quote { color: #4a6080; font-style: italic; }
+.hljs-number,.hljs-literal,.hljs-symbol,.hljs-bullet { color: #c090f8; }
+.hljs-title,.hljs-section,.hljs-name { color: #26E8F5; }
+.hljs-type,.hljs-class .hljs-title,.hljs-built_in { color: #60d8ff; }
+.hljs-tag { color: #e05050; }
+.hljs-variable,.hljs-template-variable { color: #d4c430; }
+.hljs-function,.hljs-params { color: #ffa060; }
+.hljs-meta { color: #5a8aaa; }
+.hljs-deletion { background: #401010; color: #e05050; }
+.hljs-addition { background: #103020; color: #50e090; }
+/* modal view */
+.modal-view { max-width: 700px !important; }
+.modal-md-content { overflow-y: auto; }
+
+/* Section-color accent for view modal */
+.modal-view::before {
+  content: ''; height: 3px; flex-shrink: 0;
+  border-radius: 20px 20px 0 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sec-color, var(--accent)) 80%, transparent) 0%,
+    color-mix(in srgb, var(--sec-color, var(--accent)) 15%, transparent) 100%
+  );
+}
+.modal-view .modal-header {
+  background: color-mix(in srgb, var(--sec-color, var(--border)) 10%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--sec-color, var(--border)) 20%, var(--border));
+}
+
+.icon-btn {
+  background: transparent; border: 1px solid transparent;
+  color: var(--muted); cursor: pointer; border-radius: 5px;
+  padding: 4px 7px; font-size: 13px;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.icon-btn:hover { background: var(--card-h); color: var(--text); border-color: var(--border-h); }
+.icon-btn.danger:hover { background: var(--danger-dim); color: var(--danger-h); border-color: var(--danger-dim); }
+
+/* ── Load more / empty ─────────────────────────────────────────────── */
+#load-more-wrap { margin-top: 20px; text-align: center; }
+#empty-state {
+  grid-column: 1/-1;
+  text-align: center; padding: 60px 20px;
+  color: var(--muted);
+}
+#empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+#empty-state h3 { font-size: 15px; color: var(--text); margin-bottom: 6px; }
+#empty-state p { font-size: 13px; }
+
+/* ── Spinner ───────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block; width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#loading-overlay {
+  grid-column: 1/-1;
+  text-align: center; padding: 40px; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+
+/* ── Modal ─────────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(8,12,24,0.72);
+  backdrop-filter: blur(10px) saturate(1.6);
+  -webkit-backdrop-filter: blur(10px) saturate(1.6);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in .18s ease;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  background: var(--card);
+  border: none;
+  border-radius: 20px;
+  padding: 0;
+  width: min(520px, 94vw);
+  box-shadow:
+    0 0 0 1px rgba(18,33,70,0.10),
+    0 24px 48px rgba(18,33,70,0.20),
+    0 8px 16px rgba(18,33,70,0.10);
+  animation: modal-in .22s cubic-bezier(.2,.8,.2,1);
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+@keyframes modal-in {
+  from { transform: translateY(20px) scale(0.97); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(18,33,70,0.07);
+  flex-shrink: 0;
+}
+.modal-title { font-size: 15px; font-weight: 600; }
+.modal-close {
+  width: 32px; height: 32px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card-h); border: none; cursor: pointer;
+  color: var(--muted); font-size: 16px; line-height: 1;
+  transition: background .14s, color .14s, box-shadow .14s;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px var(--border);
+}
+.modal-close:hover { background: var(--danger-dim); color: var(--danger); box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent); }
+
+.modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; min-height: 0; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  box-sizing: border-box;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); outline: none; }
+.form-textarea { resize: vertical; min-height: 110px; line-height: 1.6; }
+.form-select { cursor: pointer; }
+.form-select option { background: var(--card); }
+
+.form-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 24px 20px; border-top: 1px solid rgba(18,33,70,0.06); flex-shrink: 0; }
+
+/* ── Toast notifications ───────────────────────────────────────────── */
+#toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  z-index: 200;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  background: var(--navy); color: #D4E3FF;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-size: 13px; min-width: 240px; max-width: 340px;
+  box-shadow: 0 8px 24px rgba(18,33,70,0.22), 0 0 0 1px rgba(255,255,255,0.05);
+  animation: toast-in .22s cubic-bezier(.2,.8,.2,1);
+  display: flex; align-items: center; gap: 10px;
+}
+.toast.success { border-left-color: var(--success); }
+.toast.error { border-left-color: var(--danger); }
+@keyframes toast-in { from { transform: translateX(30px) scale(0.96); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+
+/* ── Search results overlay ────────────────────────────────────────── */
+#search-results-bar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 20px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+#search-results-bar.visible { display: flex; }
+#clear-search { cursor: pointer; color: var(--accent-h); }
+#clear-search:hover { text-decoration: underline; }
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-h); }
+
+/* ── Horizontal Nav ─────────────────────────────────────────────────── */
+.h-nav {
+  display: flex; align-items: center; gap: 2px;
+  background: var(--card-h); border: 1px solid var(--border);
+  border-radius: 99px; padding: 3px;
+}
+.nav-tab {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 14px; border-radius: 99px;
+  border: none; background: transparent;
+  color: var(--muted); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: background .18s, color .18s, box-shadow .18s;
+  white-space: nowrap; font-family: var(--font);
+}
+.nav-tab:hover { background: rgba(255,255,255,0.75); color: var(--text); }
+.nav-tab.active {
+  background: var(--navy); color: var(--accent);
+  box-shadow: 0 1px 8px rgba(18, 33, 70, 0.18);
+}
+
+/* ── App views ──────────────────────────────────────────────────────── */
+.app-view { display: none; }
+.app-view.active { flex: 1; min-height: 0; }
+#view-memories.active { display: flex; flex-direction: column; overflow: hidden; }
+#view-stats.active { display: block; overflow-y: auto; }
+#view-settings.active { display: block; overflow-y: auto; }
+
+/* ── Stats ─────────────────────────────────────────────────────────────── */
+.dash-content { max-width: 1040px; margin: 0 auto; padding: 28px 24px; }
+.dash-page-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 28px; }
+.dash-page-header h2 { font-size: 22px; font-weight: 700; font-family: var(--font); }
+.dash-updated { font-size: 12px; color: var(--muted); }
+.dash-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.dash-stat-card {
+  background: var(--card); border: none;
+  border-radius: 16px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 4px;
+  box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgba(18,33,70,0.04);
+  position: relative; overflow: hidden;
+  transition: box-shadow .22s, transform .22s cubic-bezier(.2,.8,.2,1);
+}
+.dash-stat-card:hover {
+  box-shadow: 0 0 0 1px var(--border-h), 0 6px 20px rgba(18,33,70,0.08);
+  transform: translateY(-2px);
+}
+.dash-stat-card.accent::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent) 0%, rgba(4,216,231,0.3) 100%);
+}
+.dash-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .10em; color: var(--muted); font-weight: 600; }
+.dash-stat-value { font-size: 32px; font-weight: 700; font-family: var(--mono); color: var(--text); line-height: 1.1; margin: 4px 0; }
+.dash-stat-sub { font-size: 11px; color: var(--muted); }
+.dash-date-range { font-size: 13px; font-weight: 600; font-family: var(--mono); color: var(--text); line-height: 1.5; margin: 2px 0; }
+.dash-date-arrow { color: var(--muted); margin: 0 4px; }
+.dash-stat-card.accent .dash-stat-value { color: var(--navy); }
+.dash-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dash-panel {
+  background: var(--card); border: none;
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgba(18,33,70,0.04);
+}
+.dash-panel-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .10em; color: var(--muted); margin-bottom: 16px; }
+.sec-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sec-bar-label { width: 72px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.sec-bar-track { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.sec-bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+.sec-bar-count { width: 28px; text-align: right; font-size: 12px; font-family: var(--mono); color: var(--muted); flex-shrink: 0; }
+.dash-recent-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.dash-recent-row:last-child { border-bottom: none; }
+.dash-recent-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.dash-recent-text { flex: 1; font-size: 12px; color: var(--muted); line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.dash-recent-time { font-size: 11px; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+
+/* ── Search view ────────────────────────────────────────────────────── */
+.search-hero-wrap { padding: 40px 24px 24px; display: flex; flex-direction: column; align-items: center; gap: 14px; background: var(--surface); border-bottom: 1px solid #1A3060; flex-shrink: 0; --text: #D4E3FF; --muted: #7A90B8; --card: #1A2D5A; --border: #1E3468; --accent-dim: #04D8E720; }
+.search-hero-wrap h2 { font-size: 20px; font-weight: 600; font-family: var(--font); color: var(--text); }
+.search-hero-bar { display: flex; gap: 8px; width: 100%; max-width: 600px; }
+.search-hero-bar input { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 16px; color: var(--text); font-size: 14px; font-family: var(--font); outline: none; transition: border-color .15s; }
+.search-hero-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.search-hero-bar input::placeholder { color: var(--muted); }
+.search-hero-hint { font-size: 12px; color: var(--muted); }
+#search-hero-results { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.search-result-count { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+
+/* ── Settings view ──────────────────────────────────────────────────── */
+.settings-page { max-width: 700px; margin: 0 auto; padding: 28px 24px; }
+.settings-page h2 { font-size: 22px; font-weight: 700; font-family: var(--font); margin-bottom: 28px; }
+.settings-sec-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .10em;
+  color: var(--muted); margin: 22px 0 10px; font-weight: 600;
+  display: flex; align-items: center; gap: 10px;
+}
+.settings-sec-title::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(to right, var(--border), transparent);
+}
+.settings-panel {
+  background: var(--card); border: none;
+  border-radius: 14px; padding: 18px; margin-bottom: 8px;
+  box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgba(18,33,70,0.04);
+}
+.settings-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.settings-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+</style>
+
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <a class="logo" href="/">
+      <img src="/static/logo.png" alt="rememb">
+      <div class="logo-text">
+        <span class="logo-name">rememb</span>
+        <span class="logo-version" id="logo-version"></span>
+      </div>
+    </a>
+
+    <div class="header-divider"></div>
+
+    <nav class="h-nav">
+      <button class="nav-tab active" data-view="memories">Memories</button>
+      <button class="nav-tab" data-view="stats">Stats</button>
+      <button class="nav-tab" data-view="settings">Settings</button>
+    </nav>
+
+    <div class="search-wrap" id="header-search">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="Search memory…" autocomplete="off">
+      <kbd class="kbd-hint">/</kbd>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn btn-primary" id="btn-new">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        New Entry
+      </button>
+    </div>
+  </header>
+
+  <div id="view-memories" class="app-view active">
+
+  <!-- Search results bar -->
+  <div id="search-results-bar">
+    <span id="search-results-label"></span>
+    <span id="clear-search">Clear search</span>
+  </div>
+
+  <div id="main-body">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-sections">
+        <div class="sidebar-label">Sections</div>
+        <div id="sections-list"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="stats-block">
+          <div class="sidebar-label">Stats</div>
+          <div class="stat-row">
+            <span class="stat-label">Total entries</span>
+            <span class="stat-value" id="stat-total">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Sections active</span>
+            <span class="stat-value" id="stat-sections">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Store size</span>
+            <span class="stat-value" id="stat-size">—</span>
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <button class="btn btn-ghost btn-sm" id="btn-consolidate" style="width:100%;justify-content:center;gap:6px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            Consolidate
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main id="main-content">
+      <div class="section-header">
+        <h2 id="section-title">All entries</h2>
+        <span class="total-badge" id="total-badge"></span>
+        <select id="sort-select" class="sort-select" title="Sort order">
+          <option value="recent-desc">Most recent</option>
+          <option value="recent-asc">Oldest first</option>
+          <option value="storage-asc">Storage order</option>
+          <option value="storage-desc">Reversed</option>
+        </select>
+      </div>
+      <div id="cards-grid"></div>
+      <div id="load-more-wrap" style="display:none">
+        <button class="btn btn-ghost" id="btn-load-more">Load more</button>
+      </div>
+    </main>
+
+  </div>
+  </div><!-- /view-memories -->
+
+  <!-- Stats View -->
+  <div id="view-stats" class="app-view">
+    <div class="dash-content">
+      <div class="dash-page-header">
+        <h2>Stats</h2>
+        <span class="dash-updated" id="dash-updated"></span>
+      </div>
+      <div class="dash-stats-row">
+        <div class="dash-stat-card accent">
+          <span class="dash-stat-label">Total entries</span>
+          <span class="dash-stat-value" id="dash-total">—</span>
+          <span class="dash-stat-sub">across all sections</span>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-label">Active sections</span>
+          <span class="dash-stat-value" id="dash-active-sec">—</span>
+          <span class="dash-stat-sub">with content</span>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-label">Store size</span>
+          <span class="dash-stat-value" id="dash-size">—</span>
+          <span class="dash-stat-sub">KB on disk</span>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-label">Date range</span>
+          <div class="dash-date-range"><span id="dash-oldest">—</span><span class="dash-date-arrow">→</span><span id="dash-newest">—</span></div>
+          <span class="dash-stat-sub">oldest to newest</span>
+        </div>
+      </div>
+      <div class="dash-two-col">
+        <div class="dash-panel">
+          <div class="dash-panel-title">Entries by section</div>
+          <div id="dash-section-bars"></div>
+        </div>
+        <div class="dash-panel">
+          <div class="dash-panel-title">Recent entries</div>
+          <div id="dash-recent-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings View -->
+  <div id="view-settings" class="app-view">
+    <div class="settings-page">
+      <h2>Settings</h2>
+      <div id="settings-form-root">
+        <div style="color:var(--muted);text-align:center;padding:40px">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Modal container (injected dynamically) -->
+<div id="modal-root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  view: 'memories',    // active view: memories | stats | search | settings
+  section: null,       // null = all sections
+  config: null,
+  entries: [],
+  total: 0,
+  offset: 0,
+  limit: 24,
+  sort_by: 'recent',
+  descending: true,
+  hasMore: false,
+  searchMode: false,
+  searchQuery: '',
+  loading: false,
+};
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+const api = {
+  config:      ()           => apiFetch('/api/config'),
+  models:      ()           => apiFetch('/api/models'),
+  stats:       ()           => apiFetch('/api/stats'),
+  entries:     (p)          => apiFetch('/api/entries?' + new URLSearchParams(p)),
+  search:      (p)          => apiFetch('/api/search?' + new URLSearchParams(p)),
+  writeEntry:  (body)       => apiFetch('/api/entries', { method: 'POST', body: JSON.stringify(body) }),
+  editEntry:   (id, body)   => apiFetch(`/api/entries/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteEntry: (id)         => apiFetch(`/api/entries/${id}`, { method: 'DELETE' }),
+  consolidate:   (body)       => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
+  configUpdate:  (body)       => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
+};
+
+let semanticModels = [];
+
+// ── Markdown ───────────────────────────────────────────────────────────────
+if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
+  marked.use({
+    breaks: true,
+    gfm: true,
+    renderer: {
+      code({ text, lang }) {
+        const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+        const highlighted = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+        return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+      }
+    }
+  });
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  if (typeof marked === 'undefined') return escHtml(text);
+  const rawHtml = marked.parse(String(text));
+  return typeof DOMPurify !== 'undefined'
+    ? DOMPurify.sanitize(rawHtml, { ADD_ATTR: ['class'], FORCE_BODY: false })
+    : rawHtml;
+}
+
+function renderModelSelect(currentValue) {
+  const opts = semanticModels.map(m =>
+    `<option value="${escHtml(m.name)}" ${m.name === currentValue ? 'selected' : ''} title="${escHtml(m.description)}">${escHtml(m.label)}</option>`
+  ).join('');
+  return `<select class="form-select" id="cfg-model">${opts}</select>`;
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info', duration = 3000) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${msg}</span>`;
+  const container = document.getElementById('toast-container');
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity .3s';
+    setTimeout(() => el.remove(), 300);
+  }, duration);
+}
+
+// ── Time formatting ────────────────────────────────────────────────────────
+function relTime(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff/86400)}d ago`;
+  return d.toLocaleDateString();
+}
+
+// ── Render helpers ─────────────────────────────────────────────────────────
+function sectionColor(name) {
+  if (!state.config) return '#888';
+  return (state.config.section_colors || {})[name] || '#888';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderSections() {
+  if (!state.config) return;
+  const sections = state.config.sections || [];
+  const list = document.getElementById('sections-list');
+  const allActive = state.section === null && !state.searchMode;
+
+  let html = `
+    <div class="section-item ${allActive ? 'active' : ''}" data-section="">
+      <span class="section-icon">◉</span>
+      <span class="section-name">All entries</span>
+      <span class="section-count" id="count-all">${state.total || ''}</span>
+    </div>`;
+
+  for (const s of sections) {
+    const color = sectionColor(s);
+    const active = state.section === s && !state.searchMode;
+    html += `
+      <div class="section-item ${active ? 'active' : ''}" data-section="${escHtml(s)}">
+        <span class="section-dot" style="background:${escHtml(color)}"></span>
+        <span class="section-name">${escHtml(s)}</span>
+        <span class="section-count" id="count-${escHtml(s)}">—</span>
+      </div>`;
+  }
+  list.innerHTML = html;
+
+  list.querySelectorAll('.section-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const sec = el.dataset.section || null;
+      clearSearch(true);
+      selectSection(sec);
+    });
+  });
+}
+
+function renderStats(statsData) {
+  if (!statsData) return;
+  document.getElementById('stat-total').textContent = statsData.total_entries ?? '—';
+  document.getElementById('stat-sections').textContent =
+    Object.values(statsData.sections || {}).filter(n => n > 0).length;
+  const kb = statsData.store_size_kb;
+  document.getElementById('stat-size').textContent = kb != null ? `${Math.round(kb)} KB` : '—';
+
+  // Update section counts in sidebar
+  const counts = statsData.sections || {};
+  document.getElementById('count-all').textContent = statsData.total_entries ?? '';
+  for (const [sec, cnt] of Object.entries(counts)) {
+    const el = document.getElementById(`count-${sec}`);
+    if (el) el.textContent = cnt;
+  }
+}
+
+function renderEntryCard(entry) {
+  const color = sectionColor(entry.section);
+  const allTags = entry.tags || [];
+  const visibleTags = allTags.slice(0, 3).map(t =>
+    `<span class="tag-pill">${escHtml(t)}</span>`
+  ).join('');
+  const hiddenCount = allTags.length - 3;
+  const overflowPill = hiddenCount > 0
+    ? `<span class="tag-pill tag-pill-more">+${hiddenCount}</span>`
+    : '';
+  const tagsRow = allTags.length ? `<div class="card-tags">${visibleTags}${overflowPill}</div>` : '';
+  const scoreBadge = entry.score != null
+    ? `<span class="score-badge">${(entry.score * 100).toFixed(0)}%</span>`
+    : '';
+  const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
+  const displayTime = isEdited ? relTime(entry.updated_at) : relTime(entry.created_at);
+  const timeTitle = isEdited
+    ? `Created: ${entry.created_at}\nEdited: ${entry.updated_at}`
+    : (entry.created_at || '');
+  const accessBadge = (entry.access_count || 0) > 0
+    ? `<span class="access-badge" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>`
+    : '';
+
+  return `
+    <div class="entry-card" data-id="${escHtml(entry.id)}" style="--sec-color:${escHtml(color)}">
+      <div class="card-header">
+        <div class="section-badge">
+          <span class="section-badge-dot" style="background:${escHtml(color)}"></span>
+          ${escHtml(entry.section)}
+        </div>
+        <div class="card-meta">
+          ${scoreBadge}
+          <span class="card-time${isEdited ? ' card-time-edited' : ''}" title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-content md-body">${renderMarkdown(entry.content)}</div>
+        ${tagsRow}
+      </div>
+      <div class="card-footer">
+        ${accessBadge}
+        <span class="card-id">${escHtml(entry.id)}</span>
+      </div>
+    </div>`;
+}
+
+function renderCards(entries, append = false) {
+  const grid = document.getElementById('cards-grid');
+
+  if (!append) grid.innerHTML = '';
+
+  if (entries.length === 0 && !append) {
+    grid.innerHTML = `
+      <div id="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>${state.searchMode ? 'No results found' : 'No entries yet'}</h3>
+        <p>${state.searchMode ? 'Try a different search term.' : 'Click "+ New Entry" to add your first memory.'}</p>
+      </div>`;
+    return;
+  }
+
+  for (const entry of entries) {
+    const div = document.createElement('div');
+    div.innerHTML = renderEntryCard(entry).trim();
+    const card = div.firstChild;
+
+    card.addEventListener('click', () => openViewModal(entry));
+
+    grid.appendChild(card);
+  }
+}
+
+// ── Data loading ───────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    [state.config, { models: semanticModels }] = await Promise.all([api.config(), api.models()]);
+    state.limit = state.config.entry_batch_size || 24;
+    renderSections();
+  } catch (e) {
+    toast('Failed to load config: ' + e.message, 'error');
+  }
+}
+
+async function loadStats() {
+  try {
+    const stats = await api.stats();
+    state.total = stats.total_entries ?? 0;
+    renderSections(); // build DOM first (creates count-* elements)
+    renderStats(stats); // then fill in the counts
+  } catch (e) { /* non-critical */ }
+}
+
+async function loadEntries(append = false) {
+  if (state.loading) return;
+  state.loading = true;
+
+  const grid = document.getElementById('cards-grid');
+  if (!append) {
+    grid.innerHTML = '<div id="loading-overlay"><span class="spinner"></span> Loading…</div>';
+  }
+
+  const offset = append ? state.offset : 0;
+  const params = { offset, limit: state.limit, sort_by: state.sort_by, descending: state.descending };
+  if (state.section) params.section = state.section;
+
+  try {
+    const data = await api.entries(params);
+    const items = data.items || [];
+    const total = data.total ?? 0;
+
+    if (!append) {
+      state.entries = items;
+      state.offset = items.length;
+    } else {
+      state.entries = [...state.entries, ...items];
+      state.offset += items.length;
+    }
+    state.total = total;
+    state.hasMore = data.has_more ?? false;
+
+    // Update header
+    const title = state.section || 'All entries';
+    document.getElementById('section-title').textContent = title;
+    document.getElementById('total-badge').textContent = total ? `${total} entries` : '';
+
+    renderCards(items, append);
+    renderSections();
+
+    // Load more button
+    const lmw = document.getElementById('load-more-wrap');
+    lmw.style.display = state.hasMore ? 'block' : 'none';
+
+    await loadStats();
+  } catch (e) {
+    toast('Failed to load entries: ' + e.message, 'error');
+    grid.innerHTML = '';
+  } finally {
+    state.loading = false;
+  }
+}
+
+async function doSearch(query) {
+  if (!query.trim()) { clearSearch(); return; }
+
+  state.searchMode = true;
+  state.searchQuery = query;
+
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '<div id="loading-overlay"><span class="spinner"></span> Searching…</div>';
+  document.getElementById('load-more-wrap').style.display = 'none';
+  document.getElementById('sort-select').style.display = 'none';
+  document.getElementById('section-title').textContent = 'Search results';
+  document.getElementById('total-badge').textContent = '';
+
+  const bar = document.getElementById('search-results-bar');
+  bar.classList.add('visible');
+
+  try {
+    const params = { q: query, top_k: 40 };
+    if (state.section) params.section = state.section;
+    const data = await api.search(params);
+    const results = data.results || [];
+
+    document.getElementById('search-results-label').textContent =
+      `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`;
+
+    renderCards(results, false);
+    renderSections();
+  } catch (e) {
+    toast('Search failed: ' + e.message, 'error');
+    grid.innerHTML = '';
+  }
+}
+
+function clearSearch(silent = false) {
+  state.searchMode = false;
+  state.searchQuery = '';
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results-bar').classList.remove('visible');
+  document.getElementById('sort-select').style.display = '';
+  if (!silent && state.config) loadEntries();
+}
+
+function selectSection(section) {
+  state.section = section || null;
+  state.offset = 0;
+  loadEntries();
+  renderSections();
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+}
+
+function openModal(html) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-backdrop" id="modal-backdrop">${html}</div>`;
+  root.querySelector('#modal-backdrop').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+  root.querySelector('.modal-close')?.addEventListener('click', closeModal);
+  document.addEventListener('keydown', handleEsc);
+}
+
+function handleEsc(e) {
+  if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', handleEsc); }
+}
+
+function buildSectionOptions(selected) {
+  if (!state.config) return '';
+  return (state.config.sections || []).map(s =>
+    `<option value="${escHtml(s)}" ${s === selected ? 'selected' : ''}>${escHtml(s)}</option>`
+  ).join('');
+}
+
+function openNewEntryModal() {
+  const defaultSection = state.section || (state.config?.sections?.[0] ?? 'context');
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">New Entry</span>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Section</label>
+          <select class="form-select" id="f-section">${buildSectionOptions(defaultSection)}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content</label>
+          <textarea class="form-textarea" id="f-content" placeholder="Write a short memory (1–3 sentences)…"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tags <span style="color:var(--muted);font-weight:400">(comma-separated)</span></label>
+          <input type="text" class="form-input" id="f-tags" placeholder="tag1, tag2">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Duplicate guard</label>
+          <select class="form-select" id="f-scope">
+            <option value="global">Global (default)</option>
+            <option value="section">Section only</option>
+          </select>
+          <div class="form-hint">Prevents storing semantically duplicate content.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-entry">Save</button>
+      </div>
+    </div>`);
+
+  document.getElementById('f-content').focus();
+  document.getElementById('btn-save-entry').addEventListener('click', async () => {
+    const content = document.getElementById('f-content').value.trim();
+    const section = document.getElementById('f-section').value;
+    const tagsRaw = document.getElementById('f-tags').value;
+    const scope = document.getElementById('f-scope').value;
+
+    if (!content) { toast('Content is required.', 'error'); return; }
+
+    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+    try {
+      await api.writeEntry({ content, section, tags, semantic_scope: scope });
+      closeModal();
+      toast('Entry saved.', 'success');
+      await loadEntries();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openEditModal(entry) {
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Edit Entry</span>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Section</label>
+          <select class="form-select" id="f-section">${buildSectionOptions(entry.section)}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content</label>
+          <textarea class="form-textarea" id="f-content">${escHtml(entry.content)}</textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Tags <span style="color:var(--muted);font-weight:400">(comma-separated)</span></label>
+          <input type="text" class="form-input" id="f-tags" value="${escHtml((entry.tags || []).join(', '))}">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-edit">Save changes</button>
+      </div>
+    </div>`);
+
+  document.getElementById('f-content').focus();
+  document.getElementById('btn-save-edit').addEventListener('click', async () => {
+    const content = document.getElementById('f-content').value.trim();
+    const section = document.getElementById('f-section').value;
+    const tagsRaw = document.getElementById('f-tags').value;
+    if (!content) { toast('Content is required.', 'error'); return; }
+    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+    try {
+      await api.editEntry(entry.id, { content, section, tags });
+      closeModal();
+      toast('Entry updated.', 'success');
+      if (state.searchMode) doSearch(state.searchQuery); else await loadEntries();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openViewModal(entry) {
+  const color = sectionColor(entry.section);
+  const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
+  const timeLabel = isEdited
+    ? `Edited ${relTime(entry.updated_at)} · Created ${relTime(entry.created_at)}`
+    : `Created ${relTime(entry.created_at)}`;
+  const tags = (entry.tags || []).map(t => `<span class="tag-pill">${escHtml(t)}</span>`).join('');
+  const scoreBadge = entry.score != null
+    ? `<span class="score-badge">${(entry.score * 100).toFixed(0)}%</span>`
+    : '';
+  const accessBadge = (entry.access_count || 0) > 0
+    ? `<span class="access-badge" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>`
+    : '';
+  openModal(`
+    <div class="modal modal-view" style="--sec-color:${escHtml(color)}">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <div class="section-badge"><span class="section-badge-dot" style="background:${escHtml(color)}"></span>${escHtml(entry.section)}</div>
+          ${scoreBadge}
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap;margin-left:auto">${escHtml(timeLabel)}</span>
+        </div>
+        <button class="modal-close">\u00d7</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-md-content md-body">${renderMarkdown(entry.content)}</div>
+        ${tags ? `<div class="card-tags" style="padding:10px 0 4px">${tags}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          ${accessBadge}
+          <span class="card-id" style="margin-left:auto">${escHtml(entry.id)}</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="btn-view-delete">Delete</button>
+        <button class="btn btn-primary" id="btn-view-edit">Edit</button>
+      </div>
+    </div>`);
+  document.getElementById('btn-view-edit').addEventListener('click', () => { closeModal(); openEditModal(entry); });
+  document.getElementById('btn-view-delete').addEventListener('click', () => { closeModal(); openDeleteModal(entry); });
+}
+
+function openDeleteModal(entry) {
+  const preview = entry.content.length > 80 ? entry.content.slice(0, 80) + '…' : entry.content;
+  openModal(`
+    <div class="modal" style="max-width:400px">
+      <div class="modal-header">
+        <span class="modal-title">Delete entry?</span>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body" style="padding-bottom:8px">
+        <p style="color:var(--muted);font-size:13px;line-height:1.6;margin:0">
+          This will permanently delete:<br>
+          <em style="color:var(--text)">"${escHtml(preview)}"</em>
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-delete">Delete</button>
+      </div>
+    </div>`);
+
+  document.getElementById('btn-confirm-delete').addEventListener('click', async () => {
+    try {
+      await api.deleteEntry(entry.id);
+      closeModal();
+      toast('Entry deleted.', 'success');
+      // Remove card from DOM without full reload
+      const card = document.querySelector(`[data-id="${CSS.escape(entry.id)}"]`);
+      if (card) card.remove();
+      state.total = Math.max(0, state.total - 1);
+      document.getElementById('total-badge').textContent = state.total ? `${state.total} entries` : '';
+      await loadStats();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openConsolidateModal() {
+  const sections = state.config?.sections || [];
+  const opts = sections.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  openModal(`
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <span class="modal-title">Consolidate duplicates</span>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Section <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+          <select class="form-select" id="f-cons-section">
+            <option value="">All sections</option>
+            ${opts}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mode</label>
+          <select class="form-select" id="f-cons-mode">
+            <option value="exact">Exact (normalized content match)</option>
+            <option value="semantic">Semantic (similarity threshold)</option>
+          </select>
+        </div>
+        <div class="form-group" id="threshold-group" style="display:none;margin-bottom:0">
+          <label class="form-label">Similarity threshold</label>
+          <input type="number" class="form-input" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
+          <div class="form-hint">Higher = stricter (less aggressive). Range: 0.5 – 1.0</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-run-consolidate">Run</button>
+      </div>
+    </div>`);
+
+  const modeSelect = document.getElementById('f-cons-mode');
+  const thresholdGroup = document.getElementById('threshold-group');
+  modeSelect.addEventListener('change', () => {
+    thresholdGroup.style.display = modeSelect.value === 'semantic' ? 'block' : 'none';
+  });
+
+  document.getElementById('btn-run-consolidate').addEventListener('click', async () => {
+    const section = document.getElementById('f-cons-section').value || null;
+    const mode = modeSelect.value;
+    const threshold = parseFloat(document.getElementById('f-threshold').value) || 0.88;
+    try {
+      const data = await api.consolidate({ section, mode, similarity_threshold: threshold });
+      closeModal();
+      const result = data.result || {};
+      const removed = result.removed_count ?? result.removed ?? result.merged ?? 0;
+      toast(`Consolidation complete. Removed: ${removed} duplicate(s).`, 'success', 5000);
+      await loadEntries();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+// ── View switching ────────────────────────────────────────────────────────
+function switchView(name) {
+  state.view = name;
+  document.querySelectorAll('.app-view').forEach(v => v.classList.remove('active'));
+  document.getElementById(`view-${name}`).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  if (name === 'stats') renderStatsView();
+  else if (name === 'settings') renderSettingsPage();
+}
+
+// ── Stats view ──────────────────────────────────────────────────────────────
+async function renderStatsView() {
+  try {
+    const stats = await api.stats();
+    const total = stats.total_entries ?? 0;
+    const sections = stats.sections || {};
+    const sectionsList = state.config?.sections || [];
+    const activeSec = Object.values(sections).filter(n => n > 0).length;
+    const kb = stats.store_size_kb;
+    document.getElementById('dash-total').textContent = total;
+    document.getElementById('dash-active-sec').textContent = activeSec;
+    document.getElementById('dash-size').textContent = kb != null ? Math.round(kb) : '—';
+    document.getElementById('dash-oldest').textContent = stats.oldest || '—';
+    document.getElementById('dash-newest').textContent = stats.newest || '—';
+    document.getElementById('dash-updated').textContent = 'Updated ' + relTime(new Date().toISOString());
+
+    // Section bars
+    const maxCount = Math.max(...Object.values(sections), 1);
+    const barsHtml = sectionsList.map(s => {
+      const count = sections[s] || 0;
+      const pct = Math.round((count / maxCount) * 100);
+      const color = sectionColor(s);
+      return `<div class="sec-bar-row">
+        <span class="sec-bar-label">${escHtml(s)}</span>
+        <div class="sec-bar-track"><div class="sec-bar-fill" style="width:${pct}%;background:${escHtml(color)}"></div></div>
+        <span class="sec-bar-count">${count}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('dash-section-bars').innerHTML = barsHtml ||
+      '<span style="color:var(--muted);font-size:12px">No sections configured.</span>';
+
+    // Recent entries
+    const recent = await api.entries({ offset: 0, limit: 8, sort_by: 'recent', descending: true });
+    const items = recent.items || [];
+    const recentHtml = items.map(e => {
+      const color = sectionColor(e.section);
+      return `<div class="dash-recent-row">
+        <span class="dash-recent-dot" style="background:${escHtml(color)}"></span>
+        <span class="dash-recent-text">${escHtml(e.content)}</span>
+        <span class="dash-recent-time">${relTime(e.updated_at || e.created_at)}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('dash-recent-list').innerHTML = recentHtml ||
+      '<span style="color:var(--muted);font-size:12px">No entries yet.</span>';
+  } catch (e) {
+    toast('Stats error: ' + e.message, 'error');
+  }
+}
+
+// ── Settings page ─────────────────────────────────────────────────────────
+function renderSettingsPage() {
+  if (!state.config) {
+    document.getElementById('settings-form-root').innerHTML =
+      '<div style="color:var(--muted);text-align:center;padding:40px">Config not loaded.</div>';
+    return;
+  }
+  const cfg = state.config;
+  const sectionRows = (cfg.sections || []).map(s => `
+    <tr data-section="${escHtml(s)}">
+      <td style="padding:5px 8px">
+        <span style="background:${escHtml(sectionColor(s))};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle"></span>
+        ${escHtml(s)}
+      </td>
+      <td style="padding:5px 8px"><input type="color" style="width:44px;height:28px;padding:2px;border:1px solid var(--border);border-radius:5px;background:var(--card);cursor:pointer" data-field="color" value="${escHtml((cfg.section_colors||{})[s]||'#888888')}"></td>
+      <td style="padding:5px 8px;text-align:center"><button class="icon-btn danger" data-remove="${escHtml(s)}" title="Remove">⨯</button></td>
+    </tr>`).join('');
+
+  document.getElementById('settings-form-root').innerHTML = `
+    <div class="settings-sec-title">Limits</div>
+    <div class="settings-panel">
+      <div class="settings-grid-2">
+        <div class="form-group" style="margin:0"><label class="form-label">Max content length</label>
+          <input type="number" class="form-input" id="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Max entries</label>
+          <input type="number" class="form-input" id="cfg-max-entries" value="${escHtml(String(cfg.max_entries))}"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Max tags per entry</label>
+          <input type="number" class="form-input" id="cfg-max-tags" value="${escHtml(String(cfg.max_tags_per_entry))}"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Max tag length</label>
+          <input type="number" class="form-input" id="cfg-max-tag-len" value="${escHtml(String(cfg.max_tag_length))}"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Entry batch size</label>
+          <input type="number" class="form-input" id="cfg-batch-size" min="1" value="${escHtml(String(cfg.entry_batch_size))}"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Entry load threshold</label>
+          <input type="number" class="form-input" id="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}"></div>
+      </div>
+    </div>
+    <div class="settings-sec-title">Semantic search</div>
+    <div class="settings-panel">
+      <div class="settings-grid-3">
+        <div class="form-group" style="margin:0;grid-column:1/-1"><label class="form-label">Model</label>
+          ${renderModelSelect(cfg.semantic_model_name||'')}</div>
+        <div class="form-group" style="margin:0"><label class="form-label">Conflict threshold</label>
+          <input type="number" class="form-input" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Model idle TTL (s)</label>
+          <input type="number" class="form-input" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></div>
+      </div>
+    </div>
+    <div class="settings-sec-title">Sections</div>
+    <div class="settings-panel">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:12px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--bg)">
+            <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--muted);font-weight:500">Name</th>
+            <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--muted);font-weight:500">Color</th>
+            <th style="width:40px"></th>
+          </tr></thead>
+          <tbody id="cfg-sections-tbody-page">${sectionRows}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input type="text" class="form-input" id="cfg-new-section-page" placeholder="New section name" style="flex:1">
+        <button class="btn btn-ghost btn-sm" id="cfg-add-section-page">+ Add</button>
+      </div>
+    </div>
+    <div class="settings-sec-title">Maintenance</div>
+    <div class="settings-panel" style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:13px;font-weight:500">Consolidate duplicates</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Remove semantically duplicate entries</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btn-consolidate-page">Run consolidate</button>
+    </div>
+    <div class="settings-actions">
+      <button class="btn btn-primary" id="btn-save-config-page">Save settings</button>
+    </div>`;
+
+  document.getElementById('cfg-sections-tbody-page').addEventListener('click', e => {
+    const btn = e.target.closest('[data-remove]');
+    if (btn) btn.closest('tr').remove();
+  });
+
+  document.getElementById('cfg-add-section-page').addEventListener('click', () => {
+    const inp = document.getElementById('cfg-new-section-page');
+    const name = inp.value.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name) return;
+    if (document.querySelector(`#cfg-sections-tbody-page [data-section="${CSS.escape(name)}"]`)) {
+      toast('Section already exists.', 'error'); return;
+    }
+    const tbody = document.getElementById('cfg-sections-tbody-page');
+    const tr = document.createElement('tr');
+    tr.dataset.section = name;
+    tr.innerHTML = `
+      <td style="padding:5px 8px">${escHtml(name)}</td>
+      <td style="padding:5px 8px"><input type="color" style="width:44px;height:28px;padding:2px;border:1px solid var(--border);border-radius:5px;background:var(--card);cursor:pointer" data-field="color" value="#888888"></td>
+      <td style="padding:5px 8px;text-align:center"><button class="icon-btn danger" data-remove="${escHtml(name)}" title="Remove">⨯</button></td>`;
+    tbody.appendChild(tr);
+    inp.value = '';
+  });
+
+  document.getElementById('btn-consolidate-page').addEventListener('click', openConsolidateModal);
+
+  document.getElementById('btn-save-config-page').addEventListener('click', async () => {
+    const rows = document.querySelectorAll('#cfg-sections-tbody-page tr');
+    const sections = [];
+    const section_colors = {};
+    rows.forEach(row => {
+      const name = row.dataset.section;
+      sections.push(name);
+      section_colors[name] = row.querySelector('[data-field="color"]').value;
+    });
+    const updates = {
+      max_content_length: parseInt(document.getElementById('cfg-max-content').value) || cfg.max_content_length,
+      max_entries:        parseInt(document.getElementById('cfg-max-entries').value) || cfg.max_entries,
+      max_tags_per_entry: parseInt(document.getElementById('cfg-max-tags').value) || cfg.max_tags_per_entry,
+      max_tag_length:     parseInt(document.getElementById('cfg-max-tag-len').value) || cfg.max_tag_length,
+      entry_batch_size:   parseInt(document.getElementById('cfg-batch-size').value) || cfg.entry_batch_size,
+      entry_load_threshold: parseInt(document.getElementById('cfg-load-threshold').value) ?? cfg.entry_load_threshold,
+      semantic_model_name:             document.getElementById('cfg-model').value.trim() || cfg.semantic_model_name,
+      semantic_conflict_threshold:     parseFloat(document.getElementById('cfg-threshold').value) || cfg.semantic_conflict_threshold,
+      semantic_model_idle_ttl_seconds: parseInt(document.getElementById('cfg-ttl').value) || cfg.semantic_model_idle_ttl_seconds,
+      sections, section_colors,
+    };
+    try {
+      state.config = await api.configUpdate(updates);
+      state.limit = state.config.entry_batch_size || 24;
+      toast('Settings saved.', 'success');
+      renderSections();
+      renderSettingsPage();
+      // Reload entries in background so colors/sections update when user returns to main view
+      if (!state.searchMode) loadEntries();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+// ── Search debounce ────────────────────────────────────────────────────────
+let searchTimer = null;
+document.getElementById('search-input').addEventListener('input', e => {
+  const q = e.target.value.trim();
+  clearTimeout(searchTimer);
+  if (!q) { clearSearch(); return; }
+  searchTimer = setTimeout(() => doSearch(q), 400);
+});
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = e.target.value.trim();
+    if (!q) return;
+    clearTimeout(searchTimer);
+    if (state.view !== 'memories') switchView('memories');
+    doSearch(q);
+  }
+});
+
+// ── Keyboard shortcut: '/' focuses search ─────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    const inp = document.getElementById('search-input');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+});
+
+// ── Config modal ──────────────────────────────────────────────────────────
+function openConfigModal() {
+  if (!state.config) { toast('Config not loaded yet.', 'error'); return; }
+  const cfg = state.config;
+
+  const sectionRows = (cfg.sections || []).map(s => `
+    <tr data-section="${escHtml(s)}">
+      <td style="padding:5px 8px">
+        <span class="section-dot" style="background:${escHtml(sectionColor(s))};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px"></span>
+        ${escHtml(s)}
+      </td>
+      <td style="padding:5px 8px">
+        <input type="color" style="width:44px;height:28px;padding:2px;border:1px solid var(--border);border-radius:5px;background:var(--card);cursor:pointer" data-field="color" value="${escHtml((cfg.section_colors||{})[s]||'#888888')}">
+      </td>
+      <td style="padding:5px 8px;text-align:center">
+        <button class="icon-btn danger" data-remove="${escHtml(s)}" title="Remove section">⨯</button>
+      </td>
+    </tr>`).join('');
+
+  openModal(`
+    <div class="modal" style="max-width:580px">
+      <div class="modal-header">
+        <span class="modal-title">⚙ Configuration</span>
+        <button class="modal-close">×</button>
+      </div>
+
+      <div class="modal-body">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px">Limits</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Max content length</label>
+          <input type="number" class="form-input" id="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"> 
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Max entries</label>
+          <input type="number" class="form-input" id="cfg-max-entries" value="${escHtml(String(cfg.max_entries))}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Max tags per entry</label>
+          <input type="number" class="form-input" id="cfg-max-tags" value="${escHtml(String(cfg.max_tags_per_entry))}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Max tag length</label>
+          <input type="number" class="form-input" id="cfg-max-tag-len" value="${escHtml(String(cfg.max_tag_length))}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Entry batch size</label>
+          <input type="number" class="form-input" id="cfg-batch-size" min="1" value="${escHtml(String(cfg.entry_batch_size))}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Entry load threshold</label>
+          <input type="number" class="form-input" id="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}">
+        </div>
+      </div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px">Semantic search</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+        <div class="form-group" style="margin:0;grid-column:1/-1">
+          <label class="form-label">Model</label>
+          ${renderModelSelect(cfg.semantic_model_name||'')}
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Conflict threshold</label>
+          <input type="number" class="form-input" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Model idle TTL (s)</label>
+          <input type="number" class="form-input" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}">
+        </div>
+      </div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">Sections</div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:12px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--card)">
+            <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--muted);font-weight:500">Name</th>
+            <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--muted);font-weight:500">Color</th>
+            <th style="width:40px"></th>
+          </tr></thead>
+          <tbody id="cfg-sections-tbody">${sectionRows}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input type="text" class="form-input" id="cfg-new-section" placeholder="New section name" style="flex:1">
+        <button class="btn btn-ghost btn-sm" id="cfg-add-section">+ Add</button>
+      </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-config">Save</button>
+      </div>
+    </div>`);
+
+  // Remove section handler
+  document.getElementById('cfg-sections-tbody').addEventListener('click', e => {
+    const btn = e.target.closest('[data-remove]');
+    if (!btn) return;
+    const row = btn.closest('tr');
+    row.remove();
+  });
+
+  // Add section handler
+  document.getElementById('cfg-add-section').addEventListener('click', () => {
+    const inp = document.getElementById('cfg-new-section');
+    const name = inp.value.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name) return;
+    if (document.querySelector(`[data-section="${CSS.escape(name)}"]`)) {
+      toast('Section already exists.', 'error'); return;
+    }
+    const tbody = document.getElementById('cfg-sections-tbody');
+    const tr = document.createElement('tr');
+    tr.dataset.section = name;
+    tr.innerHTML = `
+      <td style="padding:5px 8px">${escHtml(name)}</td>
+      <td style="padding:5px 8px"><input type="color" style="width:44px;height:28px;padding:2px;border:1px solid var(--border);border-radius:5px;background:var(--card);cursor:pointer" data-field="color" value="#888888"></td>
+      <td style="padding:5px 8px;text-align:center"><button class="icon-btn danger" data-remove="${escHtml(name)}" title="Remove">⨯</button></td>`;
+    tbody.appendChild(tr);
+    inp.value = '';
+  });
+
+  // Save handler
+  document.getElementById('btn-save-config').addEventListener('click', async () => {
+    const rows = document.querySelectorAll('#cfg-sections-tbody tr');
+    const sections = [];
+    const section_colors = {};
+    rows.forEach(row => {
+      const name = row.dataset.section;
+      sections.push(name);
+      section_colors[name] = row.querySelector('[data-field="color"]').value;
+    });
+
+    const updates = {
+      max_content_length: parseInt(document.getElementById('cfg-max-content').value) || cfg.max_content_length,
+      max_entries:        parseInt(document.getElementById('cfg-max-entries').value) || cfg.max_entries,
+      max_tags_per_entry: parseInt(document.getElementById('cfg-max-tags').value) || cfg.max_tags_per_entry,
+      max_tag_length:     parseInt(document.getElementById('cfg-max-tag-len').value) || cfg.max_tag_length,
+      entry_batch_size:   parseInt(document.getElementById('cfg-batch-size').value) || cfg.entry_batch_size,
+      entry_load_threshold: parseInt(document.getElementById('cfg-load-threshold').value) ?? cfg.entry_load_threshold,
+      semantic_model_name:             document.getElementById('cfg-model').value.trim() || cfg.semantic_model_name,
+      semantic_conflict_threshold:     parseFloat(document.getElementById('cfg-threshold').value) || cfg.semantic_conflict_threshold,
+      semantic_model_idle_ttl_seconds: parseInt(document.getElementById('cfg-ttl').value) || cfg.semantic_model_idle_ttl_seconds,
+      sections,
+      section_colors,
+    };
+
+    try {
+      state.config = await api.configUpdate(updates);
+      state.limit = state.config.entry_batch_size || 24;
+      closeModal();
+      toast('Configuration saved.', 'success');
+      renderSections();
+      await loadEntries();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+// ── Buttons ────────────────────────────────────────────────────────────────
+document.getElementById('btn-new').addEventListener('click', openNewEntryModal);
+document.getElementById('btn-consolidate').addEventListener('click', openConsolidateModal);
+document.getElementById('btn-load-more').addEventListener('click', () => loadEntries(true));
+document.getElementById('clear-search').addEventListener('click', clearSearch);
+
+document.getElementById('sort-select').addEventListener('change', e => {
+  const [sortBy, dir] = e.target.value.split('-');
+  state.sort_by = sortBy;
+  state.descending = dir === 'desc';
+  state.offset = 0;
+  loadEntries();
+});
+
+// Nav tabs
+document.querySelectorAll('.nav-tab').forEach(tab =>
+  tab.addEventListener('click', () => switchView(tab.dataset.view))
+);
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+async function boot() {
+  await loadConfig();
+  await loadEntries();
+}
+
+boot();
+</script>
+</body>
+</html>

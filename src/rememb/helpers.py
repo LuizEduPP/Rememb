@@ -17,7 +17,6 @@ import hashlib
 import json
 import logging
 import platform
-import random
 import re
 import threading
 import warnings
@@ -32,15 +31,12 @@ except ImportError:
 
 from rememb.config import (
     DEFAULT_ALL_SECTION_COLOR,
-    DEFAULT_CUSTOM_SECTION_ICON,
     DEFAULT_SECTION_COLORS,
-    DEFAULT_SECTION_ICONS,
     DEFAULT_SECTIONS,
     DEFAULT_CONFIG,
     DEFAULT_SEMANTIC_MODEL_NAME,
     DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
     DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
-    SECTION_COLOR_PALETTE,
 )
 from rememb.utils import _rememb_path, _entries_path, _config_path, is_initialized
 from rememb.exceptions import (
@@ -88,45 +84,18 @@ def _is_hex_color(value: object) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(r"#[0-9a-fA-F]{6}", value.strip()))
 
 
-def _pick_random_section_color(used_colors: set[str]) -> str:
-    palette = [color for color in SECTION_COLOR_PALETTE if color not in used_colors]
-    chooser = random.SystemRandom()
-    if palette:
-        return chooser.choice(palette)
-
-    while True:
-        color = "#" + "".join(f"{chooser.randint(64, 224):02x}" for _ in range(3))
-        if color not in used_colors:
-            return color
-
-
-def _normalize_section_icons(value: object, sections: list[str]) -> dict[str, str]:
-    icon_map = value if isinstance(value, dict) else {}
-    normalized: dict[str, str] = {}
-    for section in sections:
-        icon = icon_map.get(section)
-        if isinstance(icon, str) and icon.strip():
-            normalized[section] = icon.strip()
-        else:
-            normalized[section] = DEFAULT_SECTION_ICONS.get(section, DEFAULT_CUSTOM_SECTION_ICON)
-    return normalized
-
-
 def _normalize_section_colors(value: object, sections: list[str]) -> dict[str, str]:
     color_map = value if isinstance(value, dict) else {}
     normalized: dict[str, str] = {}
-    used_colors: set[str] = set()
 
     for section in sections:
         color = color_map.get(section)
         if _is_hex_color(color):
-            normalized_color = str(color).strip().lower()
+            normalized[section] = str(color).strip().lower()
         elif section in DEFAULT_SECTION_COLORS:
-            normalized_color = DEFAULT_SECTION_COLORS[section]
+            normalized[section] = DEFAULT_SECTION_COLORS[section]
         else:
-            normalized_color = _pick_random_section_color(used_colors)
-        normalized[section] = normalized_color
-        used_colors.add(normalized_color)
+            normalized[section] = DEFAULT_ALL_SECTION_COLOR
 
     return normalized
 
@@ -367,14 +336,16 @@ class StoreContext:
                 config[key] = _copy_config_value(value)
                 config_needs_write = True
 
+        # Remove keys that no longer exist in DEFAULT_CONFIG (stale/obsolete)
+        stale_keys = [k for k in list(config) if k not in DEFAULT_CONFIG]
+        if stale_keys:
+            for key in stale_keys:
+                del config[key]
+            config_needs_write = True
+
         normalized_sections = _normalize_sections(config.get("sections"))
         if config.get("sections") != normalized_sections:
             config["sections"] = normalized_sections
-            config_needs_write = True
-
-        normalized_icons = _normalize_section_icons(config.get("section_icons"), normalized_sections)
-        if config.get("section_icons") != normalized_icons:
-            config["section_icons"] = normalized_icons
             config_needs_write = True
 
         normalized_colors = _normalize_section_colors(config.get("section_colors"), normalized_sections)

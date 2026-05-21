@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "rememb==0.4.5"
+RUN pip install --no-cache-dir "rememb==0.4.6"
 
 ENV REMEMB_GLOBAL=1
 

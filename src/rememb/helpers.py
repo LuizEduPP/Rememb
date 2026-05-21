@@ -569,13 +569,13 @@ def _compute_entries_hash(entries: list[dict]) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model) -> "np.ndarray":
+def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model, *, persist: bool = True) -> "np.ndarray":
     """Load embeddings from disk cache or compute and persist them."""
     current_hash = _compute_entries_hash(entries)
     embeddings_path = _rememb_path(root) / "embeddings.npy"
     hash_path = _rememb_path(root) / "embeddings.hash"
 
-    if embeddings_path.exists() and hash_path.exists():
+    if persist and embeddings_path.exists() and hash_path.exists():
         try:
             if hash_path.read_text(encoding="utf-8") == current_hash:
                 return np.load(str(embeddings_path))
@@ -583,11 +583,12 @@ def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict
             pass
 
     embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
-    np.save(str(embeddings_path), embeddings)
-    hash_path.write_text(current_hash, encoding="utf-8")
+    if persist:
+        np.save(str(embeddings_path), embeddings)
+        hash_path.write_text(current_hash, encoding="utf-8")
     return embeddings
 
-def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model, threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD) -> dict | None:
+def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model, threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD, *, persist: bool = True) -> dict | None:
     """Check if the content is semantically a duplicate of an existing entry.
     
     Args:
@@ -603,7 +604,7 @@ def _check_semantic_conflict(root: Path, entries: list[dict], content: str, mode
         return None
         
     texts = [e["content"] for e in entries]
-    embeddings = _load_or_compute_embeddings(root, texts, entries, model)
+    embeddings = _load_or_compute_embeddings(root, texts, entries, model, persist=persist)
         
     query_vec = model.encode([content], show_progress_bar=False)[0]
     norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
@@ -615,7 +616,7 @@ def _check_semantic_conflict(root: Path, entries: list[dict], content: str, mode
     return None
 
 
-def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, model) -> list[dict]:
+def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, model, *, persist: bool = True) -> list[dict]:
     """Perform semantic search using embeddings.
     
     Args:
@@ -640,7 +641,7 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
         )
 
     texts = [e["content"] for e in entries]
-    embeddings = _load_or_compute_embeddings(root, texts, entries, model)
+    embeddings = _load_or_compute_embeddings(root, texts, entries, model, persist=persist)
 
     query_vec = model.encode([query], show_progress_bar=False)[0]
     

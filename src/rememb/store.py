@@ -349,6 +349,7 @@ def write_entry(
                 conflict = _check_semantic_conflict(
                     root, semantic_entries, content, model,
                     threshold=float(config["semantic_conflict_threshold"]),
+                    persist=(normalized_scope != "section"),
                 )
                 if conflict:
                     raise RemembValidationError(
@@ -632,6 +633,7 @@ def delete_entry(root: Path, entry_id: str) -> bool:
         True if entry was deleted, False if not found
     """
     logger.debug(f"delete_entry called: entry_id={entry_id}")
+    _assert_initialized(root)
     def remove_entry(entries: list[dict]) -> bool:
         original_len = len(entries)
         for i, e in enumerate(entries):
@@ -698,6 +700,7 @@ def edit_entry(root: Path, entry_id: str, content: str | None = None, section: s
         RemembValidationError: If section invalid
     """
     logger.debug(f"edit_entry called: entry_id={entry_id}, content={content is not None}, section={section is not None}, tags={tags is not None}")
+    _assert_initialized(root)
     def modify_entry(entries: list[dict]) -> dict | None:
         for e in entries:
             if e["id"] == entry_id:
@@ -867,7 +870,7 @@ def search_entries(
     try:
         model = _store_context.get_model(root)
         try:
-            results = _semantic_search(root, entries, query, top_k, model)
+            results = _semantic_search(root, entries, query, top_k, model, persist=not bool(section or tag))
         finally:
             _store_context.schedule_model_release(root)
     except ImportError as e:
@@ -876,7 +879,7 @@ def search_entries(
     logger.info(f"Search returned {len(results)} results for query '{query}'")
     
     if results:
-        def bump_access(all_entries: list[dict]) -> None:
+        def bump_access(all_entries: list[dict]) -> bool:
             updated = False
             result_ids = {r["id"] for r in results}
             now_str = _now()
@@ -973,7 +976,9 @@ def format_entries(
             if summary_only:
                 lines.append(f"- {prefix}{content}{score_text}{tags}")
             else:
-                lines.append(f"- {prefix}{content}{score_text}{tags}")
+                ts = (item.get("updated_at") or item.get("created_at") or "")[:10]
+                ts_str = f" [{ts}]" if ts else ""
+                lines.append(f"- {prefix}{content}{score_text}{tags}{ts_str}")
         lines.append("")
 
     return "\n".join(lines)

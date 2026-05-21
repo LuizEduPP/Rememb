@@ -36,13 +36,13 @@ from rememb.config import (
     DEFAULT_SECTION_COLORS,
     DEFAULT_SECTION_ICONS,
     DEFAULT_SECTIONS,
-    CONFIG_FILE,
     DEFAULT_CONFIG,
     DEFAULT_SEMANTIC_MODEL_NAME,
+    DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
     DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
     SECTION_COLOR_PALETTE,
 )
-from rememb.utils import _rememb_path, _entries_path, is_initialized
+from rememb.utils import _rememb_path, _entries_path, _config_path, is_initialized
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
@@ -345,7 +345,7 @@ class StoreContext:
         if root_key in self._config_cache:
             return self._config_cache[root_key]
         
-        config_path = _rememb_path(root) / CONFIG_FILE
+        config_path = _config_path(root)
         config_needs_write = False
         if config_path.exists():
             try:
@@ -390,7 +390,7 @@ class StoreContext:
 
     def update_config(self, root: Path, config: dict[str, Any]) -> dict[str, Any]:
         """Persist validated configuration and refresh cache."""
-        config_path = _rememb_path(root) / CONFIG_FILE
+        config_path = _config_path(root)
         _save_json_object(config_path, config)
         root_key = str(root)
         self._config_cache[root_key] = dict(config)
@@ -404,7 +404,7 @@ def _get_sections(root: Path | None = None) -> list[str]:
     """Return the effective section list for the given root."""
     if root is None:
         return list(DEFAULT_SECTIONS)
-    return list(_store_context.get_config(root).get("sections", DEFAULT_SECTIONS))
+    return list(_store_context.get_config(root)["sections"])
 
 
 def _validate_section(section: str, root: Path | None = None) -> str:
@@ -449,7 +449,7 @@ def _file_lock(filepath: Path, mode: str = "r+"):
     Yields:
         Open file handle with lock acquired
     """
-    if not filepath.exists():
+    if not filepath.exists() and _requires_exclusive_lock(mode):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_text("[]", encoding="utf-8")
     
@@ -597,7 +597,26 @@ def _compute_entries_hash(entries: list[dict]) -> str:
     content = json.dumps(entries, sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()
 
-def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model) -> dict | None:
+
+def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model) -> "np.ndarray":
+    """Load embeddings from disk cache or compute and persist them."""
+    current_hash = _compute_entries_hash(entries)
+    embeddings_path = _rememb_path(root) / "embeddings.npy"
+    hash_path = _rememb_path(root) / "embeddings.hash"
+
+    if embeddings_path.exists() and hash_path.exists():
+        try:
+            if hash_path.read_text(encoding="utf-8") == current_hash:
+                return np.load(str(embeddings_path))
+        except (OSError, ValueError):
+            pass
+
+    embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
+    np.save(str(embeddings_path), embeddings)
+    hash_path.write_text(current_hash, encoding="utf-8")
+    return embeddings
+
+def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model, threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD) -> dict | None:
     """Check if the content is semantically a duplicate of an existing entry.
     
     Args:
@@ -613,30 +632,14 @@ def _check_semantic_conflict(root: Path, entries: list[dict], content: str, mode
         return None
         
     texts = [e["content"] for e in entries]
-    current_hash = _compute_entries_hash(entries)
-    embeddings_path = _rememb_path(root) / "embeddings.npy"
-    hash_path = _rememb_path(root) / "embeddings.hash"
-    
-    cache_valid = False
-    if embeddings_path.exists() and hash_path.exists():
-        try:
-            if hash_path.read_text(encoding="utf-8") == current_hash:
-                embeddings = np.load(str(embeddings_path))
-                cache_valid = True
-        except (OSError, ValueError):
-            pass
-            
-    if not cache_valid:
-        embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
-        np.save(str(embeddings_path), embeddings)
-        hash_path.write_text(current_hash, encoding="utf-8")
+    embeddings = _load_or_compute_embeddings(root, texts, entries, model)
         
     query_vec = model.encode([content], show_progress_bar=False)[0]
     norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
     
     for i, e in enumerate(entries):
         base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
-        if base_score > 0.88:
+        if base_score > threshold:
             return e
     return None
 
@@ -666,48 +669,19 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
         )
 
     texts = [e["content"] for e in entries]
-    
-    current_hash = _compute_entries_hash(entries)
-    embeddings_path = _rememb_path(root) / "embeddings.npy"
-    hash_path = _rememb_path(root) / "embeddings.hash"
-    
-    cache_valid = False
-    if embeddings_path.exists() and hash_path.exists():
-        try:
-            stored_hash = hash_path.read_text(encoding="utf-8")
-            if stored_hash == current_hash:
-                embeddings = np.load(str(embeddings_path))
-                cache_valid = True
-        except (OSError, ValueError):
-            pass
-    
-    if not cache_valid:
-        embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
-        np.save(str(embeddings_path), embeddings)
-        hash_path.write_text(current_hash, encoding="utf-8")
-    
+    embeddings = _load_or_compute_embeddings(root, texts, entries, model)
+
     query_vec = model.encode([query], show_progress_bar=False)[0]
     
     norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
     scores = np.zeros(len(entries))
-    
-    query_lower = query.lower()
-    query_tokens = [t for t in re.split(r'\W+', query_lower) if len(t) > 2]
     
     from datetime import datetime, timezone
     now_ts = datetime.now(timezone.utc).timestamp()
     
     for i, e in enumerate(entries):
         base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
-        
-        content_lower = e["content"].lower()
-        if query_lower in content_lower:
-            base_score += 0.3
-        else:
-            matches = sum(1 for t in query_tokens if t in content_lower)
-            if matches > 0 and len(query_tokens) > 0:
-                base_score += 0.15 * (matches / len(query_tokens))
-                
+
         try:
             pts = datetime.strptime(e.get("updated_at", e.get("created_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
             days_old = (now_ts - pts) / 86400.0
@@ -719,7 +693,12 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
         scores[i] = base_score
 
     top_indices = np.argsort(scores)[::-1][:top_k]
-    return [entries[i] for i in top_indices]
+    ranked: list[dict] = []
+    for index in top_indices:
+        item = dict(entries[index])
+        item["score"] = round(float(scores[index]), 4)
+        ranked.append(item)
+    return ranked
 
 def _sanitize_content(content: str, root: Path) -> str:
     """Sanitize and validate entry content.

@@ -8,7 +8,6 @@ META_FILE = "meta.json"
 CONFIG_FILE = "config.json"
 
 DEFAULT_SECTIONS = ["project", "actions", "systems", "requests", "user", "context"]
-SECTIONS = list(DEFAULT_SECTIONS)
 DEFAULT_REMOVED_SECTION_NAME = "uncategorized"
 DEFAULT_CUSTOM_SECTION_ICON = "◎"
 DEFAULT_ALL_SECTION_COLOR = "#95a5a6"
@@ -141,43 +140,29 @@ DEFAULT_MAX_CONTENT_LENGTH = 1000000
 DEFAULT_MAX_TAG_LENGTH = 500
 DEFAULT_MAX_TAGS_PER_ENTRY = 100
 DEFAULT_MAX_ENTRIES = 100000
-DEFAULT_SEMANTIC_MODEL_NAME = "paraphrase-MiniLM-L3-v2"
+DEFAULT_SEMANTIC_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_SEMANTIC_CONFLICT_THRESHOLD = 0.88
 SEMANTIC_MODEL_CHOICES = [
-	{
+    {
         "name": "paraphrase-multilingual-MiniLM-L12-v2",
-        "label": "Multilingual MiniLM - fast",
-        "description": "Fast and efficient model supporting 50+ languages. Best for quick multilingual semantic search.",
+        "label": "MiniLM L12 - Fast and Lightweight (CPU)",
+        "description": "Ideal for machines without a GPU. Extremely fast and low memory usage, supporting over 50 languages.",
     },
     {
         "name": "paraphrase-multilingual-mpnet-base-v2",
-        "label": "Multilingual MPNet - high quality",
-        "description": "Higher accuracy for 50+ languages with better semantic understanding than MiniLM.",
+        "label": "Multilingual MPNet - Balanced (Plug & Play)",
+        "description": "High accuracy for 50+ languages with deep semantic understanding. Perfect for GPU acceleration without requiring text prefixes.",
     },
     {
-        "name": "distiluse-base-multilingual-cased-v2",
-        "label": "DistilUSE Multilingual - stable",
-        "description": "Multilingual model mapped to the same vector space as English models. Excellent for cross-lingual tasks.",
+        "name": "BAAI/bge-m3",
+        "label": "BGE-M3 - Enthusiast (High Performance)",
+        "description": "Raw model with long context windows and support for over 100 languages. Requires heavy dedicated hardware.",
     },
     {
         "name": "sentence-transformers/LaBSE",
-        "label": "LaBSE - 109 languages",
-        "description": "Language-Agnostic BERT Sentence Embedding. Supports 109 languages with massive cross-lingual alignment.",
-    },
-    {
-        "name": "intfloat/multilingual-e5-small",
-        "label": "Multilingual E5 Small - retrieval optimized",
-        "description": "Small, state-of-the-art model specifically trained for text retrieval and semantic similarity.",
-    },
-    {
-        "name": "intfloat/multilingual-e5-base",
-        "label": "Multilingual E5 Base - balanced",
-        "description": "Strong balance between performance and speed for multilingual retrieval tasks.",
-    },
-	{
-		"name": "all-MiniLM-L6-v2",
-		"label": "All-MiniLM-L6-v2",
-		"description": "Alternative text model with a slightly different training objective than the default.",
-	},
+        "label": "LaBSE - Cross-lingual Search (Heavy CPU/Basic GPU)",
+        "description": "Focused on massive cross-lingual alignment. Useful for finding English terms while searching in Portuguese.",
+    }
 ]
 
 DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS = 15
@@ -194,6 +179,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"section_colors": DEFAULT_SECTION_COLORS.copy(),
 	"semantic_model_name": DEFAULT_SEMANTIC_MODEL_NAME,
 	"semantic_model_idle_ttl_seconds": DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
+	"semantic_conflict_threshold": DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
 	"entry_batch_size": ENTRY_BATCH_SIZE,
 	"entry_load_threshold": ENTRY_LOAD_THRESHOLD,
 }

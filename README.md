@@ -55,6 +55,8 @@ Zero friction. No CLI commands. Native IDE integration.
 
 The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
 
+The `rememb_init` MCP tool is optional/deprecated for day-to-day usage: in MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed. The tool remains available for compatibility and explicit recovery workflows.
+
 If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
 
 ```bash
@@ -116,11 +118,11 @@ rememb now writes the full configuration set to .rememb/config.json during initi
   "entry_batch_size": 24,
   "entry_load_threshold": 6,
   "semantic_model_idle_ttl_seconds": 15,
-  "semantic_model_name": "paraphrase-MiniLM-L3-v2"
+  "semantic_model_name": "paraphrase-multilingual-MiniLM-L12-v2"
 }
 ```
 
-Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as paraphrase-MiniLM-L3-v2.
+Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as intfloat/multilingual-e5-small or all-MiniLM-L6-v2.
 
 entry_batch_size and entry_load_threshold control how aggressively the TUI lazy-loads cards from the local store.
 

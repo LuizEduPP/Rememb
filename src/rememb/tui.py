@@ -33,6 +33,8 @@ from rememb.config import (
     DEFAULT_SECTION_COLORS,
     DEFAULT_SECTION_ICONS,
     DEFAULT_SECTIONS,
+    ENTRY_BATCH_SIZE,
+    ENTRY_LOAD_THRESHOLD,
     SECTION_ICON_CHOICES,
     SEMANTIC_MODEL_CHOICES,
 )
@@ -146,6 +148,36 @@ def _visible_card_tags(tags: list[str]) -> tuple[list[str], int]:
     visible_tags = list(tags[:CARD_TAG_PREVIEW_LIMIT])
     hidden_count = max(0, len(tags) - len(visible_tags))
     return visible_tags, hidden_count
+
+
+def _truncate_preview(content: str, limit: int = 150) -> str:
+    text = " ".join(content.split()).strip()
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _score_badge(score: float) -> tuple[str, str]:
+    """Return (markup_text, color) for a relevance score badge."""
+    pct = int(round(score * 100))
+    if score >= 0.90:
+        color = "#50fa7b"
+        icon = "▲"
+    elif score >= 0.75:
+        color = "#8be9fd"
+        icon = "◆"
+    elif score >= 0.60:
+        color = "#f1fa8c"
+        icon = "◇"
+    elif score >= 0.45:
+        color = "#ffb86c"
+        icon = "▽"
+    else:
+        color = "#ff5555"
+        icon = "▼"
+    return f" {icon} {pct}% ", color
 
 
 class ActionTriggered(Message):
@@ -393,6 +425,10 @@ class EntryCard(Widget):
                         f"[dim]#{self.entry_id[:8]}[/dim]",
                         id=f"cid-{self._uid}",
                     )
+                    score = self.entry.get("score")
+                    if isinstance(score, (int, float)):
+                        _badge_text, _badge_color = _score_badge(float(score))
+                        yield Label(_badge_text, classes="score-label", markup=False)
                     yield CardActionButton("◉", id="view-card", classes="act-btn", tooltip="View entry")
                     yield CardActionButton("✎", id="edit-card", classes="act-btn", tooltip="Edit entry")
                     yield CardActionButton("✕", id="delete-card", classes="act-btn del-btn", tooltip="Delete entry")
@@ -408,7 +444,7 @@ class EntryCard(Widget):
                 yield Rule(line_style="heavy")
 
                 content = self.entry.get("content", "")
-                preview = content[:150] + "…" if len(content) > 150 else content
+                preview = _truncate_preview(content)
                 yield Static(preview, id=f"ccnt-{self._uid}")
 
                 yield CardMetaLine(
@@ -468,6 +504,21 @@ class EntryCard(Widget):
         id_lbl.styles.width = "1fr"
         id_lbl.styles.content_align = ("left", "middle")
         id_lbl.styles.height = 3
+
+        try:
+            score_lbl = self.query_one(".score-label", Label)
+            score_lbl.styles.width = "auto"
+            score_lbl.styles.height = 3
+            score_lbl.styles.content_align = ("center", "middle")
+            score_lbl.styles.margin_left = 1
+            score = self.entry.get("score")
+            if isinstance(score, (int, float)):
+                _, badge_color = _score_badge(float(score))
+                score_lbl.styles.color = badge_color
+                score_lbl.styles.border = ("round", badge_color + "88")
+                score_lbl.styles.padding = (0, 1)
+        except Exception:
+            pass
 
         for btn in self.query(".act-btn"):
             btn.styles.border = ("round", self.color + "66")
@@ -562,8 +613,8 @@ class RemembApp(App):
         self.loaded_offset = 0
         self.has_more_entries = False
         self.sections = list(DEFAULT_SECTIONS)
-        self.entry_batch_size = 24
-        self.entry_load_threshold = 6
+        self.entry_batch_size = ENTRY_BATCH_SIZE
+        self.entry_load_threshold = ENTRY_LOAD_THRESHOLD
         self._panel_mode: str | None = None
         self._panel_entry: dict | None = None
 
@@ -745,19 +796,19 @@ class RemembApp(App):
     def _load_tui_config(self, root) -> None:
         config = get_config(root)
         _apply_section_appearance_config(config)
-        self.sections = list(config.get("sections", DEFAULT_SECTIONS))
+        self.sections = list(config["sections"])
         batch_size = config.get("entry_batch_size", self.entry_batch_size)
         load_threshold = config.get("entry_load_threshold", self.entry_load_threshold)
 
         try:
             self.entry_batch_size = max(1, int(batch_size))
         except (TypeError, ValueError):
-            self.entry_batch_size = 24
+            self.entry_batch_size = ENTRY_BATCH_SIZE
 
         try:
             self.entry_load_threshold = max(0, int(load_threshold))
         except (TypeError, ValueError):
-            self.entry_load_threshold = 6
+            self.entry_load_threshold = ENTRY_LOAD_THRESHOLD
 
         self.query_one("#main-scroll", EntryScrollContainer).set_threshold(self.entry_load_threshold)
         self._sync_section_select("#panel-section", current=self.query_one("#panel-section", Select).value)
@@ -872,14 +923,12 @@ class RemembApp(App):
             root = self._get_root()
             self.loaded_offset = 0
             self.has_more_entries = False
-            self.current_entries = self._sort_entries(
-                search_entries(
-                    root,
-                    self.current_query,
-                    top_k=20,
-                    section=self.current_section,
-                    tag=self.active_tag,
-                )
+            self.current_entries = search_entries(
+                root,
+                self.current_query,
+                top_k=20,
+                section=self.current_section,
+                tag=self.active_tag,
             )
             self._render_entries(reset=True)
             return
@@ -1068,8 +1117,7 @@ class RemembApp(App):
         self.latest_first = not self.latest_first
         self._update_sort_button()
         if self.current_query:
-            self.current_entries = self._sort_entries(self.current_entries)
-            self._render_entries(reset=True)
+            self.notify("Search results stay ordered by relevance", severity="information")
         else:
             self._load_entries(self.current_section)
         mode = "latest first" if self.latest_first else "oldest first"
@@ -1077,11 +1125,13 @@ class RemembApp(App):
 
     def action_consolidate(self) -> None:
         try:
+            config = get_config(self._get_root())
+            threshold = float(config["semantic_conflict_threshold"])
             result = consolidate_entries(
                 self._get_root(),
                 section=self.current_section,
                 mode="semantic",
-                similarity_threshold=0.88,
+                similarity_threshold=threshold,
             )
             target = result["section"] if result["section"] else "all sections"
             self._refresh_ui(self.current_section)
@@ -1267,11 +1317,15 @@ class ConfigScreen(_ModalBase):
         super().__init__()
         self._root = root
         self._config = config
-        self._sections = list(config.get("sections", DEFAULT_SECTIONS))
+        self._sections = list(config["sections"])
 
     @staticmethod
     def _section_icon_select_id(section: str) -> str:
         return f"cfg-section-icon-{section}"
+
+    @staticmethod
+    def _section_color_input_id(section: str) -> str:
+        return f"cfg-section-color-{section}"
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -1293,7 +1347,14 @@ class ConfigScreen(_ModalBase):
                                 id=self._section_icon_select_id(section),
                                 allow_blank=False,
                             ),
-                            f"Current color: {self._config.get('section_colors', {}).get(section, _section_color(section))}.",
+                        )
+                        yield FieldBlock(
+                            f"Color for {_section_label(section)}",
+                            Input(
+                                value=str(self._config.get("section_colors", {}).get(section, _section_color(section))),
+                                id=self._section_color_input_id(section),
+                            ),
+                            "Hex color code (e.g. #c060f0) used for this section's label and cards.",
                         )
                     yield FieldBlock(
                         "Semantic Model",
@@ -1312,6 +1373,14 @@ class ConfigScreen(_ModalBase):
                             id="cfg-semantic-model-idle-ttl-seconds",
                         ),
                         "How long the embedding model stays loaded after use before being released from memory. Use 0 to unload immediately.",
+                    )
+                    yield FieldBlock(
+                        "Semantic Conflict Threshold",
+                        Input(
+                            value=str(self._config.get("semantic_conflict_threshold", "")),
+                            id="cfg-semantic-conflict-threshold",
+                        ),
+                        "Cosine similarity threshold for duplicate detection during consolidation (0.0–1.0). Lower values are more aggressive.",
                     )
                     yield FieldBlock(
                         "Max Content Length",
@@ -1354,12 +1423,12 @@ class ConfigScreen(_ModalBase):
     def on_mount(self) -> None:
         super().on_mount()
         modal = self.query_one("#modal")
-        modal.styles.width = 112
-        modal.styles.height = 38
+        modal.styles.width = 140
+        modal.styles.height = 48
 
         scroll = self.query_one("#config-scroll", ScrollableContainer)
         scroll.styles.height = "1fr"
-        scroll.styles.padding = (0, 1, 0, 0)
+        scroll.styles.padding = (0, 2, 0, 0)
 
         sections = self.query_one("#cfg-sections", TextArea)
         sections.styles.height = 10
@@ -1375,15 +1444,19 @@ class ConfigScreen(_ModalBase):
         sections_text = self.query_one("#cfg-sections", TextArea).text
         sections = [line.strip() for line in sections_text.replace(",", "\n").splitlines() if line.strip()]
         section_icons = {}
+        section_colors = {}
         for section in self._sections:
             if section in sections:
                 section_icons[section] = self.query_one(f"#{self._section_icon_select_id(section)}", Select).value
+                section_colors[section] = self.query_one(f"#{self._section_color_input_id(section)}", Input).value
 
         updates = {
             "sections": sections,
             "section_icons": section_icons,
+            "section_colors": section_colors,
             "semantic_model_name": self.query_one("#cfg-semantic-model-name", Select).value,
             "semantic_model_idle_ttl_seconds": self.query_one("#cfg-semantic-model-idle-ttl-seconds", Input).value,
+            "semantic_conflict_threshold": self.query_one("#cfg-semantic-conflict-threshold", Input).value,
             "max_content_length": self.query_one("#cfg-max-content-length", Input).value,
             "max_tag_length": self.query_one("#cfg-max-tag-length", Input).value,
             "max_tags_per_entry": self.query_one("#cfg-max-tags-per-entry", Input).value,

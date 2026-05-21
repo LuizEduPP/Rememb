@@ -17,7 +17,7 @@ from rich.table import Table
 from rich.text import Text
 from rich import box
 
-from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE
+from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE, CONFIG_FILE
 from rememb.exceptions import RemembError, RemembNotInitializedError
 
 console = Console()
@@ -38,6 +38,11 @@ def _entries_path(root: Path) -> Path:
 def _meta_path(root: Path) -> Path:
     """Get path to meta.json file."""
     return _rememb_path(root) / META_FILE
+
+
+def _config_path(root: Path) -> Path:
+    """Get path to config.json file."""
+    return _rememb_path(root) / CONFIG_FILE
 
 
 def _validate_entry_id(entry_id: str) -> bool:

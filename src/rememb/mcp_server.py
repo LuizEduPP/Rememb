@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_SECTIONS
+from rememb.config import DEFAULT_SECTIONS, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
 from rememb.store import (
     clear_entries,
     consolidate_entries,
@@ -15,12 +15,12 @@ from rememb.store import (
     get_stats,
     init,
     read_entries,
+    read_entries_page,
     search_entries,
     write_entry,
 )
 from rememb.exceptions import RemembError, RemembNotInitializedError
-from rememb.utils import _validate_entry_id, find_root, is_initialized
-from rememb.helpers import _assert_initialized
+from rememb.utils import _validate_entry_id, global_root, is_initialized
 
 
 DEFAULT_SSE_HOST = "127.0.0.1"
@@ -83,16 +83,21 @@ _mcp_context = MCPContext()
 
 
 def _get_root() -> Path:
-    """Get root path with cache invalidation.
+    """Get global root path with cache invalidation.
 
     Returns:
-        Project root path
+        Global root path
 
     Raises:
-        RemembNotInitializedError: If rememb not initialized
+        RemembNotInitializedError: If global rememb cannot be initialized
     """
-    root = find_root()
-    _assert_initialized(root)
+    root = global_root()
+
+    if not is_initialized(root):
+        init(root, project_name="global", global_mode=True)
+
+    if not is_initialized(root):
+        raise RemembNotInitializedError("Global rememb not initialized.")
 
     root_cache = _mcp_context.get_root_cache()
     if "root" in root_cache and root_cache["root"] != root:
@@ -107,7 +112,7 @@ def _get_mcp_sections() -> list[str]:
     """Return the current section list for MCP schemas, with safe fallback."""
     try:
         root = _get_root()
-        return list(get_config(root).get("sections", DEFAULT_SECTIONS))
+        return list(get_config(root)["sections"])
     except Exception:
         return list(DEFAULT_SECTIONS)
 
@@ -117,6 +122,22 @@ def _get_default_mcp_section() -> str:
     if "context" in sections:
         return "context"
     return sections[0]
+
+
+def _render_entries(
+    entries: list[dict],
+    *,
+    include_score: bool = False,
+    max_chars: int | None = None,
+    summary_only: bool = False,
+) -> str:
+    return format_entries(
+        entries,
+        include_id=True,
+        include_score=include_score,
+        max_chars=max_chars,
+        summary_only=summary_only,
+    )
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
@@ -134,15 +155,46 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_read():
         section = arguments.get("section")
+        max_chars = arguments.get("max_chars")
+        summary_only = arguments.get("summary_only", False)
         entries = await asyncio.to_thread(read_entries, root, section)
-        return [TextContent(type="text", text=format_entries(entries, include_id=True))]
+        return [TextContent(type="text", text=_render_entries(entries, max_chars=max_chars, summary_only=summary_only))]
+
+    async def rememb_read_page():
+        section = arguments.get("section")
+        tag = arguments.get("tag")
+        offset = arguments.get("offset", 0)
+        limit = arguments.get("limit", 100)
+        sort_by = arguments.get("sort_by", "storage")
+        descending = arguments.get("descending", False)
+        max_chars = arguments.get("max_chars")
+        summary_only = arguments.get("summary_only", True)
+        page = await asyncio.to_thread(
+            read_entries_page,
+            root,
+            section,
+            tag=tag,
+            offset=offset,
+            limit=limit,
+            sort_by=sort_by,
+            descending=descending,
+        )
+        header = (
+            f"Page {page['offset']}..{page['next_offset']} of {page['total']} "
+            f"(limit={page['limit']}, has_more={page['has_more']})"
+        )
+        body = _render_entries(page["items"], max_chars=max_chars, summary_only=summary_only)
+        return [TextContent(type="text", text=f"{header}\n\n{body}")]
 
     async def rememb_search():
         query = arguments["query"]
         top_k = arguments.get("top_k", 5)
+        section = arguments.get("section")
         tag = arguments.get("tag")
-        entries = await asyncio.to_thread(search_entries, root, query, top_k, None, tag)
-        return [TextContent(type="text", text=format_entries(entries, include_id=True))]
+        max_chars = arguments.get("max_chars")
+        summary_only = arguments.get("summary_only", True)
+        entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag)
+        return [TextContent(type="text", text=_render_entries(entries, include_score=True, max_chars=max_chars, summary_only=summary_only))]
 
     async def rememb_write():
         content = arguments["content"]
@@ -195,7 +247,11 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     async def rememb_consolidate():
         section = arguments.get("section")
         mode = arguments.get("mode", "exact")
-        similarity_threshold = arguments.get("similarity_threshold", 0.88)
+        _cfg = get_config(root)
+        similarity_threshold = arguments.get(
+            "similarity_threshold",
+            _cfg["semantic_conflict_threshold"],
+        )
         result = await asyncio.to_thread(
             consolidate_entries,
             root,
@@ -219,15 +275,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_init():
         project_name = arguments.get("project_name", "")
-        init_root = find_root(local=True)
+        init_root = global_root()
         if await asyncio.to_thread(is_initialized, init_root):
             return [TextContent(type="text", text=f"Already initialized at {init_root / '.rememb'}")]
         _mcp_context.clear_root_cache()
-        rememb_path = await asyncio.to_thread(init, init_root, project_name)
+        effective_project_name = project_name or "global"
+        rememb_path = await asyncio.to_thread(init, init_root, effective_project_name, True)
         return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
 
     tool_handlers = {
         "rememb_read": rememb_read,
+        "rememb_read_page": rememb_read_page,
         "rememb_search": rememb_search,
         "rememb_write": rememb_write,
         "rememb_edit": rememb_edit,
@@ -288,16 +346,75 @@ def _build_tools(Tool):
                     "type": "string",
                     "enum": sections,
                     "description": f"Filter by section: {', '.join(sections)}",
-                }
+                },
+                "summary_only": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Render a compact one-line summary per entry",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Maximum characters of content to include per entry",
+                },
+            },
+        ),
+        _tool(
+            name="rememb_read_page",
+            description="Read a paginated slice of entries with server-side truncation. Best for browsing large stores without flooding the context window.",
+            properties={
+                "section": {
+                    "type": "string",
+                    "enum": sections,
+                    "description": f"Optional section filter: {', '.join(sections)}",
+                },
+                "tag": {
+                    "type": "string",
+                    "description": "Optional exact tag filter applied before pagination",
+                },
+                "offset": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Zero-based page offset",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Maximum entries to return",
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["storage", "recent"],
+                    "default": "storage",
+                    "description": "Sort order before pagination",
+                },
+                "descending": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Reverse the selected sort order",
+                },
+                "summary_only": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Render a compact one-line summary per entry",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Maximum characters of content to include per entry",
+                },
             },
         ),
         _tool(
             name="rememb_search",
-            description="Search memory entries by content or tags using semantic similarity with keyword fallback. Safe, read-only operation with no side effects. Use instead of rememb_read when you need to find specific entries by topic rather than loading all entries. Returns the top_k most relevant results ranked by similarity.",
+            description="Search memory entries by content or tags using semantic similarity. Safe, read-only operation with no side effects. Use instead of rememb_read when you need to find specific entries by topic rather than loading all entries. Returns the top_k most relevant results ranked by similarity.",
             properties={
                 "query": {
                     "type": "string",
                     "description": "Search query - natural language or keywords",
+                },
+                "section": {
+                    "type": "string",
+                    "enum": sections,
+                    "description": f"Optional section filter: {', '.join(sections)}",
                 },
                 "tag": {
                     "type": "string",
@@ -307,6 +424,15 @@ def _build_tools(Tool):
                     "type": "integer",
                     "default": 5,
                     "description": "Maximum number of results",
+                },
+                "summary_only": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Render a compact one-line summary per entry",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Maximum characters of content to include per entry",
                 },
             },
             required=["query"],
@@ -408,14 +534,14 @@ def _build_tools(Tool):
                 },
                 "similarity_threshold": {
                     "type": "number",
-                    "default": 0.88,
+                    "default": DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
                     "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)",
                 },
             },
         ),
         _tool(
             name="rememb_init",
-            description="Initialize a local rememb memory store in the current directory, creating a .rememb/ folder. Idempotent — safe to call even if already initialized (returns status without overwriting). Call this once per project before using other tools. Falls back to ~/.rememb/ globally if not initialized.",
+            description="Initialize rememb memory storage. Optional/deprecated for normal MCP use because home-first root resolution auto-initializes ~/.rememb when needed. Kept for compatibility and explicit recovery flows; idempotent and safe to call repeatedly.",
             properties={
                 "project_name": {
                     "type": "string",

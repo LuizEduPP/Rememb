@@ -9,8 +9,8 @@ import pytest
 
 from rememb.helpers import _file_lock
 from rememb.config import DEFAULT_SECTIONS
-from rememb.exceptions import RemembValidationError
-from rememb.store import clear_entries, get_stats, init, read_entries, update_config, write_entry
+from rememb.exceptions import RemembNotInitializedError, RemembValidationError
+from rememb.store import clear_entries, format_entries, get_stats, init, read_entries, search_entries, update_config, write_entry
 
 
 def _hold_file_lock(path_str: str, mode: str, entered_conn, release_conn) -> None:
@@ -124,3 +124,68 @@ def test_file_lock_uses_exclusive_lock_for_r_plus_mode(tmp_path):
     first_release_parent.close()
     second_entered_parent.close()
     second_release_parent.close()
+
+
+def test_file_lock_read_mode_does_not_create_missing_file(tmp_path):
+    missing_path = tmp_path / "missing.json"
+
+    with pytest.raises(FileNotFoundError):
+        with _file_lock(missing_path, mode="r"):
+            pass
+
+    assert not missing_path.exists()
+
+
+def test_search_and_stats_require_initialization(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    with pytest.raises(RemembNotInitializedError):
+        search_entries(root, "query")
+
+    with pytest.raises(RemembNotInitializedError):
+        get_stats(root)
+
+    assert not (root / ".rememb").exists()
+
+
+def test_search_entries_returns_scores(tmp_path, monkeypatch):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+    write_entry(root, "project", "alpha match")
+    write_entry(root, "project", "beta mismatch")
+
+    class FakeModel:
+        def encode(self, texts, show_progress_bar=False, batch_size=32):
+            vectors = []
+            for text in texts:
+                lowered = text.lower()
+                vectors.append([1.0, 0.0] if "alpha" in lowered else [0.0, 1.0])
+            return vectors
+
+    monkeypatch.setattr("rememb.store._store_context.get_model", lambda _root=None: FakeModel())
+    monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
+
+    results = search_entries(root, "alpha")
+
+    assert results[0]["score"] >= results[1]["score"]
+    assert "score" in results[0]
+
+
+def test_format_entries_supports_summary_and_truncation():
+    entries = [
+        {
+            "id": "abcd1234",
+            "section": "project",
+            "content": "a" * 20,
+            "tags": ["tag1"],
+            "score": 0.98765,
+        }
+    ]
+
+    text = format_entries(entries, include_id=True, include_score=True, max_chars=8, summary_only=True)
+
+    assert "abcd1234" in text
+    assert "score: 0.988" in text
+    assert "aaaaa..." in text

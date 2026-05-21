@@ -12,8 +12,8 @@ from rememb.exceptions import (
     RemembConfigError,
     RemembError,
 )
-from rememb.config import CONFIG_FILE, DEFAULT_CONFIG, DEFAULT_REMOVED_SECTION_NAME, DEFAULT_SECTIONS, META_FILE
-from rememb.utils import _rememb_path, _entries_path, _meta_path, _now
+from rememb.config import DEFAULT_CONFIG, DEFAULT_REMOVED_SECTION_NAME, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
+from rememb.utils import _rememb_path, _entries_path, _meta_path, _config_path, _now
 from rememb.helpers import (
     MemoryStore,
     _load_entries,
@@ -35,9 +35,6 @@ from rememb.helpers import (
 logger = logging.getLogger(__name__)
 
 
-SECTIONS = list(DEFAULT_SECTIONS)
-
-
 _POSITIVE_INT_CONFIG_KEYS = {
     "max_content_length",
     "max_tag_length",
@@ -49,6 +46,10 @@ _POSITIVE_INT_CONFIG_KEYS = {
 _NON_NEGATIVE_INT_CONFIG_KEYS = {
     "semantic_model_idle_ttl_seconds",
     "entry_load_threshold",
+}
+
+_FLOAT_0_1_CONFIG_KEYS = {
+    "semantic_conflict_threshold",
 }
 
 
@@ -172,6 +173,16 @@ def _validate_config_updates(
             next_config[key] = parsed
             continue
 
+        if key in _FLOAT_0_1_CONFIG_KEYS:
+            try:
+                parsed_f = float(str(value).strip())
+            except (TypeError, ValueError):
+                raise RemembValidationError(f"{key} must be a float between 0.0 and 1.0.") from None
+            if not (0.0 <= parsed_f <= 1.0):
+                raise RemembValidationError(f"{key} must be between 0.0 and 1.0.")
+            next_config[key] = parsed_f
+            continue
+
         if key == "semantic_model_name":
             model_name = str(value).strip()
             if not model_name:
@@ -203,7 +214,7 @@ def _validate_config_updates(
 
         next_config[key] = value
 
-    current_sections = _validate_sections_config(root, current_config.get("sections", DEFAULT_SECTIONS))
+    current_sections = _validate_sections_config(root, current_config["sections"])
     requested_sections = _validate_sections_config(root, next_config.get("sections", current_sections))
     final_sections, used_removed_sections, migration_target = _plan_section_migration(
         root,
@@ -220,7 +231,6 @@ def _validate_config_updates(
 
 
 __all__ = [
-    "SECTIONS",
     "init",
     "get_config",
     "update_config",
@@ -252,7 +262,7 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     rememb = _rememb_path(root)
     rememb.mkdir(parents=True, exist_ok=True)
 
-    config_file = rememb / CONFIG_FILE
+    config_file = _config_path(root)
     config_data = DEFAULT_CONFIG.copy()
     if config_file.exists():
         try:
@@ -269,7 +279,7 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
     _sync_meta_sections(
         root,
-        list(config_data.get("sections", DEFAULT_SECTIONS)),
+        list(config_data["sections"]),
         project_name=project_name or ("global" if global_mode else root.name),
     )
     _store_context.clear_config_cache(root)
@@ -347,7 +357,10 @@ def write_entry(
                 semantic_entries = entries
                 if normalized_scope == "section":
                     semantic_entries = [e for e in entries if e.get("section") == section]
-                conflict = _check_semantic_conflict(root, semantic_entries, content, model)
+                conflict = _check_semantic_conflict(
+                    root, semantic_entries, content, model,
+                    threshold=float(config["semantic_conflict_threshold"]),
+                )
                 if conflict:
                     raise RemembValidationError(
                         f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
@@ -403,7 +416,7 @@ def update_config(root: Path, updates: dict[str, object]) -> dict:
         if used_removed_sections and migration_target:
             moved_entries = _migrate_entries_to_section(root, used_removed_sections, migration_target)
         updated_config = _store_context.update_config(root, validated_config)
-        _sync_meta_sections(root, list(updated_config.get("sections", DEFAULT_SECTIONS)))
+        _sync_meta_sections(root, list(updated_config["sections"]))
         return updated_config
     except Exception:
         if moved_entries:
@@ -418,7 +431,7 @@ def consolidate_entries(
     root: Path,
     section: str | None = None,
     mode: str = "exact",
-    similarity_threshold: float = 0.88,
+    similarity_threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
 ) -> dict:
     """Consolidate entries with exact or semantic duplicate detection.
 
@@ -851,6 +864,7 @@ def search_entries(
         section,
         tag,
     )
+    _assert_initialized(root)
     entries = _load_entries(root)
     if section:
         entries = [entry for entry in entries if entry.get("section") == section.lower()]
@@ -898,6 +912,7 @@ def get_stats(root: Path) -> dict:
     Returns:
         Dictionary with total, by_section, size_kb, oldest, newest
     """
+    _assert_initialized(root)
     entries = _load_entries(root)
     total = len(entries)
     by_section = {s: 0 for s in _get_sections(root)}
@@ -920,18 +935,36 @@ def get_stats(root: Path) -> dict:
     }
 
 
-def format_entries(entries: list[dict], include_id: bool = False) -> str:
+def format_entries(
+    entries: list[dict],
+    include_id: bool = False,
+    *,
+    include_score: bool = False,
+    max_chars: int | None = None,
+    summary_only: bool = False,
+) -> str:
     """Format entries for display.
     
     Args:
         entries: List of entry dictionaries
         include_id: If True, include entry IDs in output
+        include_score: If True, include semantic scores when available
+        max_chars: Optional maximum number of content characters per entry
+        summary_only: If True, render a compact one-line summary per entry
     
     Returns:
         Formatted markdown string
     """
     if not entries:
         return "No memory entries found."
+
+    def _truncate(text: str) -> str:
+        value = " ".join(text.split()).strip()
+        if max_chars is not None and max_chars >= 0 and len(value) > max_chars:
+            if max_chars <= 3:
+                return value[:max_chars]
+            return value[: max_chars - 3].rstrip() + "..."
+        return value
 
     by_section: dict[str, list] = {}
     for e in entries:
@@ -941,9 +974,17 @@ def format_entries(entries: list[dict], include_id: bool = False) -> str:
     for section, items in by_section.items():
         lines.append(f"## {section.capitalize()}")
         for item in items:
+            content = _truncate(str(item.get("content", "")))
+            if summary_only and not content:
+                content = ""
             tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
+            score = item.get("score")
+            score_text = f" (score: {float(score):.3f})" if include_score and isinstance(score, (int, float)) else ""
             prefix = f"[{item['id']}] " if include_id else ""
-            lines.append(f"- {prefix}{item['content']}{tags}")
+            if summary_only:
+                lines.append(f"- {prefix}{content}{score_text}{tags}")
+            else:
+                lines.append(f"- {prefix}{content}{score_text}{tags}")
         lines.append("")
 
     return "\n".join(lines)

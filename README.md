@@ -154,15 +154,15 @@ rememb --port 9000           # Custom port
 rememb --no-browser          # Start server without opening the browser
 ```
 
-![rememb web UI](assets/web-ui.png)
+![rememb web UI](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui.png)
 
 The screenshot above shows the actual local web UI running with demo data.
 
-![rememb stats view](assets/web-ui-stats.png)
+![rememb stats view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-stats.png)
 
 Stats view with totals, section breakdown, date range, and recent entries.
 
-![rememb settings view](assets/web-ui-settings.png)
+![rememb settings view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-settings.png)
 
 Settings view with limits, semantic search controls, section colors, and maintenance actions.
 

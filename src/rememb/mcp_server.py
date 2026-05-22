@@ -20,7 +20,13 @@ from rememb.store import (
     write_entry,
 )
 from rememb.exceptions import RemembError, RemembNotInitializedError
-from rememb.utils import _validate_entry_id, global_root, is_initialized
+from rememb.utils import (
+    _validate_entry_id,
+    global_root,
+    is_initialized,
+    list_skill_definitions,
+    load_skill_definition,
+)
 
 
 DEFAULT_SSE_HOST = "127.0.0.1"
@@ -283,6 +289,38 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         rememb_path = await asyncio.to_thread(init, init_root, effective_project_name, True)
         return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
 
+    async def rememb_list_skills():
+        skills = await asyncio.to_thread(list_skill_definitions)
+        if not skills:
+            return [TextContent(type="text", text="No bundled rememb skills found in the installed package.")]
+
+        lines = []
+        for skill in skills:
+            lines.append(
+                f"- {skill['name']} (id={skill['id']})\n"
+                f"  path: {skill['path']}\n"
+                f"  description: {skill['description']}"
+            )
+        return [TextContent(type="text", text="\n".join(lines))]
+
+    async def rememb_use_skill():
+        skill = arguments["skill"]
+        loaded = await asyncio.to_thread(load_skill_definition, skill)
+        if not loaded:
+            return [TextContent(type="text", text=f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills.")]
+
+        body = loaded.get("content", "").strip()
+        return [TextContent(
+            type="text",
+            text=(
+                f"Skill: {loaded['name']}\n"
+                f"ID: {loaded['id']}\n"
+                f"Path: {loaded['path']}\n"
+                f"Description: {loaded['description']}\n\n"
+                f"{body}"
+            ).strip(),
+        )]
+
     tool_handlers = {
         "rememb_read": rememb_read,
         "rememb_read_page": rememb_read_page,
@@ -294,6 +332,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_stats": rememb_stats,
         "rememb_consolidate": rememb_consolidate,
         "rememb_init": rememb_init,
+        "rememb_list_skills": rememb_list_skills,
+        "rememb_use_skill": rememb_use_skill,
     }
 
     handler = tool_handlers.get(name)
@@ -541,13 +581,29 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_init",
-            description="Initialize rememb memory storage. Optional/deprecated for normal MCP use because home-first root resolution auto-initializes ~/.rememb when needed. Kept for compatibility and explicit recovery flows; idempotent and safe to call repeatedly.",
+            description="Initialize rememb memory storage. Useful for explicit setup and recovery flows. Home-first root resolution also auto-initializes ~/.rememb when needed, and this tool remains idempotent and safe to call repeatedly.",
             properties={
                 "project_name": {
                     "type": "string",
                     "description": "Optional project name",
                 }
             },
+        ),
+        _tool(
+            name="rememb_list_skills",
+            description="List bundled rememb skills discovered from the installed package contents. Safe, read-only operation.",
+            properties={},
+        ),
+        _tool(
+            name="rememb_use_skill",
+            description="Load one bundled rememb skill by identifier or exact declared name and return its instructions. Safe, read-only operation. Use rememb_list_skills first to inspect available skills.",
+            properties={
+                "skill": {
+                    "type": "string",
+                    "description": "Skill identifier (directory name) or exact declared skill name",
+                }
+            },
+            required=["skill"],
         ),
     ]
 

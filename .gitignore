@@ -9,4 +9,3 @@ venv/
 .rememb/embeddings.npy
 .rememb/embeddings.hash
 .mcpregistry_*_token
-*.md

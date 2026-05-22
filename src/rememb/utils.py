@@ -2,7 +2,6 @@
 
 import html
 import logging
-import os
 import re
 import warnings
 from datetime import datetime, timezone
@@ -135,6 +134,84 @@ def _read_file_content(path: Path) -> str:
         except (pypdf.PdfReadError, pypdf.PdfStreamError, ValueError) as e:
             return ""
     return ""
+
+
+def _parse_simple_frontmatter(content: str) -> dict[str, str]:
+    """Parse simple YAML-like frontmatter key/value pairs."""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
+    if not match:
+        return {}
+
+    metadata: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        metadata[key.strip()] = value.strip().strip('"\'')
+    return metadata
+
+
+def _default_skill_roots() -> list[Path]:
+    """Return the internal rememb package roots that may contain skills."""
+    return [(Path(__file__).resolve().parent / "skills")]
+
+
+def list_skill_definitions(skill_roots: list[Path] | None = None) -> list[dict[str, str]]:
+    """List local skills discovered from configured skill roots."""
+    definitions: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+
+    for root in skill_roots or _default_skill_roots():
+        if not root.is_dir():
+            continue
+        for skill_file in sorted(root.rglob("SKILL.md")):
+            resolved = str(skill_file.resolve())
+            if resolved in seen_paths:
+                continue
+            seen_paths.add(resolved)
+
+            content = _read_file_content(skill_file)
+            metadata = _parse_simple_frontmatter(content)
+            identifier = skill_file.parent.name
+            name = metadata.get("name") or identifier
+            description = metadata.get("description") or _extract_summary(content)
+            definitions.append(
+                {
+                    "id": identifier,
+                    "name": name,
+                    "description": description,
+                    "path": str(skill_file),
+                    "root": str(root),
+                }
+            )
+
+    definitions.sort(key=lambda item: (item["name"].lower(), item["id"].lower(), item["path"]))
+    return definitions
+
+
+def load_skill_definition(skill_name: str, skill_roots: list[Path] | None = None) -> dict[str, str] | None:
+    """Load a single local skill by identifier or declared frontmatter name."""
+    normalized = skill_name.strip().lower()
+    if not normalized:
+        return None
+
+    exact_id_matches: list[dict[str, str]] = []
+    exact_name_matches: list[dict[str, str]] = []
+
+    for definition in list_skill_definitions(skill_roots):
+        if definition["id"].lower() == normalized:
+            exact_id_matches.append(definition)
+        if definition["name"].strip().lower() == normalized:
+            exact_name_matches.append(definition)
+
+    matches = exact_id_matches or exact_name_matches
+    if len(matches) != 1:
+        return None
+
+    match = dict(matches[0])
+    skill_path = Path(match["path"])
+    match["content"] = _read_file_content(skill_path)
+    return match
 
 
 def global_root() -> Path:

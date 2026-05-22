@@ -57,6 +57,8 @@ The agent now automatically reads memory at session start, writes when learning 
 
 The `rememb_init` MCP tool is optional/deprecated for day-to-day usage: in MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed. The tool remains available for compatibility and explicit recovery workflows.
 
+For the current public MCP tool list and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
+
 If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
 
 ```bash
@@ -166,14 +168,19 @@ Stats view with totals, section breakdown, date range, and recent entries.
 
 Settings view with limits, semantic search controls, section colors, and maintenance actions.
 
+![rememb skills view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-skills.png)
+
+Skills view listing all bundled skills available in the installed rememb package.
+
 Features:
-- **Top-level navigation** — switch between Memories, Stats, and Settings
+- **Top-level navigation** — switch between Memories, Stats, Skills, and Settings
 - **Section sidebar** — filter by section with live entry counts and a one-click consolidate action
 - **Search and sorting** — search from the header and reorder results by most recent, oldest, storage order, or reversed
 - **Card-based browsing** — scan entries with section badges, relative timestamps, tags, and entry IDs
 - **Modal CRUD flows** — create entries, inspect details, edit content and tags, or delete entries from the detail view
 - **Stats page** — view totals, active sections, store size, date range, and recent entries
 - **Settings page** — edit limits, semantic search options, section colors, and maintenance actions
+- **Skills page** — browse all bundled skills available in the installed rememb package
 
 The semantic search MCP tool also accepts an optional exact `tag` filter, so IDE clients can restrict semantic matches before ranking.
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rememb"
-version = "0.4.6"
+version = "0.4.7"
 description = "Persistent memory standard for AI agents — local, portable, zero config"
 readme = "README.md"
 license = "MIT"
@@ -53,6 +53,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "*" = ["*.md", "*.json", "*.gif", "*.html", "*.png"]
+"rememb" = ["skills/**/*.md"]
 
 [tool.setuptools]
 include-package-data = true

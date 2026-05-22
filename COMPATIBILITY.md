@@ -20,7 +20,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 
 | Interface | Status | Notes |
 |-----------|--------|-------|
-| TUI via `rememb` | Documented | Primary local interface |
+| Web UI via `rememb` | Documented | Primary local interface (FastAPI + SPA, opens in browser) |
 | CLI version/help output | Tested | Covered by pytest |
 | `rememb fetch-model` | Documented | Not covered by automated tests yet |
 
@@ -30,7 +30,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 |---------|--------|-------|
 | stdio MCP via `rememb mcp` | Documented and partially tested | CLI contract and tool schema are covered by pytest |
 | SSE MCP via `rememb mcp --transport sse` | Documented | Repository documents and exposes this path, but no end-to-end automated client test exists yet |
-| MCP tool set (9 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults |
+| MCP tool set (12 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults, including local skill discovery tools |
 
 ## Registry and Packaging Surfaces
 
@@ -46,7 +46,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 |-------------|--------|-------|
 | IDEs or tools that support local stdio MCP servers | Expected | Use the documented `command: rememb` and `args: ["mcp"]` configuration |
 | Clients that support HTTP/SSE MCP endpoints | Expected | Use the separate persistent SSE process documented in README |
-| Tools without MCP support | Partial | Use the local TUI and CLI surfaces instead |
+| Tools without MCP support | Partial | Use the local Web UI and CLI surfaces instead |
 
 ## Current Gaps
 

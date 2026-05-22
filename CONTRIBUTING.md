@@ -40,7 +40,7 @@ src/rememb/
 ├── helpers.py           # Persistence, validation and search helpers
 ├── mcp_server.py        # MCP server surface
 ├── store.py             # Core memory API
-├── tui.py               # Textual UI
+├── web.py               # Web UI (FastAPI + SPA)
 └── utils.py             # Shared utilities
 ```
 

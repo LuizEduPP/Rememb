@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
 import rememb.mcp_server as mcp_server
 from rememb.mcp_server import _build_tools
+from rememb.utils import list_skill_definitions, load_skill_definition
 
 
 @dataclass
@@ -12,6 +14,12 @@ class FakeTool:
     name: str
     description: str
     inputSchema: dict
+
+
+@dataclass
+class FakeTextContent:
+    type: str
+    text: str
 
 
 def test_build_tools_exposes_expected_public_contract():
@@ -29,6 +37,8 @@ def test_build_tools_exposes_expected_public_contract():
         "rememb_stats",
         "rememb_consolidate",
         "rememb_init",
+        "rememb_list_skills",
+        "rememb_use_skill",
     }
     assert by_name["rememb_search"].inputSchema["required"] == ["query"]
     assert by_name["rememb_write"].inputSchema["properties"]["semantic_scope"]["default"] == "global"
@@ -38,6 +48,7 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_read_page"].inputSchema["properties"]["summary_only"]["default"] is True
     assert "section" in by_name["rememb_search"].inputSchema["properties"]
     assert "summary_only" in by_name["rememb_search"].inputSchema["properties"]
+    assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
 
 
 def test_get_root_uses_global_home_and_auto_initializes(monkeypatch, tmp_path):
@@ -66,3 +77,65 @@ def test_get_root_uses_global_home_and_auto_initializes(monkeypatch, tmp_path):
 
     assert resolved == expected_root
     assert state["init_calls"] == 1
+
+
+def test_handle_tool_lists_local_skills(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "list_skill_definitions",
+        lambda: [
+            {
+                "id": "agent-browser",
+                "name": "agent-browser",
+                "description": "Browser automation CLI for AI agents.",
+                "path": "/tmp/agent-browser/SKILL.md",
+                "root": "/tmp",
+            }
+        ],
+    )
+
+    result = asyncio.run(mcp_server._handle_tool("rememb_list_skills", {}, FakeTextContent))
+
+    assert len(result) == 1
+    assert "agent-browser" in result[0].text
+    assert "/tmp/agent-browser/SKILL.md" in result[0].text
+
+
+def test_handle_tool_returns_skill_content(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "load_skill_definition",
+        lambda skill: {
+            "id": "agent-browser",
+            "name": "agent-browser",
+            "description": "Browser automation CLI for AI agents.",
+            "path": "/tmp/agent-browser/SKILL.md",
+            "content": "# Skill\nUse this skill for browser automation.",
+        }
+        if skill == "agent-browser"
+        else None,
+    )
+
+    result = asyncio.run(
+        mcp_server._handle_tool("rememb_use_skill", {"skill": "agent-browser"}, FakeTextContent)
+    )
+
+    assert len(result) == 1
+    assert "Skill: agent-browser" in result[0].text
+    assert "Use this skill for browser automation." in result[0].text
+
+
+def test_list_skill_definitions_reads_bundled_rememb_skills():
+    skills = list_skill_definitions()
+
+    assert any(skill["id"] == "rememb-mcp" for skill in skills)
+
+
+def test_load_skill_definition_reads_bundled_rememb_skill_content():
+    skill = load_skill_definition("rememb-mcp")
+
+    assert skill is not None
+    assert skill["id"] == "rememb-mcp"
+    assert "Use this skill when working on rememb MCP tools" in skill["content"]

@@ -27,7 +27,12 @@ from rememb.store import (
     update_config,
     write_entry,
 )
-from rememb.utils import global_root, is_initialized
+from rememb.utils import (
+    global_root,
+    is_initialized,
+    list_skill_definitions,
+    load_skill_definition,
+)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -196,6 +201,20 @@ async def config_get() -> dict:
 @app.get("/api/models")
 async def models_endpoint() -> dict:
     return {"models": SEMANTIC_MODEL_CHOICES}
+
+
+@app.get("/api/skills")
+async def skills_endpoint() -> dict:
+    skills = await asyncio.to_thread(list_skill_definitions)
+    return {"skills": skills}
+
+
+@app.get("/api/skills/{skill_id}")
+async def skill_detail_endpoint(skill_id: str) -> dict:
+    skill = await asyncio.to_thread(load_skill_definition, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found.")
+    return {"skill": skill}
 
 
 @app.put("/api/config")

@@ -5,10 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-05-21
+
+### Added
+- Skills page added to the Web UI, listing all bundled skills available in the installed rememb package; screenshot added at `assets/web-ui-skills.png`.
+- README now documents the Skills page with a screenshot and includes it in the top-level navigation description and feature list.
+
+### Changed
+- CHANGELOG retroactively includes the missing v0.4.3 entry that documented the TUI removal and Web UI introduction.
+- CONTRIBUTING.md project structure table updated: `tui.py` replaced by `web.py`.
+- COMPATIBILITY.md updated: all "TUI" interface references replaced with "Web UI (FastAPI + SPA)".
+- `.github/agents/rememb-maintainer.agent.md` updated: all Textual/TUI references replaced with Web UI/`web.py` equivalents across `description`, scope, constraints, working rules, and approach sections.
+
 ## [0.4.6] - 2026-05-21
 
 ### Changed
-- Package and release metadata were aligned to version `0.4.6` across the Python package, Docker image install target, and MCP registry metadata.
+- Package and release metadata were aligned to version `0.4.7` across the Python package, Docker image install target, and MCP registry metadata.
 - README was refreshed to reflect the current Web UI and now includes real screenshots for the main memories view, stats view, and settings view.
 
 ### Fixed
@@ -21,6 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Write locks now treat all mutating file modes, including `r+`, as exclusive, preventing concurrent writers from corrupting `.rememb/entries.json` during large delete or consolidation operations.
 - Added a regression test that verifies a second process cannot acquire a writable lock while another `r+` operation is still in progress.
+
+## [0.4.3] - 2026-05-03
+
+### Added
+- Web UI (`src/rememb/web.py`) built with FastAPI and a vanilla-JS SPA served from `src/rememb/static/index.html` — zero build step, zero external JS dependencies.
+- Web UI features: section sidebar with live entry counts and per-section consolidate action, card grid with pagination, modal CRUD flows (create, inspect, edit, delete), semantic search from the header, sort controls (recent, oldest, storage, reversed), Stats page, and Settings page.
+- CLI flags `--host`, `--port`, and `--no-browser` for the default `rememb` command.
+- `/api/skills` and `/api/skills/{skill_id}` read-only routes in the Web UI for listing packaged skills.
+- `fastapi>=0.100.0` and `uvicorn>=0.20.0` added as required dependencies.
+
+### Changed
+- `rememb` with no arguments now launches the Web UI in the browser (replaces the former TUI launch).
+- `run_web()` helper in `web.py` takes over the launch responsibility previously handled by `tui.py`.
+
+### Removed
+- `tui.py` and its Textual-based terminal interface removed from the package.
+- `textual` removed from the dependency list.
 
 ## [0.4.4] - 2026-05-05
 

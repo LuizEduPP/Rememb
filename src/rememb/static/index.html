@@ -114,6 +114,10 @@ tailwind.config = {
                 <span>Store size</span>
                 <span class="font-mono text-ink" id="stat-size">—</span>
               </div>
+              <div class="flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-mute hover:bg-[rgba(18,33,70,0.04)]">
+                <span>Deleted</span>
+                <span class="font-mono text-ink" id="stat-deleted">—</span>
+              </div>
             </div>
           </div>
 
@@ -130,7 +134,11 @@ tailwind.config = {
         <div class="mb-5 flex items-center gap-2 border-b border-line pb-3.5">
           <h2 id="section-title" class="font-display text-lg font-bold">All entries</h2>
           <span id="total-badge" class="rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-mute"></span>
-          <select id="sort-select" class="ml-auto rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink outline-none transition focus:border-accent" title="Sort order">
+          <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
+            <input type="checkbox" id="toggle-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
+            <span>Show deleted</span>
+          </label>
+          <select id="sort-select" class="rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink outline-none transition focus:border-accent" title="Sort order">
             <option value="recent-desc">Most recent</option>
             <option value="recent-asc">Oldest first</option>
             <option value="storage-asc">Storage order</option>
@@ -233,6 +241,7 @@ const state = {
   hasMore: false,
   searchMode: false,
   searchQuery: '',
+  includeDeleted: false,
   loading: false,
 };
 
@@ -258,6 +267,10 @@ const api = {
   writeEntry: (body) => apiFetch('/api/entries', { method: 'POST', body: JSON.stringify(body) }),
   editEntry: (id, body) => apiFetch(`/api/entries/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteEntry: (id) => apiFetch(`/api/entries/${id}`, { method: 'DELETE' }),
+  entryVersions: (id, p = {}) => apiFetch(`/api/entries/${id}/versions?` + new URLSearchParams(p)),
+  restoreDeletedEntry: (id) => apiFetch(`/api/entries/${id}/restore`, { method: 'POST' }),
+  restoreEntryVersion: (id, version) => apiFetch(`/api/entries/${id}/versions/${version}/restore`, { method: 'POST' }),
+  diffVersions: (id, p) => apiFetch(`/api/entries/${id}/diff?` + new URLSearchParams(p)),
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
 };
@@ -319,6 +332,142 @@ function relTime(isoStr) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return d.toLocaleDateString();
+}
+
+function previewText(text, max = 96) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  return clean.slice(0, max - 1) + '…';
+}
+
+function readIntInput(id, fallback) {
+  const raw = document.getElementById(id)?.value ?? '';
+  const parsed = parseInt(String(raw).trim(), 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function readFloatInput(id, fallback) {
+  const raw = document.getElementById(id)?.value ?? '';
+  const parsed = parseFloat(String(raw).trim());
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function parseUnifiedDiff(diffText) {
+  const rows = [];
+  const lines = String(diffText || '').split('\n');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.startsWith('--- ') || line.startsWith('+++ ') || line.startsWith('@@')) {
+      continue;
+    }
+
+    if (line.startsWith('-')) {
+      const next = lines[index + 1] || '';
+      if (next.startsWith('+')) {
+        rows.push({ type: 'changed', left: line.slice(1), right: next.slice(1) });
+        index += 1;
+        continue;
+      }
+      rows.push({ type: 'removed', left: line.slice(1), right: '' });
+      continue;
+    }
+
+    if (line.startsWith('+')) {
+      rows.push({ type: 'added', left: '', right: line.slice(1) });
+      continue;
+    }
+
+    const value = line.startsWith(' ') ? line.slice(1) : line;
+    rows.push({ type: 'context', left: value, right: value });
+  }
+
+  return rows;
+}
+
+function tokenizeInlineWords(text) {
+  return String(text || '').match(/(\s+|[^\s]+)/g) || [];
+}
+
+function renderEscapedTokens(tokens) {
+  return tokens.map((token) => escHtml(token)).join('');
+}
+
+function renderInlineWordDiff(leftText, rightText, side) {
+  const leftTokens = tokenizeInlineWords(leftText);
+  const rightTokens = tokenizeInlineWords(rightText);
+
+  let prefix = 0;
+  while (
+    prefix < leftTokens.length &&
+    prefix < rightTokens.length &&
+    leftTokens[prefix] === rightTokens[prefix]
+  ) {
+    prefix += 1;
+  }
+
+  let leftSuffix = leftTokens.length - 1;
+  let rightSuffix = rightTokens.length - 1;
+  while (
+    leftSuffix >= prefix &&
+    rightSuffix >= prefix &&
+    leftTokens[leftSuffix] === rightTokens[rightSuffix]
+  ) {
+    leftSuffix -= 1;
+    rightSuffix -= 1;
+  }
+
+  const currentTokens = side === 'left' ? leftTokens : rightTokens;
+  const endIndex = side === 'left' ? leftSuffix : rightSuffix;
+  const changedTokens = currentTokens.slice(prefix, endIndex + 1);
+  const before = renderEscapedTokens(currentTokens.slice(0, prefix));
+  const after = renderEscapedTokens(currentTokens.slice(endIndex + 1));
+  if (!changedTokens.length) {
+    return before + after;
+  }
+
+  const diffClass = side === 'left'
+    ? 'rounded bg-[rgba(192,64,64,0.18)] px-1 text-danger'
+    : 'rounded bg-[rgba(48,184,112,0.18)] px-1 text-[#1f7a4f]';
+  return `${before}<span class="${diffClass}">${renderEscapedTokens(changedTokens)}</span>${after}`;
+}
+
+function renderDiffCell(row, side) {
+  const value = side === 'left' ? row.left : row.right;
+  if (row.type === 'changed') {
+    return renderInlineWordDiff(row.left, row.right, side);
+  }
+  return escHtml(value || '∅');
+}
+
+function renderSideBySideDiff(diffText) {
+  const rows = parseUnifiedDiff(diffText);
+  if (!rows.length) {
+    return '<div class="rounded-xl border border-line bg-panelSoft px-4 py-6 text-center text-sm text-mute">No content changes.</div>';
+  }
+
+  const rowClasses = {
+    context: 'bg-panel',
+    changed: 'bg-[rgba(255,196,0,0.08)]',
+    added: 'bg-[rgba(48,184,112,0.10)]',
+    removed: 'bg-[rgba(192,64,64,0.10)]',
+  };
+
+  return `
+    <div class="overflow-hidden rounded-xl border border-line bg-panel shadow-hairline">
+      <div class="grid grid-cols-2 border-b border-line bg-panelSoft text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">
+        <div class="border-r border-line px-4 py-2">From</div>
+        <div class="px-4 py-2">To</div>
+      </div>
+      <div class="max-h-[50vh] overflow-auto">
+        ${rows.map((row) => `
+          <div class="grid grid-cols-2 border-b border-line last:border-b-0 text-[12px] leading-6 ${rowClasses[row.type] || rowClasses.context}">
+            <div class="min-w-0 border-r border-line px-4 py-2 font-mono text-[#21324d] whitespace-pre-wrap break-words ${row.left ? '' : 'text-mute/50'}">${renderDiffCell(row, 'left')}</div>
+            <div class="min-w-0 px-4 py-2 font-mono text-[#21324d] whitespace-pre-wrap break-words ${row.right ? '' : 'text-mute/50'}">${renderDiffCell(row, 'right')}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
 }
 
 function decorateMarkdown(tmp) {
@@ -525,6 +674,7 @@ function renderStats(statsData) {
   document.getElementById('stat-sections').textContent = Object.values(statsData.sections || {}).filter((n) => n > 0).length;
   const kb = statsData.store_size_kb;
   document.getElementById('stat-size').textContent = kb != null ? `${Math.round(kb)} KB` : '—';
+  document.getElementById('stat-deleted').textContent = statsData.deleted_entries ?? 0;
   const counts = statsData.sections || {};
   document.getElementById('count-all').textContent = statsData.total_entries ?? '';
   for (const [sec, cnt] of Object.entries(counts)) {
@@ -553,6 +703,9 @@ function renderEntryCard(entry) {
   const accessBadge = (entry.access_count || 0) > 0
     ? `<span class="whitespace-nowrap text-[11px] text-mute" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>`
     : '';
+  const deletedBadge = entry.deleted_at
+    ? `<span class="rounded-full border border-[rgba(192,64,64,0.25)] bg-[rgba(192,64,64,0.1)] px-2 py-0.5 text-[11px] font-semibold text-danger">Deleted ${escHtml(relTime(entry.deleted_at))}</span>`
+    : '';
 
   return `
     <div class="group flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-panel transition hover:-translate-y-0.5 hover:shadow-hairlineStrong" data-id="${escHtml(entry.id)}" style="box-shadow:0 0 0 1px ${theme.headerBorder},0 2px 8px rgba(18,33,70,0.05);">
@@ -563,6 +716,7 @@ function renderEntryCard(entry) {
           ${escHtml(entry.section)}
         </div>
         <div class="ml-auto flex items-center gap-1.5">
+          ${deletedBadge}
           ${scoreBadge}
           <span class="text-[11px] ${isEdited ? 'text-ink' : 'text-mute'}" title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</span>
         </div>
@@ -635,6 +789,7 @@ async function loadEntries(append = false) {
   const offset = append ? state.offset : 0;
   const params = { offset, limit: state.limit, sort_by: state.sort_by, descending: state.descending };
   if (state.section) params.section = state.section;
+  if (state.includeDeleted) params.include_deleted = 'true';
 
   try {
     const data = await api.entries(params);
@@ -686,6 +841,7 @@ async function doSearch(query) {
   try {
     const params = { q: query, top_k: 40 };
     if (state.section) params.section = state.section;
+    if (state.includeDeleted) params.include_deleted = 'true';
     const data = await api.search(params);
     const results = data.results || [];
     document.getElementById('search-results-label').textContent = `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`;
@@ -855,6 +1011,9 @@ function openViewModal(entry) {
   const tags = (entry.tags || []).map((t) => `<span class="rounded-full border px-2.5 py-1 text-[11px]" style="background:${theme.softBg};border-color:${theme.softBorder};color:${theme.color}">${escHtml(t)}</span>`).join('');
   const scoreBadge = entry.score != null ? `<span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" style="background:rgba(255,255,255,0.65);border-color:${theme.softBorder};color:${theme.color}">${(entry.score * 100).toFixed(0)}%</span>` : '';
   const accessBadge = (entry.access_count || 0) > 0 ? `<span class="whitespace-nowrap text-[11px] text-mute" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>` : '';
+  const deletedNotice = entry.deleted_at
+    ? `<div class="mb-4 rounded-xl border border-[rgba(192,64,64,0.22)] bg-[rgba(192,64,64,0.08)] px-3 py-2 text-sm text-danger">Deleted ${escHtml(relTime(entry.deleted_at))}. You can restore the entry or restore a previous revision.</div>`
+    : '';
 
   openModal(modalShell(`
     <div class="h-[3px] w-full" style="background:linear-gradient(90deg, ${rgba(theme.color, 0.8)} 0%, ${rgba(theme.color, 0.15)} 100%)"></div>
@@ -870,6 +1029,7 @@ function openViewModal(entry) {
       <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      ${deletedNotice}
       <div class="text-[13.5px] leading-7 text-ink">${renderMarkdown(entry.content)}</div>
       ${tags ? `<div class="flex flex-wrap gap-1.5 pt-3">${tags}</div>` : ''}
       <div class="mt-3 flex items-center gap-2 border-t border-line pt-3">
@@ -878,28 +1038,42 @@ function openViewModal(entry) {
       </div>
     </div>
     <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
-      <button class="${baseButtonClasses('danger')}" id="btn-view-delete">Delete</button>
-      <button class="${baseButtonClasses('primary')}" id="btn-view-edit">Edit</button>
+      <button class="${baseButtonClasses('ghost')}" id="btn-view-history">History</button>
+      ${entry.deleted_at
+        ? `<button class="${baseButtonClasses('primary')}" id="btn-view-restore">Restore</button>`
+        : `<button class="${baseButtonClasses('danger')}" id="btn-view-delete">Delete</button><button class="${baseButtonClasses('primary')}" id="btn-view-edit">Edit</button>`}
     </div>
   `, 'w-[min(700px,96vw)]'));
-  document.getElementById('btn-view-edit').addEventListener('click', () => { closeModal(); openEditModal(entry); });
-  document.getElementById('btn-view-delete').addEventListener('click', () => { closeModal(); openDeleteModal(entry); });
+  document.getElementById('btn-view-history').addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
+  document.getElementById('btn-view-edit')?.addEventListener('click', () => { closeModal(); openEditModal(entry); });
+  document.getElementById('btn-view-delete')?.addEventListener('click', () => { closeModal(); openDeleteModal(entry); });
+  document.getElementById('btn-view-restore')?.addEventListener('click', async () => {
+    try {
+      await api.restoreDeletedEntry(entry.id);
+      closeModal();
+      toast('Entry restored.', 'success');
+      if (state.searchMode) await doSearch(state.searchQuery); else await loadEntries();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
 }
 
 function openDeleteModal(entry) {
   const preview = entry.content.length > 80 ? entry.content.slice(0, 80) + '…' : entry.content;
   openModal(modalShell(`
     <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
-      <span class="text-[15px] font-semibold">Delete entry?</span>
+      <span class="text-[15px] font-semibold">Soft-delete entry?</span>
       <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
     </div>
     <div class="px-6 py-5 text-sm leading-6 text-mute">
-      <p>This will permanently delete:</p>
+      <p>This will hide the entry from the default Web and MCP views.</p>
       <p class="mt-2 italic text-ink">&quot;${escHtml(preview)}&quot;</p>
+      <p class="mt-2">You can restore it later from History or by enabling deleted entries.</p>
     </div>
     <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
       <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('danger')}" id="btn-confirm-delete">Delete</button>
+      <button class="${baseButtonClasses('danger')}" id="btn-confirm-delete">Soft delete</button>
     </div>
   `, 'w-[min(400px,94vw)]'));
 
@@ -907,16 +1081,180 @@ function openDeleteModal(entry) {
     try {
       await api.deleteEntry(entry.id);
       closeModal();
-      toast('Entry deleted.', 'success');
-      const card = document.querySelector(`[data-id="${CSS.escape(entry.id)}"]`);
-      if (card) card.remove();
-      state.total = Math.max(0, state.total - 1);
-      document.getElementById('total-badge').textContent = state.total ? `${state.total} entries` : '';
-      await loadStats();
+      toast('Entry moved to deleted state.', 'success');
+      if (state.searchMode) await doSearch(state.searchQuery); else await loadEntries();
     } catch (e) {
       toast('Error: ' + e.message, 'error');
     }
   });
+}
+
+async function openDiffModal(entry, fromVersion, toVersion) {
+  try {
+    const data = await api.diffVersions(entry.id, { from_version: String(fromVersion), to_version: String(toVersion) });
+    const diffText = data.diff || '(no content changes)';
+    openModal(modalShell(`
+      <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
+        <div>
+          <div class="text-[15px] font-semibold">Diff for ${escHtml(entry.id)}</div>
+          <div class="mt-1 text-xs text-mute">v${fromVersion} → v${toVersion}</div>
+        </div>
+        <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div class="mb-5">
+          <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Side-by-side diff</div>
+          ${renderSideBySideDiff(diffText)}
+        </div>
+        <div>
+          <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Unified diff</div>
+          <pre class="my-0 overflow-x-auto rounded-xl bg-[#0f1624] px-4 py-3 text-[12px] text-[#b8cfe8] shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_4px_12px_rgba(0,0,0,0.18)]">${escHtml(diffText)}</pre>
+        </div>
+      </div>
+    `, 'w-[min(900px,98vw)]'));
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function openVersionsModal(entry) {
+  try {
+    const data = await api.entryVersions(entry.id, { include_deleted: 'true' });
+    const versions = data.versions || [];
+    const currentVersion = versions[versions.length - 1]?.version;
+    const previousVersion = versions.length > 1 ? versions[versions.length - 2]?.version : currentVersion;
+
+    openModal(modalShell(`
+      <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
+        <div>
+          <div class="text-[15px] font-semibold">Version history</div>
+          <div class="mt-1 text-xs text-mute">${escHtml(entry.id)} · ${versions.length} revision(s)</div>
+        </div>
+        <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div class="mb-4 rounded-xl border border-line bg-panelSoft px-3 py-3">
+          <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Compare revisions</div>
+          <div class="mb-3 text-xs text-mute">Timeline opens focused on current vs previous for quick comparison. Use the timeline chips below to change the pair.</div>
+          <div class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div><label class="mb-1 block text-[11px] text-mute">From</label><select class="${textInputClasses()}" id="diff-from-version"></select></div>
+            <div><label class="mb-1 block text-[11px] text-mute">To</label><select class="${textInputClasses()}" id="diff-to-version"></select></div>
+            <button class="${baseButtonClasses('ghost')}" id="btn-run-version-diff">Compare selected</button>
+          </div>
+        </div>
+        <div class="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Timeline</div>
+        <div class="space-y-4" id="timeline-root"></div>
+      </div>
+    `, 'w-[min(860px,98vw)]'));
+
+    const fromSelect = document.getElementById('diff-from-version');
+    const toSelect = document.getElementById('diff-to-version');
+    const timelineRoot = document.getElementById('timeline-root');
+    let selectedFrom = previousVersion ?? currentVersion;
+    let selectedTo = currentVersion;
+
+    function revisionOptionLabel(revision) {
+      return `v${revision.version}${revision.deleted_at ? ' [deleted]' : ''}`;
+    }
+
+    function renderVersionOptions(selectedVersion) {
+      return versions.map((revision) => `
+        <option value="${revision.version}" ${revision.version === selectedVersion ? 'selected' : ''}>${escHtml(revisionOptionLabel(revision))}</option>
+      `).join('');
+    }
+
+    function renderTimeline() {
+      timelineRoot.innerHTML = versions.slice().reverse().map((revision, index) => {
+        const isCurrent = revision.version === currentVersion;
+        const isLast = index === versions.length - 1;
+        const isSelectedFrom = revision.version === selectedFrom;
+        const isSelectedTo = revision.version === selectedTo;
+        const theme = sectionTheme(revision.section || entry.section);
+        const preview = previewText(revision.content, 120);
+        const activeBorder = isSelectedFrom || isSelectedTo ? `border-color:${theme.color}; box-shadow:0 0 0 1px ${theme.color}, 0 8px 24px ${theme.glow};` : '';
+        return `
+          <div class="relative pl-10" data-timeline-card="${revision.version}">
+            ${!isLast ? '<div class="absolute bottom-[-14px] left-[15px] top-6 w-px bg-line"></div>' : ''}
+            <div class="absolute left-0 top-1.5 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-panel shadow-hairline" style="box-shadow:0 0 0 3px ${theme.softBg};">
+              <span class="h-2.5 w-2.5 rounded-full" style="background:${theme.color}"></span>
+            </div>
+            <div class="overflow-hidden rounded-2xl border border-line bg-panel shadow-hairline transition" style="${activeBorder}">
+              <div class="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3" style="background:${theme.faint};">
+                <span class="rounded-full border border-line bg-panelSoft px-2 py-0.5 font-mono text-[11px] text-ink">v${revision.version}</span>
+                <span class="text-[11px] text-mute">${escHtml(revision.section || '')}</span>
+                ${revision.deleted_at ? '<span class="rounded-full border border-[rgba(192,64,64,0.25)] bg-[rgba(192,64,64,0.1)] px-2 py-0.5 text-[11px] font-semibold text-danger">deleted</span>' : ''}
+                ${isCurrent ? '<span class="rounded-full border border-[rgba(4,216,231,0.22)] bg-[rgba(4,216,231,0.12)] px-2 py-0.5 text-[11px] font-semibold text-ink">current</span>' : ''}
+                ${isSelectedFrom ? '<span class="rounded-full border border-[rgba(192,64,64,0.22)] bg-[rgba(192,64,64,0.10)] px-2 py-0.5 text-[11px] font-semibold text-danger">from</span>' : ''}
+                ${isSelectedTo ? '<span class="rounded-full border border-[rgba(48,184,112,0.22)] bg-[rgba(48,184,112,0.10)] px-2 py-0.5 text-[11px] font-semibold text-[#1f7a4f]">to</span>' : ''}
+                <span class="ml-auto text-[11px] text-mute">${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
+              </div>
+              <div class="px-4 py-3">
+                <div class="mb-2 text-[12px] leading-6 text-ink">${escHtml(preview)}</div>
+                <div class="flex flex-wrap items-center gap-2 text-[11px] text-mute">
+                  <span>Created ${escHtml(relTime(revision.created_at))}</span>
+                  <span>•</span>
+                  <span>Updated ${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
+                </div>
+              </div>
+              <div class="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3">
+                <button class="${baseButtonClasses(isSelectedFrom ? 'danger' : 'ghost', true)}" data-select-role="from" data-select-version="${revision.version}">Use as from</button>
+                <button class="${baseButtonClasses(isSelectedTo ? 'primary' : 'ghost', true)}" data-select-role="to" data-select-version="${revision.version}">Use as to</button>
+                ${!isCurrent ? `<button class="${baseButtonClasses('ghost', true)}" data-diff-version="${revision.version}">Diff to current</button><button class="${baseButtonClasses('primary', true)}" data-restore-version="${revision.version}">Restore version</button>` : ''}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      timelineRoot.querySelectorAll('[data-select-role]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const version = Number(button.dataset.selectVersion);
+          if (button.dataset.selectRole === 'from') {
+            selectedFrom = version;
+          } else {
+            selectedTo = version;
+          }
+          syncSelection();
+        });
+      });
+      timelineRoot.querySelectorAll('[data-diff-version]').forEach((button) => {
+        button.addEventListener('click', () => openDiffModal(entry, button.dataset.diffVersion, currentVersion));
+      });
+      timelineRoot.querySelectorAll('[data-restore-version]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          try {
+            await api.restoreEntryVersion(entry.id, button.dataset.restoreVersion);
+            closeModal();
+            toast(`Restored v${button.dataset.restoreVersion}.`, 'success');
+            if (state.searchMode) await doSearch(state.searchQuery); else await loadEntries();
+          } catch (e) {
+            toast('Error: ' + e.message, 'error');
+          }
+        });
+      });
+    }
+
+    function syncSelection() {
+      fromSelect.innerHTML = renderVersionOptions(selectedFrom);
+      toSelect.innerHTML = renderVersionOptions(selectedTo);
+      renderTimeline();
+    }
+
+    fromSelect.addEventListener('change', () => {
+      selectedFrom = Number(fromSelect.value);
+      syncSelection();
+    });
+    toSelect.addEventListener('change', () => {
+      selectedTo = Number(toSelect.value);
+      syncSelection();
+    });
+
+    syncSelection();
+    document.getElementById('btn-run-version-diff').addEventListener('click', () => {
+      openDiffModal(entry, selectedFrom, selectedTo);
+    });
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 function openConsolidateModal() {
@@ -1008,7 +1346,7 @@ async function renderStatsView() {
     document.getElementById('dash-size').textContent = kb != null ? Math.round(kb) : '—';
     document.getElementById('dash-oldest').textContent = stats.oldest || '—';
     document.getElementById('dash-newest').textContent = stats.newest || '—';
-    document.getElementById('dash-updated').textContent = 'Updated ' + relTime(new Date().toISOString());
+    document.getElementById('dash-updated').textContent = `Updated ${relTime(new Date().toISOString())} · Deleted ${stats.deleted_entries ?? 0}`;
 
     const maxCount = Math.max(...Object.values(sections), 1);
     const barsHtml = sectionsList.map((s) => {
@@ -1209,15 +1547,15 @@ function renderSettingsPage() {
       section_colors[name] = row.querySelector('[data-field="color"]').value;
     });
     const updates = {
-      max_content_length: parseInt(document.getElementById('cfg-max-content').value) || cfg.max_content_length,
-      max_entries: parseInt(document.getElementById('cfg-max-entries').value) || cfg.max_entries,
-      max_tags_per_entry: parseInt(document.getElementById('cfg-max-tags').value) || cfg.max_tags_per_entry,
-      max_tag_length: parseInt(document.getElementById('cfg-max-tag-len').value) || cfg.max_tag_length,
-      entry_batch_size: parseInt(document.getElementById('cfg-batch-size').value) || cfg.entry_batch_size,
-      entry_load_threshold: parseInt(document.getElementById('cfg-load-threshold').value) || cfg.entry_load_threshold,
+      max_content_length: readIntInput('cfg-max-content', cfg.max_content_length),
+      max_entries: readIntInput('cfg-max-entries', cfg.max_entries),
+      max_tags_per_entry: readIntInput('cfg-max-tags', cfg.max_tags_per_entry),
+      max_tag_length: readIntInput('cfg-max-tag-len', cfg.max_tag_length),
+      entry_batch_size: readIntInput('cfg-batch-size', cfg.entry_batch_size),
+      entry_load_threshold: readIntInput('cfg-load-threshold', cfg.entry_load_threshold),
       semantic_model_name: document.getElementById('cfg-model').value.trim() || cfg.semantic_model_name,
-      semantic_conflict_threshold: parseFloat(document.getElementById('cfg-threshold').value) || cfg.semantic_conflict_threshold,
-      semantic_model_idle_ttl_seconds: parseInt(document.getElementById('cfg-ttl').value) || cfg.semantic_model_idle_ttl_seconds,
+      semantic_conflict_threshold: readFloatInput('cfg-threshold', cfg.semantic_conflict_threshold),
+      semantic_model_idle_ttl_seconds: readIntInput('cfg-ttl', cfg.semantic_model_idle_ttl_seconds),
       sections,
       section_colors,
     };
@@ -1280,10 +1618,21 @@ document.getElementById('sort-select').addEventListener('change', (e) => {
   loadEntries();
 });
 
+document.getElementById('toggle-include-deleted').addEventListener('change', async (e) => {
+  state.includeDeleted = e.target.checked;
+  state.offset = 0;
+  if (state.searchMode && state.searchQuery) {
+    await doSearch(state.searchQuery);
+    return;
+  }
+  await loadEntries();
+});
+
 document.querySelectorAll('.nav-tab').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
 
 async function boot() {
   await loadConfig();
+  document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
   await loadEntries();
 }
 

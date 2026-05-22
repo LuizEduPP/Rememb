@@ -17,12 +17,16 @@ from rememb.config import SEMANTIC_MODEL_CHOICES
 from rememb.exceptions import RemembNotInitializedError
 from rememb.store import (
     consolidate_entries,
+    diff_entry_versions,
     delete_entry,
     edit_entry,
     get_config,
     get_stats,
     init,
+    list_entry_versions,
     read_entries_page,
+    restore_deleted_entry,
+    restore_entry_version,
     search_entries,
     update_config,
     write_entry,
@@ -89,6 +93,7 @@ async def index() -> str:
 async def list_entries(
     section: str | None = Query(None),
     tag: str | None = Query(None),
+    include_deleted: bool = Query(False),
     offset: int = Query(0, ge=0),
     limit: int = Query(24, ge=1, le=100),
     sort_by: str = Query("recent"),
@@ -100,6 +105,7 @@ async def list_entries(
         root,
         section,
         tag=tag,
+        include_deleted=include_deleted,
         offset=offset,
         limit=limit,
         sort_by=sort_by,
@@ -160,11 +166,58 @@ async def remove_entry(entry_id: str) -> None:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/entries/{entry_id}/restore")
+async def restore_deleted_entry_endpoint(entry_id: str) -> dict:
+    root = await asyncio.to_thread(_get_root)
+    try:
+        entry = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Deleted entry not found.")
+        return {"entry": entry}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/entries/{entry_id}/versions")
+async def entry_versions(entry_id: str, include_deleted: bool = Query(True)) -> dict:
+    root = await asyncio.to_thread(_get_root)
+    versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
+    if not versions:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    return {"versions": versions}
+
+
+@app.post("/api/entries/{entry_id}/versions/{version}/restore")
+async def restore_entry_version_endpoint(entry_id: str, version: int) -> dict:
+    root = await asyncio.to_thread(_get_root)
+    try:
+        entry = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Entry or version not found.")
+        return {"entry": entry}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/entries/{entry_id}/diff")
+async def entry_diff(entry_id: str, from_version: int = Query(..., ge=1), to_version: int = Query(..., ge=1)) -> dict:
+    root = await asyncio.to_thread(_get_root)
+    diff = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
+    if diff is None:
+        raise HTTPException(status_code=404, detail="Entry or version not found.")
+    return diff
+
+
 @app.get("/api/search")
 async def search(
     q: str = Query(""),
     section: str | None = Query(None),
     tag: str | None = Query(None),
+    include_deleted: bool = Query(False),
     top_k: int = Query(20, ge=1, le=100),
 ) -> dict:
     root = await asyncio.to_thread(_get_root)
@@ -175,6 +228,7 @@ async def search(
         top_k,
         section,
         tag,
+        include_deleted=include_deleted,
     )
     return {"results": results}
 
@@ -185,6 +239,7 @@ async def stats_endpoint() -> dict:
     raw = await asyncio.to_thread(get_stats, root)
     return {
         "total_entries": raw["total"],
+        "deleted_entries": raw.get("deleted_total", 0),
         "sections": raw["by_section"],
         "store_size_kb": raw["size_kb"],
         "oldest": raw.get("oldest", "—"),

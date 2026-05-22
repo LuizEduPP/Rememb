@@ -12,12 +12,17 @@ from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 from rememb.store import (
     clear_entries,
+    diff_entry_versions,
     delete_entries,
     edit_entries,
     format_entries,
     get_stats,
     init,
+    list_entry_versions,
     read_entries,
+    read_entries_page,
+    restore_deleted_entry,
+    restore_entry_version,
     search_entries,
     update_config,
     write_entries,
@@ -64,6 +69,8 @@ def test_write_entry_roundtrip_and_stats(tmp_path):
 
     assert entry["id"]
     assert len(entry["id"]) == 8
+    assert entry["version"] == 1
+    assert entry["history"] == []
     assert entries == [entry]
     assert stats["total"] == 1
     assert stats["by_section"]["project"] == 1
@@ -114,6 +121,32 @@ def test_edit_entries_updates_multiple_entries_in_order(tmp_path):
     assert results[2] is None
     assert by_id[first["id"]]["tags"] == ["x"]
     assert by_id[second["id"]]["section"] == "actions"
+    assert by_id[first["id"]]["version"] == 2
+    assert by_id[first["id"]]["history"][0]["version"] == 1
+    assert by_id[first["id"]]["history"][0]["content"] == "Original first."
+    assert by_id[second["id"]]["version"] == 2
+    assert by_id[second["id"]]["history"][0]["section"] == "project"
+
+
+def test_edit_entry_upgrades_legacy_entry_to_versioned_history(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    entry = write_entry(root, "project", "Legacy memory.", ["old"])
+    entries_path = root / ".rememb" / "entries.json"
+    stored_entries = json.loads(entries_path.read_text(encoding="utf-8"))
+    stored_entries[0].pop("version", None)
+    stored_entries[0].pop("history", None)
+    entries_path.write_text(json.dumps(stored_entries, indent=2), encoding="utf-8")
+
+    updated = edit_entries(root, [{"entry_id": entry["id"], "content": "Legacy memory updated."}])[0]
+
+    assert updated is not None
+    assert updated["version"] == 2
+    assert len(updated["history"]) == 1
+    assert updated["history"][0]["version"] == 1
+    assert updated["history"][0]["content"] == "Legacy memory."
 
 
 def test_delete_entries_removes_only_found_ids(tmp_path):
@@ -126,9 +159,72 @@ def test_delete_entries_removes_only_found_ids(tmp_path):
 
     deleted_ids = delete_entries(root, [first["id"], "deadbeef"])
     remaining = read_entries(root)
+    all_entries = read_entries(root, include_deleted=True)
+    deleted_entry = next(entry for entry in all_entries if entry["id"] == first["id"])
 
     assert deleted_ids == [first["id"]]
     assert [entry["id"] for entry in remaining] == [second["id"]]
+    assert deleted_entry["deleted_at"]
+    assert deleted_entry["version"] == 2
+    assert deleted_entry["history"][0]["version"] == 1
+
+
+def test_read_page_and_search_hide_deleted_by_default(tmp_path, monkeypatch):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    deleted = write_entry(root, "project", "Deleted alpha memory", ["alpha"])
+    live = write_entry(root, "project", "Live alpha memory", ["alpha"])
+    delete_entries(root, [deleted["id"]])
+
+    class AlphaModel:
+        def encode(self, texts, show_progress_bar=False, batch_size=32):
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr("rememb.store._store_context.get_model", lambda _root=None: AlphaModel())
+    monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
+
+    page = read_entries_page(root)
+    hidden_results = search_entries(root, "alpha")
+    visible_results = search_entries(root, "alpha", include_deleted=True)
+
+    assert [entry["id"] for entry in page["items"]] == [live["id"]]
+    assert [entry["id"] for entry in hidden_results] == [live["id"]]
+    assert {entry["id"] for entry in visible_results} == {deleted["id"], live["id"]}
+
+
+def test_versions_restore_and_diff_cover_deleted_entries(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    entry = write_entry(root, "project", "first line\nsecond line", ["draft"])
+    updated = edit_entries(root, [{"entry_id": entry["id"], "content": "first line\nthird line", "tags": ["released"]}])[0]
+    deleted_ids = delete_entries(root, [entry["id"]])
+
+    versions = list_entry_versions(root, entry["id"])
+    diff = diff_entry_versions(root, entry["id"], 1, 2)
+    restored_deleted = restore_deleted_entry(root, entry["id"])
+    restored_version = restore_entry_version(root, entry["id"], 1)
+    final_versions = list_entry_versions(root, entry["id"])
+
+    assert deleted_ids == [entry["id"]]
+    assert updated is not None
+    assert [revision["version"] for revision in versions] == [1, 2, 3]
+    assert versions[-1]["deleted_at"]
+    assert diff is not None
+    assert "--- " in diff["diff"]
+    assert "+second line" in diff["diff"] or "-second line" in diff["diff"]
+    assert restored_deleted is not None
+    assert restored_deleted["version"] == 4
+    assert "deleted_at" not in restored_deleted
+    assert restored_version is not None
+    assert restored_version["version"] == 5
+    assert restored_version["content"] == "first line\nsecond line"
+    assert [revision["version"] for revision in final_versions] == [1, 2, 3, 4, 5]
+    assert final_versions[2]["deleted_at"]
+    assert not final_versions[-1].get("deleted_at")
 
 
 def test_update_config_migrates_entries_from_removed_section(tmp_path):
@@ -269,6 +365,23 @@ def test_search_entries_boosts_exact_tokens_and_tags(tmp_path, monkeypatch):
 
     assert results[0]["tags"] == ["alpha", "launch"]
     assert results[0]["score"] > results[1]["score"]
+
+
+def test_get_stats_excludes_deleted_from_totals(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    first = write_entry(root, "project", "Keep me hidden after delete.")
+    write_entry(root, "actions", "Still active.")
+    delete_entries(root, [first["id"]])
+
+    stats = get_stats(root)
+
+    assert stats["total"] == 1
+    assert stats["deleted_total"] == 1
+    assert stats["by_section"]["project"] == 0
+    assert stats["by_section"]["actions"] == 1
 
 
 def test_format_entries_supports_summary_and_truncation():

@@ -30,6 +30,9 @@ def test_build_tools_exposes_expected_public_contract():
         "rememb_read",
         "rememb_read_page",
         "rememb_search",
+        "rememb_versions",
+        "rememb_restore",
+        "rememb_diff",
         "rememb_write",
         "rememb_edit",
         "rememb_delete",
@@ -44,11 +47,16 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_write"].inputSchema["properties"]["semantic_scope"]["default"] == "global"
     assert "entries" in by_name["rememb_write"].inputSchema["properties"]
     assert "section" in by_name["rememb_read"].inputSchema["properties"]
+    assert by_name["rememb_read"].inputSchema["properties"]["include_deleted"]["default"] is False
     assert "max_chars" in by_name["rememb_read"].inputSchema["properties"]
     assert by_name["rememb_read_page"].inputSchema["properties"]["offset"]["default"] == 0
     assert by_name["rememb_read_page"].inputSchema["properties"]["summary_only"]["default"] is True
     assert "section" in by_name["rememb_search"].inputSchema["properties"]
+    assert by_name["rememb_search"].inputSchema["properties"]["include_deleted"]["default"] is False
     assert "summary_only" in by_name["rememb_search"].inputSchema["properties"]
+    assert by_name["rememb_versions"].inputSchema["required"] == ["entry_id"]
+    assert by_name["rememb_restore"].inputSchema["required"] == ["entry_id"]
+    assert by_name["rememb_diff"].inputSchema["required"] == ["entry_id", "from_version", "to_version"]
     assert "updates" in by_name["rememb_edit"].inputSchema["properties"]
     assert "entry_ids" in by_name["rememb_delete"].inputSchema["properties"]
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
@@ -134,6 +142,74 @@ def test_handle_tool_supports_batch_delete(monkeypatch, tmp_path):
     assert "Processed 2 deletions (1 deleted)" in result[0].text
     assert "Deleted abcd1234" in result[0].text
     assert "Entry deadbeef not found" in result[0].text
+
+
+def test_handle_tool_lists_versions(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "list_entry_versions",
+        lambda root, entry_id, include_deleted=True: [
+            {"version": 1, "section": "project", "tags": ["draft"], "updated_at": "2026-05-22T10:00:00"},
+            {"version": 2, "section": "project", "tags": ["draft"], "updated_at": "2026-05-22T10:10:00", "deleted_at": "2026-05-22T10:11:00"},
+        ],
+    )
+
+    result = asyncio.run(
+        mcp_server._handle_tool("rememb_versions", {"entry_id": "abcd1234"}, FakeTextContent)
+    )
+
+    assert len(result) == 1
+    assert "Versions for abcd1234" in result[0].text
+    assert "v2" in result[0].text
+    assert "[deleted]" in result[0].text
+
+
+def test_handle_tool_restores_deleted_or_specific_version(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "restore_deleted_entry",
+        lambda root, entry_id: {"id": entry_id, "version": 4},
+    )
+    monkeypatch.setattr(
+        mcp_server,
+        "restore_entry_version",
+        lambda root, entry_id, version: {"id": entry_id, "version": 5},
+    )
+
+    deleted_result = asyncio.run(
+        mcp_server._handle_tool("rememb_restore", {"entry_id": "abcd1234"}, FakeTextContent)
+    )
+    version_result = asyncio.run(
+        mcp_server._handle_tool("rememb_restore", {"entry_id": "abcd1234", "version": 2}, FakeTextContent)
+    )
+
+    assert "Restored deleted entry abcd1234" in deleted_result[0].text
+    assert "Restored abcd1234 to version 2" in version_result[0].text
+
+
+def test_handle_tool_shows_diff(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "diff_entry_versions",
+        lambda root, entry_id, from_version, to_version: {
+            "diff": "--- abcd1234@v1\n+++ abcd1234@v2\n@@\n-old\n+new"
+        },
+    )
+
+    result = asyncio.run(
+        mcp_server._handle_tool(
+            "rememb_diff",
+            {"entry_id": "abcd1234", "from_version": 1, "to_version": 2},
+            FakeTextContent,
+        )
+    )
+
+    assert len(result) == 1
+    assert "Diff abcd1234 v1 -> v2" in result[0].text
+    assert "+new" in result[0].text
 
 
 def test_get_root_uses_global_home_and_auto_initializes(monkeypatch, tmp_path):

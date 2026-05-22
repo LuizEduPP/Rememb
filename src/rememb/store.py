@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from difflib import unified_diff
 import uuid
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,92 @@ _NON_NEGATIVE_INT_CONFIG_KEYS = {
 _FLOAT_0_1_CONFIG_KEYS = {
     "semantic_conflict_threshold",
 }
+
+
+def _current_entry_version(entry: dict[str, Any]) -> int:
+    raw_version = entry.get("version", 1)
+    try:
+        parsed_version = int(str(raw_version).strip())
+    except (TypeError, ValueError):
+        return 1
+    return parsed_version if parsed_version > 0 else 1
+
+
+def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_history = entry.get("history")
+    if not isinstance(raw_history, list):
+        return []
+    return [dict(item) for item in raw_history if isinstance(item, dict)]
+
+
+def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "version": _current_entry_version(entry),
+        "section": str(entry.get("section", "")),
+        "content": str(entry.get("content", "")),
+        "tags": list(entry.get("tags", [])) if isinstance(entry.get("tags"), list) else [],
+        "created_at": str(entry.get("created_at", "")),
+        "updated_at": str(entry.get("updated_at", "")),
+        "deleted_at": str(entry.get("deleted_at", "")),
+    }
+
+
+def _deleted_at(entry: dict[str, Any]) -> str | None:
+    value = str(entry.get("deleted_at", "")).strip()
+    return value or None
+
+
+def _is_deleted_entry(entry: dict[str, Any]) -> bool:
+    return _deleted_at(entry) is not None
+
+
+def _filter_deleted(entries: list[dict[str, Any]], *, include_deleted: bool) -> list[dict[str, Any]]:
+    if include_deleted:
+        return list(entries)
+    return [entry for entry in entries if not _is_deleted_entry(entry)]
+
+
+def _entry_revision_list(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    revisions = _entry_history(entry)
+    revisions.append(_entry_revision_snapshot(entry))
+    revisions.sort(key=lambda revision: int(revision.get("version", 1)))
+    return revisions
+
+
+def _find_entry(entries: list[dict[str, Any]], entry_id: str) -> dict[str, Any] | None:
+    for entry in entries:
+        if str(entry.get("id", "")) == entry_id:
+            return entry
+    return None
+
+
+def _find_entry_revision(entry: dict[str, Any], version: int) -> dict[str, Any] | None:
+    for revision in _entry_revision_list(entry):
+        if int(revision.get("version", 0)) == version:
+            return dict(revision)
+    return None
+
+
+def _apply_revision(entry: dict[str, Any], revision: dict[str, Any], *, restore_deleted: bool = False) -> None:
+    entry["section"] = str(revision.get("section", ""))
+    entry["content"] = str(revision.get("content", ""))
+    entry["tags"] = list(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else []
+    if restore_deleted:
+        entry.pop("deleted_at", None)
+
+
+def _revision_label(entry_id: str, version: int) -> str:
+    return f"{entry_id}@v{version}"
+
+
+def _normalize_version_number(version: object) -> int:
+    try:
+        parsed = int(str(version).strip())
+    except (TypeError, ValueError):
+        raise RemembValidationError("version must be a positive integer.") from None
+    if parsed <= 0:
+        raise RemembValidationError("version must be a positive integer.")
+    return parsed
 
 
 def _validate_sections_config(root: Path, raw_sections: object) -> list[str]:
@@ -237,6 +324,8 @@ def write_entries(
                 "section": item["section"],
                 "content": item["content"],
                 "tags": item["tags"],
+                "version": 1,
+                "history": [],
                 "created_at": now,
                 "updated_at": now,
             }
@@ -352,12 +441,19 @@ __all__ = [
     "get_config",
     "update_config",
     "write_entry",
+    "write_entries",
     "consolidate_entries",
     "read_entries",
     "read_entries_page",
     "search_entries",
     "delete_entry",
+    "delete_entries",
+    "list_entry_versions",
+    "restore_entry_version",
+    "diff_entry_versions",
+    "restore_deleted_entry",
     "edit_entry",
+    "edit_entries",
     "clear_entries",
     "format_entries",
     "get_stats",
@@ -464,8 +560,10 @@ def update_config(root: Path, updates: dict[str, object]) -> dict:
     _assert_initialized(root)
     current_config = _store_context.get_config(root)
     validated_config = _validate_config_updates(root, current_config, updates)
-    used_removed_sections = set(validated_config.pop("_used_removed_sections", set()))
-    migration_target = validated_config.pop("_migration_target", None)
+    raw_used_removed_sections = validated_config.pop("_used_removed_sections", set())
+    used_removed_sections = raw_used_removed_sections if isinstance(raw_used_removed_sections, set) else set()
+    raw_migration_target = validated_config.pop("_migration_target", None)
+    migration_target = raw_migration_target if isinstance(raw_migration_target, str) else None
     moved_entries: dict[str, str] = {}
 
     try:
@@ -571,6 +669,8 @@ def consolidate_entries(
         if normalized_mode == "semantic":
             try:
                 model = _store_context.get_model(root)
+                if model is None:
+                    raise RemembError("Semantic model unavailable")
             except ImportError as e:
                 raise RemembError(str(e)) from e
             try:
@@ -703,7 +803,7 @@ def delete_entry(root: Path, entry_id: str) -> bool:
 
 
 def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
-    """Delete multiple entries by ID atomically."""
+    """Soft-delete multiple entries by ID atomically."""
     logger.debug("delete_entries called: entry_ids=%s", len(entry_ids))
     _assert_initialized(root)
     if not entry_ids:
@@ -713,16 +813,21 @@ def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
 
     def remove_entries(entries: list[dict]) -> list[str]:
         deleted_ids: list[str] = []
-        kept_entries: list[dict] = []
         seen_deleted: set[str] = set()
+        now_str = _now()
         for entry in entries:
             current_id = entry["id"]
             if current_id in target_ids and current_id not in seen_deleted:
+                if _is_deleted_entry(entry):
+                    continue
+                history = _entry_history(entry)
+                history.append(_entry_revision_snapshot(entry))
+                entry["history"] = history
+                entry["version"] = _current_entry_version(entry) + 1
+                entry["deleted_at"] = now_str
+                entry["updated_at"] = now_str
                 deleted_ids.append(current_id)
                 seen_deleted.add(current_id)
-                continue
-            kept_entries.append(entry)
-        entries[:] = kept_entries
         if deleted_ids:
             logger.info("Deleted %s entries", len(deleted_ids))
         else:
@@ -730,6 +835,26 @@ def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
         return deleted_ids
 
     return _atomic_modify(root, remove_entries)
+
+
+def restore_deleted_entry(root: Path, entry_id: str) -> dict | None:
+    """Restore a soft-deleted entry by ID."""
+    logger.debug("restore_deleted_entry called: entry_id=%s", entry_id)
+    _assert_initialized(root)
+
+    def restore(entries: list[dict]) -> dict | None:
+        entry = _find_entry(entries, entry_id)
+        if entry is None or not _is_deleted_entry(entry):
+            return None
+        history = _entry_history(entry)
+        history.append(_entry_revision_snapshot(entry))
+        entry["history"] = history
+        entry["version"] = _current_entry_version(entry) + 1
+        entry.pop("deleted_at", None)
+        entry["updated_at"] = _now()
+        return entry
+
+    return _atomic_modify(root, restore)
 
 
 def clear_entries(root: Path, *, confirm: bool = False) -> int:
@@ -827,12 +952,16 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
             if entry is None:
                 results.append(None)
                 continue
+            history = _entry_history(entry)
+            history.append(_entry_revision_snapshot(entry))
             if "content" in update:
                 entry["content"] = update["content"]
             if "section" in update:
                 entry["section"] = update["section"]
             if "tags" in update:
                 entry["tags"] = update["tags"]
+            entry["history"] = history
+            entry["version"] = _current_entry_version(entry) + 1
             entry["updated_at"] = _now()
             results.append(entry)
         updated_count = sum(1 for result in results if result is not None)
@@ -845,12 +974,13 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
     return _atomic_modify(root, modify_entries)
 
 
-def read_entries(root: Path, section: str | None = None) -> list[dict]:
+def read_entries(root: Path, section: str | None = None, *, include_deleted: bool = False) -> list[dict]:
     """Read entries from memory.
     
     Args:
         root: Project root path
         section: Optional section filter
+        include_deleted: If True, include soft-deleted entries
     
     Returns:
         List of entry dictionaries
@@ -860,7 +990,7 @@ def read_entries(root: Path, section: str | None = None) -> list[dict]:
     """
     logger.debug(f"read_entries called: section={section}")
     _assert_initialized(root)
-    entries = _load_entries(root)
+    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
     if section:
         entries = [e for e in entries if e["section"] == section.lower()]
     logger.info(f"Read {len(entries)} entries" + (f" from section '{section}'" if section else ""))
@@ -872,6 +1002,7 @@ def read_entries_page(
     section: str | None = None,
     *,
     tag: str | None = None,
+    include_deleted: bool = False,
     offset: int = 0,
     limit: int = 100,
     sort_by: str = "storage",
@@ -883,6 +1014,7 @@ def read_entries_page(
         root: Project root path
         section: Optional section filter
         tag: Optional exact tag filter
+        include_deleted: If True, include soft-deleted entries
         offset: Zero-based start index in the filtered/sorted result set
         limit: Maximum number of entries to return
         sort_by: Sort mode, either "storage" or "recent"
@@ -915,7 +1047,7 @@ def read_entries_page(
     if normalized_sort not in {"storage", "recent"}:
         raise RemembValidationError("sort_by must be 'storage' or 'recent'")
 
-    entries = _load_entries(root)
+    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
     if section:
         entries = [e for e in entries if e["section"] == section.lower()]
     if tag:
@@ -962,6 +1094,8 @@ def search_entries(
     top_k: int = 5,
     section: str | None = None,
     tag: str | None = None,
+    *,
+    include_deleted: bool = False,
 ) -> list[dict]:
     """Search entries by semantic similarity.
     
@@ -983,7 +1117,7 @@ def search_entries(
         tag,
     )
     _assert_initialized(root)
-    entries = _load_entries(root)
+    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
     if section:
         entries = [entry for entry in entries if entry.get("section") == section.lower()]
     if tag:
@@ -1010,7 +1144,7 @@ def search_entries(
             result_ids = {result["id"] for result in results}
             now_str = _now()
             for entry in all_entries:
-                if entry["id"] in result_ids:
+                if entry["id"] in result_ids and not _is_deleted_entry(entry):
                     entry["access_count"] = entry.get("access_count", 0) + 1
                     entry["last_accessed"] = now_str
                     updated = True
@@ -1032,24 +1166,100 @@ def get_stats(root: Path) -> dict:
     """
     _assert_initialized(root)
     entries = _load_entries(root)
-    total = len(entries)
+    active_entries = [entry for entry in entries if not _is_deleted_entry(entry)]
+    deleted_entries = [entry for entry in entries if _is_deleted_entry(entry)]
+    total = len(active_entries)
     by_section = {s: 0 for s in _get_sections(root)}
-    for e in entries:
+    for e in active_entries:
         sec = e.get("section", "context")
         if sec not in by_section:
             by_section[sec] = 0
         by_section[sec] += 1
     entries_path = _entries_path(root)
     size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
-    timestamps = sorted(e.get("created_at", "") for e in entries if e.get("created_at"))
+    timestamps = sorted(e.get("created_at", "") for e in active_entries if e.get("created_at"))
     oldest = timestamps[0][:10] if timestamps else "—"
     newest = timestamps[-1][:10] if timestamps else "—"
     return {
         "total": total,
+        "deleted_total": len(deleted_entries),
         "by_section": by_section,
         "size_kb": size_kb,
         "oldest": oldest,
         "newest": newest,
+    }
+
+
+def list_entry_versions(root: Path, entry_id: str, *, include_deleted: bool = True) -> list[dict[str, Any]]:
+    """List all known revisions for an entry, oldest to newest."""
+    logger.debug("list_entry_versions called: entry_id=%s", entry_id)
+    _assert_initialized(root)
+    entry = _find_entry(_load_entries(root), entry_id)
+    if entry is None:
+        return []
+    if _is_deleted_entry(entry) and not include_deleted:
+        return []
+    return _entry_revision_list(entry)
+
+
+def restore_entry_version(root: Path, entry_id: str, version: int) -> dict | None:
+    """Restore an entry to a previous version as a new head revision."""
+    logger.debug("restore_entry_version called: entry_id=%s, version=%s", entry_id, version)
+    _assert_initialized(root)
+    normalized_version = _normalize_version_number(version)
+
+    def restore(entries: list[dict]) -> dict | None:
+        entry = _find_entry(entries, entry_id)
+        if entry is None:
+            return None
+        revision = _find_entry_revision(entry, normalized_version)
+        if revision is None:
+            return None
+        history = _entry_history(entry)
+        history.append(_entry_revision_snapshot(entry))
+        entry["history"] = history
+        _apply_revision(entry, revision, restore_deleted=True)
+        entry["version"] = _current_entry_version(entry) + 1
+        entry["updated_at"] = _now()
+        return entry
+
+    return _atomic_modify(root, restore)
+
+
+def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version: int) -> dict[str, Any] | None:
+    """Return a unified diff between two revisions of the same entry."""
+    logger.debug(
+        "diff_entry_versions called: entry_id=%s, from_version=%s, to_version=%s",
+        entry_id,
+        from_version,
+        to_version,
+    )
+    _assert_initialized(root)
+    normalized_from = _normalize_version_number(from_version)
+    normalized_to = _normalize_version_number(to_version)
+    entry = _find_entry(_load_entries(root), entry_id)
+    if entry is None:
+        return None
+    from_revision = _find_entry_revision(entry, normalized_from)
+    to_revision = _find_entry_revision(entry, normalized_to)
+    if from_revision is None or to_revision is None:
+        return None
+    diff_text = "\n".join(
+        unified_diff(
+            str(from_revision.get("content", "")).splitlines(),
+            str(to_revision.get("content", "")).splitlines(),
+            fromfile=_revision_label(entry_id, normalized_from),
+            tofile=_revision_label(entry_id, normalized_to),
+            lineterm="",
+        )
+    )
+    return {
+        "entry_id": entry_id,
+        "from_version": normalized_from,
+        "to_version": normalized_to,
+        "from_revision": from_revision,
+        "to_revision": to_revision,
+        "diff": diff_text,
     }
 
 

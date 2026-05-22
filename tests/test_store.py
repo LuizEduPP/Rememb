@@ -10,7 +10,19 @@ import pytest
 from rememb.helpers import _file_lock
 from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
-from rememb.store import clear_entries, format_entries, get_stats, init, read_entries, search_entries, update_config, write_entry
+from rememb.store import (
+    clear_entries,
+    delete_entries,
+    edit_entries,
+    format_entries,
+    get_stats,
+    init,
+    read_entries,
+    search_entries,
+    update_config,
+    write_entries,
+    write_entry,
+)
 
 
 def _hold_file_lock(path_str: str, mode: str, entered_conn, release_conn) -> None:
@@ -55,6 +67,68 @@ def test_write_entry_roundtrip_and_stats(tmp_path):
     assert entries == [entry]
     assert stats["total"] == 1
     assert stats["by_section"]["project"] == 1
+
+
+def test_write_entries_creates_multiple_entries_atomically(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    entries = write_entries(
+        root,
+        [
+            {"section": "project", "content": "First batch memory.", "tags": ["one"]},
+            {"section": "actions", "content": "Second batch memory.", "tags": ["two"]},
+        ],
+    )
+
+    stored = read_entries(root)
+
+    assert len(entries) == 2
+    assert [entry["content"] for entry in stored] == ["First batch memory.", "Second batch memory."]
+    assert {entry["section"] for entry in entries} == {"project", "actions"}
+
+
+def test_edit_entries_updates_multiple_entries_in_order(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    first = write_entry(root, "project", "Original first.", ["a"])
+    second = write_entry(root, "project", "Original second.", ["b"])
+
+    results = edit_entries(
+        root,
+        [
+            {"entry_id": first["id"], "content": "Updated first.", "tags": ["x"]},
+            {"entry_id": second["id"], "section": "actions"},
+            {"entry_id": "deadbeef", "content": "Missing"},
+        ],
+    )
+
+    stored = read_entries(root)
+    by_id = {entry["id"]: entry for entry in stored}
+
+    assert results[0]["content"] == "Updated first."
+    assert results[1]["section"] == "actions"
+    assert results[2] is None
+    assert by_id[first["id"]]["tags"] == ["x"]
+    assert by_id[second["id"]]["section"] == "actions"
+
+
+def test_delete_entries_removes_only_found_ids(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    first = write_entry(root, "project", "Delete first.")
+    second = write_entry(root, "project", "Delete second.")
+
+    deleted_ids = delete_entries(root, [first["id"], "deadbeef"])
+    remaining = read_entries(root)
+
+    assert deleted_ids == [first["id"]]
+    assert [entry["id"] for entry in remaining] == [second["id"]]
 
 
 def test_update_config_migrates_entries_from_removed_section(tmp_path):

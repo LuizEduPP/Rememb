@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-05-22
+
+### Added
+- MCP tools `rememb_write`, `rememb_edit`, and `rememb_delete` now support batch payloads alongside the existing single-entry mode.
+- Store-level batch helpers were added for atomic multi-entry write, edit, and delete operations while preserving the existing JSON-backed storage flow.
+
+### Changed
+- MCP tool documentation was updated to describe the new batch payload fields while keeping the existing documentation style.
+- Release metadata was aligned to version `0.4.8` across the Python package, Docker image install target, and MCP registry metadata.
+
+### Fixed
+- The runtime MemoryStore protocol assertion in `store.py` now includes the newly added batch methods, preventing the MCP server from failing during import.
+
 ## [0.4.7] - 2026-05-21
 
 ### Added

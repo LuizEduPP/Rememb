@@ -98,6 +98,7 @@ Agent: [rememb_write] → Saved
 Agent: [rememb_read]  → Context loaded
 Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 ```
+These map to rememb_write, rememb_edit, and rememb_delete respectively. For the current public MCP tool list and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 Search uses local semantic embeddings (no API, no cloud). The embedding model is unloaded after a short idle window by default, so the process does not keep the full model resident forever.
 

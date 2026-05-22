@@ -131,6 +131,16 @@ class MemoryStore(Protocol):
     ) -> dict:
         """Write a new entry to memory."""
         ...
+
+    def write_entries(
+        self,
+        root: Path,
+        items: list[dict[str, Any]],
+        skip_duplicates: bool = True,
+        semantic_scope: str = "global",
+    ) -> list[dict]:
+        """Write multiple entries to memory atomically."""
+        ...
     
     def read_entries(self, root: Path, section: str | None = None) -> list[dict]:
         """Read entries from memory."""
@@ -172,9 +182,17 @@ class MemoryStore(Protocol):
     def delete_entry(self, root: Path, entry_id: str) -> bool:
         """Delete an entry by ID."""
         ...
+
+    def delete_entries(self, root: Path, entry_ids: list[str]) -> list[str]:
+        """Delete multiple entries by ID."""
+        ...
     
     def edit_entry(self, root: Path, entry_id: str, content: str | None = None, section: str | None = None, tags: list[str] | None = None) -> dict | None:
         """Edit an existing entry."""
+        ...
+
+    def edit_entries(self, root: Path, updates: list[dict[str, Any]]) -> list[dict | None]:
+        """Edit multiple entries atomically."""
         ...
     
     def clear_entries(self, root: Path, *, confirm: bool = False) -> int:

@@ -8,7 +8,9 @@ from rememb.config import DEFAULT_SECTIONS, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
 from rememb.store import (
     clear_entries,
     consolidate_entries,
+    delete_entries,
     delete_entry,
+    edit_entries,
     edit_entry,
     format_entries,
     get_config,
@@ -17,6 +19,7 @@ from rememb.store import (
     read_entries,
     read_entries_page,
     search_entries,
+    write_entries,
     write_entry,
 )
 from rememb.exceptions import RemembError, RemembNotInitializedError
@@ -203,14 +206,61 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return [TextContent(type="text", text=_render_entries(entries, include_score=True, max_chars=max_chars, summary_only=summary_only))]
 
     async def rememb_write():
-        content = arguments["content"]
+        entries = arguments.get("entries")
+        semantic_scope = arguments.get("semantic_scope", "global")
+        if entries is not None:
+            if not isinstance(entries, list) or not entries:
+                return [TextContent(type="text", text="Provide a non-empty entries array.")]
+            default_section = _get_default_mcp_section()
+            prepared_entries: list[dict[str, Any]] = []
+            for item in entries:
+                if not isinstance(item, dict):
+                    return [TextContent(type="text", text="Each batch entry must be an object.")]
+                if item.get("content") is None:
+                    return [TextContent(type="text", text="Each batch entry must include content.")]
+                prepared_entries.append(
+                    {
+                        "content": item["content"],
+                        "section": item.get("section", default_section),
+                        "tags": item.get("tags", []),
+                    }
+                )
+            created = await asyncio.to_thread(write_entries, root, prepared_entries, True, semantic_scope)
+            summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
+            return [TextContent(type="text", text=f"Saved {len(created)} entries\n{summary}")]
+
+        content = arguments.get("content")
+        if content is None:
+            return [TextContent(type="text", text="Provide content for a single entry or entries for batch write.")]
         section = arguments.get("section", _get_default_mcp_section())
         tags = arguments.get("tags", [])
-        semantic_scope = arguments.get("semantic_scope", "global")
         entry = await asyncio.to_thread(write_entry, root, section, content, tags, True, semantic_scope)
         return [TextContent(type="text", text=f"Saved [{entry['section']}] id={entry['id']}")]
 
     async def rememb_edit():
+        updates = arguments.get("updates")
+        if updates is not None:
+            if not isinstance(updates, list) or not updates:
+                return [TextContent(type="text", text="Provide a non-empty updates array.")]
+            for update in updates:
+                if not isinstance(update, dict):
+                    return [TextContent(type="text", text="Each batch update must be an object.")]
+                entry_id = update.get("entry_id")
+                if entry_id is None or not _validate_entry_id(entry_id):
+                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+                if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
+                    return [TextContent(type="text", text=f"Provide at least one field to update for {entry_id}: content, section, or tags.")]
+            results = await asyncio.to_thread(edit_entries, root, updates)
+            lines = []
+            updated_count = 0
+            for update, result in zip(updates, results):
+                if result:
+                    updated_count += 1
+                    lines.append(f"- Updated {update['entry_id']}")
+                else:
+                    lines.append(f"- Entry {update['entry_id']} not found")
+            return [TextContent(type="text", text=f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))]
+
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
             return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
@@ -225,6 +275,23 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return [TextContent(type="text", text=f"Entry {entry_id} not found")]
 
     async def rememb_delete():
+        entry_ids = arguments.get("entry_ids")
+        if entry_ids is not None:
+            if not isinstance(entry_ids, list) or not entry_ids:
+                return [TextContent(type="text", text="Provide a non-empty entry_ids array.")]
+            for entry_id in entry_ids:
+                if not _validate_entry_id(entry_id):
+                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            deleted_ids = await asyncio.to_thread(delete_entries, root, entry_ids)
+            deleted_set = set(deleted_ids)
+            lines = []
+            for entry_id in entry_ids:
+                if entry_id in deleted_set:
+                    lines.append(f"- Deleted {entry_id}")
+                else:
+                    lines.append(f"- Entry {entry_id} not found")
+            return [TextContent(type="text", text=f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))]
+
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
             return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
@@ -479,11 +546,35 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_write",
-            description="Save a new memory entry. Creates a new entry and returns its ID — does not overwrite existing entries. Use when you learn something new worth remembering across sessions. Use rememb_edit instead to update an existing entry by ID. semantic_scope controls whether semantic duplicate blocking checks globally or only inside the target section.",
+            description="Save a new memory entry or multiple entries in one call. Single-entry mode creates one new entry and returns its ID. Batch mode accepts entries[]. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID. semantic_scope controls whether semantic duplicate blocking checks globally or only inside the target section.",
             properties={
                 "content": {
                     "type": "string",
                     "description": "Content to remember (1-3 sentences)",
+                },
+                "entries": {
+                    "type": "array",
+                    "description": "Batch write payloads. Each item accepts content and optional section/tags.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Content to remember (1-3 sentences)",
+                            },
+                            "section": {
+                                "type": "string",
+                                "enum": sections,
+                                "description": f"Section: {', '.join(sections)}",
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags to categorize this entry",
+                            },
+                        },
+                        "required": ["content"],
+                    },
                 },
                 "section": {
                     "type": "string",
@@ -503,15 +594,42 @@ def _build_tools(Tool):
                     "description": "Semantic duplicate guard scope: global (all sections) or section (target section only)",
                 },
             },
-            required=["content"],
         ),
         _tool(
             name="rememb_edit",
-            description="Update an existing memory entry in-place by its ID. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: the entry is updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove one.",
+            description="Update one existing memory entry by ID or multiple entries in one call via updates[]. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove them.",
             properties={
                 "entry_id": {
                     "type": "string",
                     "description": "Entry ID (8 hex characters)",
+                },
+                "updates": {
+                    "type": "array",
+                    "description": "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "entry_id": {
+                                "type": "string",
+                                "description": "Entry ID (8 hex characters)",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "New content",
+                            },
+                            "section": {
+                                "type": "string",
+                                "enum": sections,
+                                "description": "Move to different section",
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Replace tags",
+                            },
+                        },
+                        "required": ["entry_id"],
+                    },
                 },
                 "content": {
                     "type": "string",
@@ -528,18 +646,23 @@ def _build_tools(Tool):
                     "description": "Replace tags",
                 },
             },
-            required=["entry_id"],
         ),
         _tool(
             name="rememb_delete",
-            description="Permanently delete a single memory entry by its ID. Deletion is irreversible — the entry cannot be recovered. No cascading side effects. Use rememb_edit to update instead. Use rememb_clear to delete all entries at once.",
+            description="Permanently delete one memory entry by its ID or multiple entries via entry_ids[]. Deletion is irreversible — removed entries cannot be recovered. No cascading side effects. Use rememb_edit to update instead. Use rememb_clear to delete all entries at once.",
             properties={
                 "entry_id": {
                     "type": "string",
                     "description": "Entry ID to delete",
+                },
+                "entry_ids": {
+                    "type": "array",
+                    "description": "Batch deletion IDs.",
+                    "items": {
+                        "type": "string",
+                    },
                 }
             },
-            required=["entry_id"],
         ),
         _tool(
             name="rememb_clear",

@@ -42,13 +42,98 @@ def test_build_tools_exposes_expected_public_contract():
     }
     assert by_name["rememb_search"].inputSchema["required"] == ["query"]
     assert by_name["rememb_write"].inputSchema["properties"]["semantic_scope"]["default"] == "global"
+    assert "entries" in by_name["rememb_write"].inputSchema["properties"]
     assert "section" in by_name["rememb_read"].inputSchema["properties"]
     assert "max_chars" in by_name["rememb_read"].inputSchema["properties"]
     assert by_name["rememb_read_page"].inputSchema["properties"]["offset"]["default"] == 0
     assert by_name["rememb_read_page"].inputSchema["properties"]["summary_only"]["default"] is True
     assert "section" in by_name["rememb_search"].inputSchema["properties"]
     assert "summary_only" in by_name["rememb_search"].inputSchema["properties"]
+    assert "updates" in by_name["rememb_edit"].inputSchema["properties"]
+    assert "entry_ids" in by_name["rememb_delete"].inputSchema["properties"]
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
+
+
+def test_handle_tool_supports_batch_write(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "write_entries",
+        lambda root, entries, skip_duplicates, semantic_scope: [
+            {"id": "11111111", "section": entries[0]["section"]},
+            {"id": "22222222", "section": entries[1]["section"]},
+        ],
+    )
+
+    result = asyncio.run(
+        mcp_server._handle_tool(
+            "rememb_write",
+            {
+                "entries": [
+                    {"content": "First", "section": "project", "tags": ["a"]},
+                    {"content": "Second", "section": "actions"},
+                ]
+            },
+            FakeTextContent,
+        )
+    )
+
+    assert len(result) == 1
+    assert "Saved 2 entries" in result[0].text
+    assert "11111111" in result[0].text
+    assert "22222222" in result[0].text
+
+
+def test_handle_tool_supports_batch_edit(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "edit_entries",
+        lambda root, updates: [
+            {"id": updates[0]["entry_id"]},
+            None,
+        ],
+    )
+
+    result = asyncio.run(
+        mcp_server._handle_tool(
+            "rememb_edit",
+            {
+                "updates": [
+                    {"entry_id": "abcd1234", "content": "Updated"},
+                    {"entry_id": "deadbeef", "section": "project"},
+                ]
+            },
+            FakeTextContent,
+        )
+    )
+
+    assert len(result) == 1
+    assert "Processed 2 updates (1 updated)" in result[0].text
+    assert "Updated abcd1234" in result[0].text
+    assert "Entry deadbeef not found" in result[0].text
+
+
+def test_handle_tool_supports_batch_delete(monkeypatch, tmp_path):
+    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        mcp_server,
+        "delete_entries",
+        lambda root, entry_ids: [entry_ids[0]],
+    )
+
+    result = asyncio.run(
+        mcp_server._handle_tool(
+            "rememb_delete",
+            {"entry_ids": ["abcd1234", "deadbeef"]},
+            FakeTextContent,
+        )
+    )
+
+    assert len(result) == 1
+    assert "Processed 2 deletions (1 deleted)" in result[0].text
+    assert "Deleted abcd1234" in result[0].text
+    assert "Entry deadbeef not found" in result[0].text
 
 
 def test_get_root_uses_global_home_and_auto_initializes(monkeypatch, tmp_path):

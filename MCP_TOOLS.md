@@ -48,39 +48,48 @@ Parameters:
 
 ## rememb_write
 
-Description: Save a new memory entry. It creates a new entry and returns its ID without overwriting existing entries. Use it when you learn something new worth persisting across sessions. Use rememb_edit to update an existing entry by ID. semantic_scope controls whether semantic duplicate checks run globally or only inside the target section.
+Description: Save a new memory entry or multiple entries in one call. Single-entry mode creates one new entry and returns its ID without overwriting existing entries. Batch mode accepts entries[]. Use it when you learn something new worth persisting across sessions. Use rememb_edit to update an existing entry by ID. semantic_scope controls whether semantic duplicate checks run globally or only inside the target section.
 
 Parameters:
 
 | Name | Type | Required | Default | Allowed values | Description |
 |------|------|----------|---------|----------------|-------------|
-| content | string | yes | - | any string | Content to remember, typically 1 to 3 sentences |
+| content | string | no | - | any string | Content to remember, typically 1 to 3 sentences, for single-entry mode |
+| entries | array[object] | no | - | objects with content and optional section/tags | Batch payload for creating multiple entries in one call |
 | section | string | no | context | sections configured in .rememb/config.json | Target section |
 | tags | array[string] | no | - | list of strings | Tags used to categorize the entry |
 | semantic_scope | string | no | global | global, section | Scope of semantic duplicate protection |
 
+Usage notes: In single-entry mode, send content with optional section and tags. In batch mode, send entries as an array of objects, each with content and optional section or tags, plus optional semantic_scope for the whole request.
+
 ## rememb_edit
 
-Description: Update an existing memory entry in place by ID. It modifies only the fields you provide, such as content, section, or tags; omitted fields stay unchanged. This is non-destructive: the entry is updated, not deleted and recreated. Use rememb_write to create new entries and rememb_delete to permanently remove one.
+Description: Update an existing memory entry in place by ID or multiple entries in one call via updates[]. It modifies only the fields you provide, such as content, section, or tags; omitted fields stay unchanged. This is non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries and rememb_delete to permanently remove them.
 
 Parameters:
 
 | Name | Type | Required | Default | Allowed values | Description |
 |------|------|----------|---------|----------------|-------------|
-| entry_id | string | yes | - | 8 hexadecimal characters | Entry ID |
+| entry_id | string | no | - | 8 hexadecimal characters | Entry ID for single-entry mode |
+| updates | array[object] | no | - | objects with entry_id and at least one of content, section, tags | Batch payload for multiple updates |
 | content | string | no | - | any string | New content |
 | section | string | no | - | sections configured in .rememb/config.json | Moves the entry to a different section |
 | tags | array[string] | no | - | list of strings | Replaces the tags |
 
+Usage notes: In single-entry mode, send entry_id plus one or more fields to change. In batch mode, send updates as an array of objects, each with entry_id and at least one of content, section, or tags.
+
 ## rememb_delete
 
-Description: Permanently delete a single memory entry by ID. Deletion is irreversible and the entry cannot be recovered. There are no cascading side effects. Use rememb_edit to update an entry and rememb_clear to delete all entries at once.
+Description: Permanently delete a single memory entry by ID or multiple entries via entry_ids[]. Deletion is irreversible and the entry cannot be recovered. There are no cascading side effects. Use rememb_edit to update an entry and rememb_clear to delete all entries at once.
 
 Parameters:
 
 | Name | Type | Required | Default | Allowed values | Description |
 |------|------|----------|---------|----------------|-------------|
-| entry_id | string | yes | - | 8 hexadecimal characters | Entry ID to remove |
+| entry_id | string | no | - | 8 hexadecimal characters | Entry ID to remove in single-entry mode |
+| entry_ids | array[string] | no | - | list of 8-character hexadecimal IDs | Batch deletion IDs |
+
+Usage notes: In single-entry mode, send entry_id. In batch mode, send entry_ids as an array of 8-character hexadecimal IDs.
 
 ## rememb_clear
 

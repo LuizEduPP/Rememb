@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from typing import Any
 
 from rememb.exceptions import (
     RemembNotInitializedError,
@@ -118,6 +119,133 @@ def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None
         return None
 
     _atomic_modify(root, restore)
+
+
+def _normalize_semantic_scope(semantic_scope: str) -> str:
+    normalized_scope = semantic_scope.lower().strip()
+    if normalized_scope not in {"global", "section"}:
+        raise RemembValidationError("Invalid semantic_scope. Use 'global' or 'section'.")
+    return normalized_scope
+
+
+def _generate_entry_id(existing_ids: set[str]) -> str:
+    new_id = str(uuid.uuid4())[:8]
+    max_attempts = 100
+    attempts = 0
+    while new_id in existing_ids and attempts < max_attempts:
+        new_id = str(uuid.uuid4())[:8]
+        attempts += 1
+
+    if new_id in existing_ids:
+        raise RemembStorageError("Failed to generate unique ID after 100 attempts. Too many entries.")
+
+    existing_ids.add(new_id)
+    return new_id
+
+
+def write_entries(
+    root: Path,
+    items: list[dict[str, Any]],
+    skip_duplicates: bool = True,
+    semantic_scope: str = "global",
+) -> list[dict]:
+    """Write multiple entries to memory atomically."""
+    logger.debug(
+        "write_entries called: items=%s, skip_duplicates=%s, semantic_scope=%s",
+        len(items),
+        skip_duplicates,
+        semantic_scope,
+    )
+    _assert_initialized(root)
+    if not items:
+        raise RemembValidationError("At least one entry is required.")
+
+    normalized_scope = _normalize_semantic_scope(semantic_scope)
+    prepared_items: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise RemembValidationError("Each batch entry must be an object.")
+        if "content" not in item:
+            raise RemembValidationError("Each batch entry must include content.")
+        prepared_items.append(
+            {
+                "section": _validate_section(str(item.get("section", "project")), root),
+                "content": _sanitize_content(item["content"], root),
+                "tags": _sanitize_tags(item.get("tags") or [], root),
+            }
+        )
+
+    def add_entries(entries: list[dict]) -> list[dict]:
+        config = _store_context.get_config(root)
+        max_entries = config["max_entries"]
+        if len(entries) + len(prepared_items) > max_entries:
+            raise RemembConfigError(f"Maximum number of entries ({max_entries}) reached. Delete some entries first.")
+
+        if skip_duplicates:
+            existing_by_key = {
+                (entry["section"], entry["content"]): entry
+                for entry in entries
+            }
+            seen_batch_keys: set[tuple[str, str]] = set()
+            for item in prepared_items:
+                key = (item["section"], item["content"])
+                existing = existing_by_key.get(key)
+                if existing:
+                    raise RemembValidationError(
+                        f"Duplicate entry: same content already exists in section '{item['section']}' (id: {existing['id']})"
+                    )
+                if key in seen_batch_keys:
+                    raise RemembValidationError(
+                        f"Duplicate entry: same content appears multiple times in section '{item['section']}' within the batch"
+                    )
+                seen_batch_keys.add(key)
+
+            try:
+                from rememb.helpers import _check_semantic_conflict
+
+                model = _store_context.get_model(root)
+                for item in prepared_items:
+                    semantic_entries = entries
+                    if normalized_scope == "section":
+                        semantic_entries = [
+                            entry for entry in entries if entry.get("section") == item["section"]
+                        ]
+                    conflict = _check_semantic_conflict(
+                        root,
+                        semantic_entries,
+                        item["content"],
+                        model,
+                        threshold=float(config["semantic_conflict_threshold"]),
+                        persist=(normalized_scope != "section"),
+                    )
+                    if conflict:
+                        raise RemembValidationError(
+                            f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
+                            f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
+                        )
+            except ImportError:
+                pass
+            finally:
+                _store_context.schedule_model_release(root)
+
+        existing_ids = {entry["id"] for entry in entries}
+        now = _now()
+        created_entries: list[dict] = []
+        for item in prepared_items:
+            entry = {
+                "id": _generate_entry_id(existing_ids),
+                "section": item["section"],
+                "content": item["content"],
+                "tags": item["tags"],
+                "created_at": now,
+                "updated_at": now,
+            }
+            entries.append(entry)
+            created_entries.append(entry)
+        logger.info("Wrote %s entries", len(created_entries))
+        return created_entries
+
+    return _atomic_modify(root, add_entries)
 
 
 def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
@@ -316,75 +444,13 @@ def write_entry(
         RemembConfigError: If max entries limit reached
         RemembStorageError: If ID generation fails
     """
-    logger.debug(
-        f"write_entry called: section={section}, skip_duplicates={skip_duplicates}, semantic_scope={semantic_scope}"
-    )
-    _assert_initialized(root)
-    section = _validate_section(section, root)
-    normalized_scope = semantic_scope.lower().strip()
-    if normalized_scope not in {"global", "section"}:
-        raise RemembValidationError("Invalid semantic_scope. Use 'global' or 'section'.")
-
-    content = _sanitize_content(content, root)
-    tags = _sanitize_tags(tags or [], root)
     logger.info(f"Writing entry to section '{section}'")
-
-    def add_entry(entries: list[dict]) -> dict:
-        config = _store_context.get_config(root)
-        max_entries = config["max_entries"]
-        if len(entries) >= max_entries:
-            raise RemembConfigError(f"Maximum number of entries ({max_entries}) reached. Delete some entries first.")
-        
-        if skip_duplicates:
-            for e in entries:
-                if e["section"] == section and e["content"] == content:
-                    raise RemembValidationError(f"Duplicate entry: same content already exists in section '{section}' (id: {e['id']})")
-                    
-            try:
-                from rememb.helpers import _check_semantic_conflict
-                model = _store_context.get_model(root)
-                semantic_entries = entries
-                if normalized_scope == "section":
-                    semantic_entries = [e for e in entries if e.get("section") == section]
-                conflict = _check_semantic_conflict(
-                    root, semantic_entries, content, model,
-                    threshold=float(config["semantic_conflict_threshold"]),
-                    persist=(normalized_scope != "section"),
-                )
-                if conflict:
-                    raise RemembValidationError(
-                        f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
-                        f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
-                    )
-            except ImportError:
-                pass
-            finally:
-                _store_context.schedule_model_release(root)
-        
-        existing_ids = {e["id"] for e in entries}
-        new_id = str(uuid.uuid4())[:8]
-        max_attempts = 100
-        attempts = 0
-        while new_id in existing_ids and attempts < max_attempts:
-            new_id = str(uuid.uuid4())[:8]
-            attempts += 1
-        
-        if new_id in existing_ids:
-            raise RemembStorageError("Failed to generate unique ID after 100 attempts. Too many entries.")
-        
-        now = _now()
-        entry = {
-            "id": new_id,
-            "section": section,
-            "content": content,
-            "tags": tags,
-            "created_at": now,
-            "updated_at": now,
-        }
-        entries.append(entry)
-        return entry
-    
-    return _atomic_modify(root, add_entry)
+    return write_entries(
+        root,
+        [{"section": section, "content": content, "tags": tags or []}],
+        skip_duplicates=skip_duplicates,
+        semantic_scope=semantic_scope,
+    )[0]
 
 
 def get_config(root: Path) -> dict:
@@ -633,18 +699,37 @@ def delete_entry(root: Path, entry_id: str) -> bool:
         True if entry was deleted, False if not found
     """
     logger.debug(f"delete_entry called: entry_id={entry_id}")
+    return entry_id in delete_entries(root, [entry_id])
+
+
+def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
+    """Delete multiple entries by ID atomically."""
+    logger.debug("delete_entries called: entry_ids=%s", len(entry_ids))
     _assert_initialized(root)
-    def remove_entry(entries: list[dict]) -> bool:
-        original_len = len(entries)
-        for i, e in enumerate(entries):
-            if e["id"] == entry_id:
-                entries.pop(i)
-                logger.info(f"Deleted entry {entry_id}")
-                return True
-        logger.warning(f"Entry {entry_id} not found for deletion")
-        return False
-    
-    return _atomic_modify(root, remove_entry)
+    if not entry_ids:
+        raise RemembValidationError("At least one entry_id is required.")
+
+    target_ids = {entry_id for entry_id in entry_ids}
+
+    def remove_entries(entries: list[dict]) -> list[str]:
+        deleted_ids: list[str] = []
+        kept_entries: list[dict] = []
+        seen_deleted: set[str] = set()
+        for entry in entries:
+            current_id = entry["id"]
+            if current_id in target_ids and current_id not in seen_deleted:
+                deleted_ids.append(current_id)
+                seen_deleted.add(current_id)
+                continue
+            kept_entries.append(entry)
+        entries[:] = kept_entries
+        if deleted_ids:
+            logger.info("Deleted %s entries", len(deleted_ids))
+        else:
+            logger.warning("No entries found for deletion")
+        return deleted_ids
+
+    return _atomic_modify(root, remove_entries)
 
 
 def clear_entries(root: Path, *, confirm: bool = False) -> int:
@@ -700,23 +785,64 @@ def edit_entry(root: Path, entry_id: str, content: str | None = None, section: s
         RemembValidationError: If section invalid
     """
     logger.debug(f"edit_entry called: entry_id={entry_id}, content={content is not None}, section={section is not None}, tags={tags is not None}")
+    return edit_entries(
+        root,
+        [{"entry_id": entry_id, "content": content, "section": section, "tags": tags}],
+    )[0]
+
+
+def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]:
+    """Edit multiple entries atomically."""
+    logger.debug("edit_entries called: updates=%s", len(updates))
     _assert_initialized(root)
-    def modify_entry(entries: list[dict]) -> dict | None:
-        for e in entries:
-            if e["id"] == entry_id:
-                if content is not None:
-                    e["content"] = _sanitize_content(content, root)
-                if section is not None:
-                    e["section"] = _validate_section(section, root)
-                if tags is not None:
-                    e["tags"] = _sanitize_tags(tags, root)
-                e["updated_at"] = _now()
-                logger.info(f"Edited entry {entry_id}")
-                return e
-        logger.warning(f"Entry {entry_id} not found for editing")
-        return None
-    
-    return _atomic_modify(root, modify_entry)
+    if not updates:
+        raise RemembValidationError("At least one update is required.")
+
+    prepared_updates: list[dict[str, Any]] = []
+    for update in updates:
+        if not isinstance(update, dict):
+            raise RemembValidationError("Each batch update must be an object.")
+        entry_id = str(update.get("entry_id", "")).strip()
+        if not entry_id:
+            raise RemembValidationError("Each batch update must include entry_id.")
+        if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
+            raise RemembValidationError(
+                f"Provide at least one field to update for entry {entry_id}: content, section, or tags."
+            )
+
+        prepared_update: dict[str, Any] = {"entry_id": entry_id}
+        if update.get("content") is not None:
+            prepared_update["content"] = _sanitize_content(update["content"], root)
+        if update.get("section") is not None:
+            prepared_update["section"] = _validate_section(update["section"], root)
+        if update.get("tags") is not None:
+            prepared_update["tags"] = _sanitize_tags(update["tags"], root)
+        prepared_updates.append(prepared_update)
+
+    def modify_entries(entries: list[dict]) -> list[dict | None]:
+        entries_by_id = {entry["id"]: entry for entry in entries}
+        results: list[dict | None] = []
+        for update in prepared_updates:
+            entry = entries_by_id.get(update["entry_id"])
+            if entry is None:
+                results.append(None)
+                continue
+            if "content" in update:
+                entry["content"] = update["content"]
+            if "section" in update:
+                entry["section"] = update["section"]
+            if "tags" in update:
+                entry["tags"] = update["tags"]
+            entry["updated_at"] = _now()
+            results.append(entry)
+        updated_count = sum(1 for result in results if result is not None)
+        if updated_count:
+            logger.info("Edited %s entries", updated_count)
+        else:
+            logger.warning("No entries found for editing")
+        return results
+
+    return _atomic_modify(root, modify_entries)
 
 
 def read_entries(root: Path, section: str | None = None) -> list[dict]:
@@ -987,12 +1113,15 @@ _store_instance = type('StoreModule', (), {
     'get_config': get_config,
     'update_config': update_config,
     'write_entry': write_entry,
+    'write_entries': write_entries,
     'consolidate_entries': consolidate_entries,
     'read_entries': read_entries,
     'read_entries_page': read_entries_page,
     'search_entries': search_entries,
     'delete_entry': delete_entry,
+    'delete_entries': delete_entries,
     'edit_entry': edit_entry,
+    'edit_entries': edit_entries,
     'clear_entries': clear_entries,
 })()
 assert isinstance(_store_instance, MemoryStore), "store.py must implement MemoryStore Protocol"

@@ -1003,21 +1003,21 @@ def search_entries(
         raise RemembError(str(e)) from e
         
     logger.info(f"Search returned {len(results)} results for query '{query}'")
-    
+
     if results:
         def bump_access(all_entries: list[dict]) -> bool:
             updated = False
-            result_ids = {r["id"] for r in results}
+            result_ids = {result["id"] for result in results}
             now_str = _now()
-            for e in all_entries:
-                if e["id"] in result_ids:
-                    e["access_count"] = e.get("access_count", 0) + 1
-                    e["last_accessed"] = now_str
+            for entry in all_entries:
+                if entry["id"] in result_ids:
+                    entry["access_count"] = entry.get("access_count", 0) + 1
+                    entry["last_accessed"] = now_str
                     updated = True
             return updated
-            
+
         _atomic_modify(root, bump_access)
-        
+
     return results
 
 

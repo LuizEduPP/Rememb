@@ -47,6 +47,8 @@ from rememb.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+_SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
+
 
 def _requires_exclusive_lock(mode: str) -> bool:
     """Return whether the file mode can mutate file contents."""
@@ -587,6 +589,30 @@ def _compute_entries_hash(entries: list[dict]) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
+def _normalize_search_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.lower().split()).strip()
+
+
+def _search_tokens(value: object) -> set[str]:
+    normalized = _normalize_search_text(value)
+    if not normalized:
+        return set()
+    return {token for token in _SEARCH_TOKEN_RE.findall(normalized) if token}
+
+
+def _search_document(entry: dict[str, Any]) -> str:
+    content = _normalize_search_text(entry.get("content", ""))
+    section = _normalize_search_text(entry.get("section", ""))
+    tags = " ".join(
+        _normalize_search_text(tag)
+        for tag in entry.get("tags", [])
+        if isinstance(tag, str)
+    )
+    return " ".join(part for part in (section, tags, content) if part)
+
+
 def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model, *, persist: bool = True) -> "np.ndarray":
     """Load embeddings from disk cache or compute and persist them."""
     current_hash = _compute_entries_hash(entries)
@@ -658,11 +684,13 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
             "Install with: pip install rememb"
         )
 
-    texts = [e["content"] for e in entries]
+    texts = [_search_document(e) for e in entries]
     embeddings = _load_or_compute_embeddings(root, texts, entries, model, persist=persist)
 
     query_vec = model.encode([query], show_progress_bar=False)[0]
-    
+    normalized_query = _normalize_search_text(query)
+    query_tokens = _search_tokens(query)
+
     norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
     scores = np.zeros(len(entries))
     
@@ -670,17 +698,37 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
     now_ts = datetime.now(timezone.utc).timestamp()
     
     for i, e in enumerate(entries):
-        base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
+        semantic_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
+        document = texts[i]
+        document_tokens = _search_tokens(document)
+        lexical_score = 0.0
+
+        if normalized_query and normalized_query in document:
+            lexical_score += 0.18
+
+        if query_tokens and document_tokens:
+            overlap_ratio = len(query_tokens & document_tokens) / len(query_tokens)
+            lexical_score += overlap_ratio * 0.22
+
+        tag_tokens: set[str] = set()
+        for tag in e.get("tags", []):
+            tag_tokens.update(_search_tokens(tag))
+        if query_tokens and tag_tokens:
+            tag_overlap_ratio = len(query_tokens & tag_tokens) / len(query_tokens)
+            lexical_score += tag_overlap_ratio * 0.12
+
+        base_score = float(semantic_score) + lexical_score
 
         try:
-            pts = datetime.strptime(e.get("updated_at", e.get("created_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            entry_timestamp = str(e.get("updated_at") or e.get("created_at") or "")
+            pts = datetime.strptime(entry_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
             days_old = (now_ts - pts) / 86400.0
-            decay = max(0.70, 1.0 - (days_old * 0.003)) 
+            decay = max(0.92, 1.0 - (days_old * 0.0006))
             base_score *= decay
         except Exception:
             pass
             
-        scores[i] = base_score
+        scores[i] = min(1.0, max(-1.0, base_score))
 
     top_indices = np.argsort(scores)[::-1][:top_k]
     ranked: list[dict] = []

@@ -242,9 +242,33 @@ def test_search_entries_returns_scores(tmp_path, monkeypatch):
     monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
 
     results = search_entries(root, "alpha")
+    stored = read_entries(root)
+    stored_by_id = {entry["id"]: entry for entry in stored}
 
     assert results[0]["score"] >= results[1]["score"]
     assert "score" in results[0]
+    assert all(stored_by_id[result["id"]]["access_count"] == 1 for result in results)
+    assert all(stored_by_id[result["id"]]["last_accessed"] for result in results)
+
+
+def test_search_entries_boosts_exact_tokens_and_tags(tmp_path, monkeypatch):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+    write_entry(root, "project", "Completely generic note.", ["release"])
+    write_entry(root, "project", "Roadmap and timeline details.", ["alpha", "launch"])
+
+    class FlatModel:
+        def encode(self, texts, show_progress_bar=False, batch_size=32):
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr("rememb.store._store_context.get_model", lambda _root=None: FlatModel())
+    monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
+
+    results = search_entries(root, "alpha launch")
+
+    assert results[0]["tags"] == ["alpha", "launch"]
+    assert results[0]["score"] > results[1]["score"]
 
 
 def test_format_entries_supports_summary_and_truncation():

@@ -269,6 +269,21 @@ Key parameters:
 - next_goal
 - include_deleted
 
+Returns a next_execution package with goal, compressed context tiers, restore hints, related entries and operational handoff state.
+
+### rememb_workstream_switch_package
+
+Build an anti-context-switch package to freeze one workstream and resume another with explicit context gap analysis.
+
+Key parameters:
+- current_workstream_id (required)
+- target_workstream_id (required)
+- current_execution_id
+- target_execution_id
+- include_deleted
+
+Returns the current freeze package, the target resume package and a state_gap object showing what is needed now, what is optional to load and what is risky to carry.
+
 ## Workstream and execution tools
 
 ### rememb_workstream_list

@@ -34,10 +34,13 @@ def test_index_exposes_deleted_and_history_controls():
     assert "handoff-package" in response.text
     assert "/api/workstreams/queue" in response.text
     assert "/api/workstreams/compare" in response.text
+    assert "/api/workstreams/switch-package" in response.text
     assert "All workstreams" in response.text
     assert "All sessions" in response.text
     assert "Agent supervision" in response.text
     assert "Next execution package" in response.text
+    assert "Supervision Surface" in response.text
+    assert "Administrative Surface" in response.text
 
 
 def test_index_is_offline_ready_without_external_cdns():
@@ -317,6 +320,10 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
         "/api/workstreams/ws_review/handoff-package",
         params={"next_goal": "Approve review queue"},
     )
+    switch_package = client.get(
+        "/api/workstreams/switch-package",
+        params={"current_workstream_id": "ws_review", "target_workstream_id": "ws_review"},
+    )
     close_and_handoff = client.post(
         "/api/workstreams/ws_review/executions/close-and-handoff",
         json={
@@ -332,6 +339,9 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
     assert handoff_package.json()["next_goal"] == "Approve review queue"
     assert handoff_package.json()["next_execution"]["goal"] == "Approve review queue"
     assert handoff_package.json()["compressed_context"]["archived"] == ["old modal close"]
+    assert switch_package.status_code == 200
+    assert switch_package.json()["switch_mode"] == "anti_context_switch"
+    assert switch_package.json()["resume_target"]["next_execution"]["goal"] == "Ship review mode"
     assert close_and_handoff.status_code == 201
     assert close_and_handoff.json()["handoff_entry"]["entry_kind"] == "handoff"
     assert review_list.status_code == 200

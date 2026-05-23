@@ -39,6 +39,7 @@ def test_build_tools_exposes_expected_public_contract():
         "rememb_handoff_restore_context",
         "rememb_handoff_write_structured",
         "rememb_handoff_read_structured",
+        "rememb_workstream_switch_package",
         "rememb_workstream_list",
         "rememb_workstream_open",
         "rememb_workstream_state_get",
@@ -80,6 +81,7 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_diff"].inputSchema["required"] == ["entry_id", "from_version", "to_version"]
     assert by_name["rememb_handoff_generate"].inputSchema["required"] == ["goal"]
     assert by_name["rememb_handoff_package"].inputSchema["required"] == ["workstream_id"]
+    assert by_name["rememb_workstream_switch_package"].inputSchema["required"] == ["current_workstream_id", "target_workstream_id"]
     assert by_name["rememb_handoff_restore_context"].inputSchema["required"] == ["entry_id"]
     assert "workstream_id" in by_name["rememb_handoff_generate"].inputSchema["properties"]
     assert "session_id" in by_name["rememb_handoff_generate"].inputSchema["properties"]
@@ -436,6 +438,15 @@ def test_handle_tool_reads_handoff_package_and_review_queue(monkeypatch, tmp_pat
             {"entry_id": "abcd1234", "review_status": "pending", "entry_kind": "decision", "actor_type": "agent", "actor_id": "copilot", "review_reasons": ["agent_generated", "versioned"]}
         ],
     )
+    monkeypatch.setattr(
+        mcp_server,
+        "build_workstream_switch_package",
+        lambda root, current_workstream_id, target_workstream_id, **kwargs: {
+            "current_workstream_id": current_workstream_id,
+            "target_workstream_id": target_workstream_id,
+            "state_gap": {"needed_now_but_not_open": ["focus target"], "risky_to_carry": ["stale context"]},
+        },
+    )
 
     handoff_package = asyncio.run(
         mcp_server._handle_tool(
@@ -451,6 +462,13 @@ def test_handle_tool_reads_handoff_package_and_review_queue(monkeypatch, tmp_pat
             FakeTextContent,
         )
     )
+    switch_package = asyncio.run(
+        mcp_server._handle_tool(
+            "rememb_workstream_switch_package",
+            {"current_workstream_id": "ws_agent", "target_workstream_id": "ws_other"},
+            FakeTextContent,
+        )
+    )
 
     assert "Next goal: Ship review mode" in handoff_package[0].text
     assert "Operational handoff:" in handoff_package[0].text
@@ -458,6 +476,8 @@ def test_handle_tool_reads_handoff_package_and_review_queue(monkeypatch, tmp_pat
     assert "Review queue:" in review_queue[0].text
     assert "abcd1234 status=pending kind=decision actor=agent:copilot" in review_queue[0].text
     assert "reasons=agent_generated,versioned" in review_queue[0].text
+    assert "Freeze current: ws_agent" in switch_package[0].text
+    assert "Resume target: ws_other" in switch_package[0].text
 
 
 def test_handle_tool_closes_session_with_handoff_and_updates_review(monkeypatch, tmp_path):
@@ -507,6 +527,8 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
             "pending_review_count": 2,
             "entry_count": 4,
             "active_decision_ids": ["dec22222"],
+            "resume": {"next_execution": {"goal": "Resume ws_agent"}},
+            "execution_snapshot": {"inputs": {"source_context_entry_ids": ["ctx11111"]}, "outputs": {"entry_ids": ["out11111", "out22222"]}, "review_result": {"pending_human_validation": 2}},
         },
     )
     monkeypatch.setattr(
@@ -517,6 +539,8 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
             "operational_status": "awaiting_review",
             "pending_review_count": 2,
             "sessions": [{"session_id": "sess_a"}, {"session_id": "sess_b"}],
+            "resume": {"next_execution": {"goal": "Resume ws_agent"}},
+            "review_policy_summary": {"escalate_for_validation": 2, "auto_approve": 0, "auto_dismiss": 0},
         },
     )
     monkeypatch.setattr(
@@ -531,7 +555,7 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
         "compare_sessions",
         lambda root, workstream_id, base_session_id, target_session_id, include_deleted=False: {
             "workstream_id": workstream_id,
-            "delta": {"new_open_loops": ["ship compare"], "resolved_open_loops": ["wire filters"]},
+            "delta": {"new_open_loops": ["ship compare"], "resolved_open_loops": ["wire filters"], "new_decision_entry_ids": ["dec22222"], "risk_shift": {"base_pending_human_validation": 1, "target_pending_human_validation": 2}},
         },
     )
     monkeypatch.setattr(
@@ -542,7 +566,8 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
                 "operational_status_changed": True,
                 "left_only_open_loops": ["ship compare"],
                 "right_only_open_loops": ["connect queue"],
-            }
+            },
+            "switch_package": {"state_gap": {"needed_now_but_not_open": ["focus target"]}},
         },
     )
 
@@ -583,13 +608,19 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
     )
 
     assert "Review execution anchor: sess_a" in review_session[0].text
+    assert "Next execution goal: Resume ws_agent" in review_session[0].text
+    assert "Snapshot: inputs=1 outputs=2 pending_human_validation=2" in review_session[0].text
     assert "Active decisions: dec22222" in review_session[0].text
     assert "Review workstream: ws_agent" in review_workstream[0].text
     assert "Execution history: 2" in review_workstream[0].text
+    assert "Policy summary: escalate=2 auto_approve=0 auto_dismiss=0" in review_workstream[0].text
     assert "Workstream queue:" in queue[0].text
     assert "ws_agent status=awaiting_review pending_review=2 execution_history=2" in queue[0].text
     assert "New open loops: ship compare" in compare_session[0].text
+    assert "New decisions: dec22222" in compare_session[0].text
+    assert "Risk shift: base_pending=1 target_pending=2" in compare_session[0].text
     assert "Status changed: true" in compare_workstream[0].text
+    assert "Switch target gap: focus target" in compare_workstream[0].text
 
 
 def test_handle_tool_manages_workstream_lifecycle(monkeypatch, tmp_path):

@@ -767,6 +767,114 @@ def _next_execution_payload(
     }
 
 
+def _execution_snapshot_payload(
+    *,
+    entries: list[dict[str, Any]],
+    resume: dict[str, Any] | None,
+    review_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    entry_kinds: dict[str, int] = {}
+    actor_breakdown: dict[str, int] = {}
+    source_context_entry_ids: list[str] = []
+    related_entry_ids: list[str] = []
+    supersession_chain: list[dict[str, str]] = []
+    output_entry_ids: list[str] = []
+    outputs_by_kind: dict[str, list[str]] = {}
+    touched_sections: list[str] = []
+
+    for entry in entries:
+        entry_id = str(entry.get("id") or "").strip()
+        if entry_id:
+            output_entry_ids.append(entry_id)
+        entry_kind = str(entry.get("entry_kind") or "memory")
+        entry_kinds[entry_kind] = entry_kinds.get(entry_kind, 0) + 1
+        outputs_by_kind.setdefault(entry_kind, [])
+        if entry_id:
+            outputs_by_kind[entry_kind].append(entry_id)
+
+        actor_type = str(entry.get("actor_type") or "unknown")
+        actor_breakdown[actor_type] = actor_breakdown.get(actor_type, 0) + 1
+
+        for source_context_entry_id in _causal_context_ids(entry):
+            if source_context_entry_id not in source_context_entry_ids:
+                source_context_entry_ids.append(source_context_entry_id)
+        for related_entry_id in entry.get("related_entry_ids") or []:
+            if related_entry_id not in related_entry_ids:
+                related_entry_ids.append(related_entry_id)
+
+        section = str(entry.get("section") or "").strip()
+        if section and section not in touched_sections:
+            touched_sections.append(section)
+
+        supersedes_entry_id = str(entry.get("supersedes_entry_id") or "").strip()
+        if entry_id and supersedes_entry_id:
+            structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+            supersession_chain.append(
+                {
+                    "entry_id": entry_id,
+                    "supersedes_entry_id": supersedes_entry_id,
+                    "reason": _normalize_optional_text(structured.get("review_reason"))
+                    or _normalize_optional_text(structured.get("review_notes"))
+                    or _normalize_optional_text(structured.get("validation_notes"))
+                    or "superseded_by_newer_revision",
+                }
+            )
+
+    agent_decision_counts: dict[str, int] = {}
+    human_validation_counts: dict[str, int] = {}
+    for item in review_items:
+        agent_decision = str(((item.get("agent_review") or {}).get("decision") or "unknown"))
+        human_status = str(((item.get("human_validation") or {}).get("status") or item.get("review_status") or "pending"))
+        agent_decision_counts[agent_decision] = agent_decision_counts.get(agent_decision, 0) + 1
+        human_validation_counts[human_status] = human_validation_counts.get(human_status, 0) + 1
+
+    return {
+        "inputs": {
+            "source_context_entry_ids": source_context_entry_ids,
+            "related_entry_ids": related_entry_ids,
+            "focus_entry_ids": list((resume or {}).get("focus_entry_ids") or []),
+            "restore_context": dict((resume or {}).get("restore_context") or {}),
+            "touched_sections": touched_sections,
+        },
+        "outputs": {
+            "entry_ids": output_entry_ids,
+            "entry_kinds": entry_kinds,
+            "latest_entry_id": entries[-1].get("id") if entries else None,
+            "by_kind": outputs_by_kind,
+        },
+        "review_result": {
+            "agent_decisions": agent_decision_counts,
+            "human_validation": human_validation_counts,
+            "pending_human_validation": sum(
+                1
+                for item in review_items
+                if ((item.get("agent_review") or {}).get("policy") or {}).get("requires_human_validation")
+                and not ((item.get("human_validation") or {}).get("finalized"))
+            ),
+        },
+        "provenance": {
+            "actor_breakdown": actor_breakdown,
+            "supersession_chain": supersession_chain,
+        },
+    }
+
+
+def _switch_gap_payload(current_resume: dict[str, Any], target_resume: dict[str, Any]) -> dict[str, Any]:
+    current_state = list(current_resume.get("current_state") or [])
+    current_essential = list((current_resume.get("compressed_context") or {}).get("essential") or current_state)
+    target_next_execution = dict(target_resume.get("next_execution") or {})
+    target_essential = list(target_next_execution.get("essential_context") or [])
+    target_optional = list(target_next_execution.get("optional_context") or [])
+    target_risky = list(target_next_execution.get("risky_context") or [])
+    return {
+        "open_now_but_not_needed": [item for item in current_state if item not in target_essential],
+        "needed_now_but_not_open": [item for item in target_essential if item not in current_state and item not in current_essential],
+        "optional_to_load": [item for item in target_optional if item not in current_state and item not in current_essential],
+        "risky_to_carry": list(target_risky),
+        "focus_entry_ids": list(target_next_execution.get("focus_entry_ids") or []),
+    }
+
+
 def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
     current_version = int(_current_entry_version(entry) or 1)
     previous_version = current_version - 1 if current_version > 1 else None
@@ -798,6 +906,7 @@ def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
         "source_context_entry_ids": _causal_context_ids(entry),
         "supersedes_entry_id": entry.get("supersedes_entry_id"),
         "agent_review": agent_review,
+        "supervision_status": "awaiting_human_validation" if agent_review.get("policy", {}).get("requires_human_validation") else "policy_resolved",
         "human_validation": {
             "status": _review_status_from_entry(entry),
             "notes": _normalize_optional_text(structured.get("review_notes")) or "",
@@ -962,6 +1071,13 @@ def resume_workstream(
     current_state = handoff_payload.get("current_state") or state_payload.get("current_state") or []
     open_loops = handoff_payload.get("open_loops") or state_payload.get("open_loops") or []
     next_steps = handoff_payload.get("next_steps") or state_payload.get("next_steps") or []
+    pending_review_count = len(list_review_queue(
+        root,
+        workstream_id=workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+        pending_only=True,
+    ))
 
     return {
         "workstream_id": state["workstream_id"],
@@ -980,6 +1096,8 @@ def resume_workstream(
         "restore_context": restore_context,
         "related_entry_ids": related_entry_ids,
         "compressed_context": compressed_context,
+        "operational_status": _workstream_operational_status(entries, pending_review_count),
+        "pending_review_count": pending_review_count,
         "next_execution": _next_execution_payload(
             goal=goal,
             summary=summary,
@@ -1035,6 +1153,7 @@ def list_workstreams(
                 "operational_status": operational_status,
                 "pending_review_count": pending_review_count,
                 "active_decision_ids": list((resume or {}).get("active_decision_ids") or []),
+                "next_execution": dict((resume or {}).get("next_execution") or {}),
                 "updated_at": _entry_timestamp(latest_entry),
             }
         )
@@ -1662,17 +1781,25 @@ def get_review_session(
     latest_handoff = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "handoff"), None)
     latest_state = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "state"), None)
     latest_review = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "review"), None)
+    pending_review_count = sum(
+        1
+        for item in review_items
+        if ((item.get("agent_review") or {}).get("policy") or {}).get("requires_human_validation")
+        and not ((item.get("human_validation") or {}).get("finalized"))
+    )
     return {
         "workstream_id": workstream_id,
         "session_id": session_id,
         "execution_id": session_id,
+        "operational_status": _workstream_operational_status(entries, pending_review_count),
         "entry_count": len(entries),
         "review_count": len(review_items),
-        "pending_review_count": sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"}),
+        "pending_review_count": pending_review_count,
         "latest_handoff": _entry_preview(latest_handoff) if latest_handoff else None,
         "latest_state": _entry_preview(latest_state) if latest_state else None,
         "latest_review": _entry_preview(latest_review) if latest_review else None,
         "resume": _session_compare_payload(session_id, entries, resume),
+        "execution_snapshot": _execution_snapshot_payload(entries=entries, resume=resume, review_items=review_items),
         "review_items": review_items,
         "timeline": list((state or {}).get("timeline") or []),
         "active_decision_ids": list((resume or {}).get("active_decision_ids") or []),
@@ -1698,20 +1825,83 @@ def get_review_workstream(
         for session_id in session_ids
     ]
     execution_history = [item for item in session_groups if item is not None]
+    pending_review_count = sum(
+        1
+        for item in review_items
+        if ((item.get("agent_review") or {}).get("policy") or {}).get("requires_human_validation")
+        and not ((item.get("human_validation") or {}).get("finalized"))
+    )
     return {
         "workstream_id": workstream_id,
-        "operational_status": _workstream_operational_status(entries, sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"})),
+        "operational_status": _workstream_operational_status(entries, pending_review_count),
         "entry_count": len(entries),
         "review_count": len(review_items),
-        "pending_review_count": sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"}),
+        "pending_review_count": pending_review_count,
         "resume": resume,
         "latest_handoff": (state or {}).get("latest_handoff"),
         "latest_state": (state or {}).get("latest_state"),
         "latest_review": (state or {}).get("latest_review"),
         "review_items": review_items,
+        "review_policy_summary": {
+            "escalate_for_validation": sum(1 for item in review_items if (item.get("agent_review") or {}).get("decision") == "escalate_for_validation"),
+            "auto_approve": sum(1 for item in review_items if (item.get("agent_review") or {}).get("decision") == "auto_approve"),
+            "auto_dismiss": sum(1 for item in review_items if (item.get("agent_review") or {}).get("decision") == "auto_dismiss"),
+        },
         "sessions": execution_history,
         "execution_history": execution_history,
         "execution_history_count": len(execution_history),
+    }
+
+
+def build_workstream_switch_package(
+    root: Path,
+    current_workstream_id: str,
+    target_workstream_id: str,
+    *,
+    current_session_id: str | None = None,
+    target_session_id: str | None = None,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Build an anti-context-switch package to freeze one workstream and resume another."""
+    current_resume = resume_workstream(root, current_workstream_id, session_id=current_session_id, include_deleted=include_deleted)
+    target_resume = resume_workstream(root, target_workstream_id, session_id=target_session_id, include_deleted=include_deleted)
+    if current_resume is None or target_resume is None:
+        return None
+    current_package = build_handoff_package(
+        root,
+        current_workstream_id,
+        session_id=current_session_id,
+        next_goal=current_resume.get("goal") or current_workstream_id,
+        include_deleted=include_deleted,
+    ) or {}
+    target_package = build_handoff_package(
+        root,
+        target_workstream_id,
+        session_id=target_session_id,
+        next_goal=(target_resume.get("next_execution") or {}).get("goal") or target_resume.get("goal") or target_workstream_id,
+        include_deleted=include_deleted,
+    ) or {}
+    return {
+        "switch_mode": "anti_context_switch",
+        "current_workstream_id": current_workstream_id,
+        "target_workstream_id": target_workstream_id,
+        "current_execution_id": current_resume.get("session_id"),
+        "target_execution_id": target_resume.get("session_id"),
+        "freeze_current": {
+            "workstream_id": current_workstream_id,
+            "operational_status": current_resume.get("operational_status") or "active",
+            "pending_review_count": current_resume.get("pending_review_count") or 0,
+            "next_execution": dict(current_package.get("next_execution") or current_resume.get("next_execution") or {}),
+            "handoff_package": current_package,
+        },
+        "resume_target": {
+            "workstream_id": target_workstream_id,
+            "operational_status": target_resume.get("operational_status") or "active",
+            "pending_review_count": target_resume.get("pending_review_count") or 0,
+            "next_execution": dict(target_package.get("next_execution") or target_resume.get("next_execution") or {}),
+            "handoff_package": target_package,
+        },
+        "state_gap": _switch_gap_payload(current_resume, target_resume),
     }
 
 
@@ -1749,6 +1939,8 @@ def compare_sessions(
     right_resume = resume_workstream(root, workstream_id, session_id=right_session_id, include_deleted=include_deleted)
     left_review = get_review_session(root, workstream_id, left_session_id, include_deleted=include_deleted)
     right_review = get_review_session(root, workstream_id, right_session_id, include_deleted=include_deleted)
+    left_snapshot = dict((left_review or {}).get("execution_snapshot") or {})
+    right_snapshot = dict((right_review or {}).get("execution_snapshot") or {})
     return {
         "workstream_id": workstream_id,
         "base_execution_id": left_session_id,
@@ -1766,7 +1958,39 @@ def compare_sessions(
             "resolved_open_loops": [item for item in (left_resume or {}).get("open_loops", []) if item not in (right_resume or {}).get("open_loops", [])],
             "new_next_steps": [item for item in (right_resume or {}).get("next_steps", []) if item not in (left_resume or {}).get("next_steps", [])],
             "new_focus_entry_ids": [item for item in (right_resume or {}).get("focus_entry_ids", []) if item not in (left_resume or {}).get("focus_entry_ids", [])],
+            "new_decision_entry_ids": [
+                item
+                for item in (right_snapshot.get("outputs", {}).get("by_kind", {}).get("decision") or [])
+                if item not in (left_snapshot.get("outputs", {}).get("by_kind", {}).get("decision") or [])
+            ],
+            "resolved_decision_entry_ids": [
+                item
+                for item in (left_snapshot.get("outputs", {}).get("by_kind", {}).get("decision") or [])
+                if item not in (right_snapshot.get("outputs", {}).get("by_kind", {}).get("decision") or [])
+            ],
+            "risk_shift": {
+                "base_pending_human_validation": left_snapshot.get("review_result", {}).get("pending_human_validation") or 0,
+                "target_pending_human_validation": right_snapshot.get("review_result", {}).get("pending_human_validation") or 0,
+            },
         },
+        "decision_diff": _compare_text_block(
+            list((left_snapshot.get("outputs", {}).get("by_kind", {}).get("decision") or [])),
+            list((right_snapshot.get("outputs", {}).get("by_kind", {}).get("decision") or [])),
+            left_label=f"{left_session_id}:decisions",
+            right_label=f"{right_session_id}:decisions",
+        ),
+        "risk_diff": _compare_text_block(
+            [
+                f"pending_human_validation={left_snapshot.get('review_result', {}).get('pending_human_validation') or 0}",
+                *[f"{key}={value}" for key, value in sorted((left_snapshot.get("review_result", {}).get("agent_decisions") or {}).items())],
+            ],
+            [
+                f"pending_human_validation={right_snapshot.get('review_result', {}).get('pending_human_validation') or 0}",
+                *[f"{key}={value}" for key, value in sorted((right_snapshot.get("review_result", {}).get("agent_decisions") or {}).items())],
+            ],
+            left_label=f"{left_session_id}:risk",
+            right_label=f"{right_session_id}:risk",
+        ),
         "current_state_diff": _compare_text_block(
             list((left_resume or {}).get("current_state") or []),
             list((right_resume or {}).get("current_state") or []),
@@ -1800,8 +2024,14 @@ def compare_workstreams(
     right_resume = resume_workstream(root, right_workstream_id, include_deleted=include_deleted)
     left_state = get_workstream_state(root, left_workstream_id, include_deleted=include_deleted)
     right_state = get_workstream_state(root, right_workstream_id, include_deleted=include_deleted)
+    left_entries = _workstream_entries(root, left_workstream_id, include_deleted=include_deleted)
+    right_entries = _workstream_entries(root, right_workstream_id, include_deleted=include_deleted)
     if left_resume is None or right_resume is None or left_state is None or right_state is None:
         return None
+    left_pending = len(list_review_queue(root, workstream_id=left_workstream_id, include_deleted=include_deleted, pending_only=True))
+    right_pending = len(list_review_queue(root, workstream_id=right_workstream_id, include_deleted=include_deleted, pending_only=True))
+    left_status = _workstream_operational_status(left_entries, left_pending)
+    right_status = _workstream_operational_status(right_entries, right_pending)
     return {
         "left": {
             "workstream_id": left_workstream_id,
@@ -1814,12 +2044,22 @@ def compare_workstreams(
             "state": right_state,
         },
         "delta": {
-            "operational_status_changed": left_resume.get("operational_status") != right_resume.get("operational_status"),
+            "operational_status_changed": left_status != right_status,
+            "left_operational_status": left_status,
+            "right_operational_status": right_status,
             "left_only_open_loops": [item for item in left_resume.get("open_loops", []) if item not in right_resume.get("open_loops", [])],
             "right_only_open_loops": [item for item in right_resume.get("open_loops", []) if item not in left_resume.get("open_loops", [])],
             "left_only_focus_entry_ids": [item for item in left_resume.get("focus_entry_ids", []) if item not in right_resume.get("focus_entry_ids", [])],
             "right_only_focus_entry_ids": [item for item in right_resume.get("focus_entry_ids", []) if item not in left_resume.get("focus_entry_ids", [])],
+            "left_pending_review_count": left_pending,
+            "right_pending_review_count": right_pending,
         },
+        "switch_package": build_workstream_switch_package(
+            root,
+            left_workstream_id,
+            right_workstream_id,
+            include_deleted=include_deleted,
+        ),
         "open_loops_diff": _compare_text_block(
             list(left_resume.get("open_loops") or []),
             list(right_resume.get("open_loops") or []),

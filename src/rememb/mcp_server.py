@@ -7,6 +7,7 @@ from typing import Any
 from rememb.config import DEFAULT_SECTIONS, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
 from rememb.store import (
     build_handoff_package,
+    build_workstream_switch_package,
     compare_sessions,
     compare_workstreams,
     clear_entries,
@@ -520,6 +521,32 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             lines.append("What changed: " + " | ".join(item.get("summary") or "" for item in payload["what_changed"]))
         return [TextContent(type="text", text="\n".join(lines))]
 
+    async def rememb_workstream_switch_package():
+        current_workstream_id = arguments.get("current_workstream_id")
+        target_workstream_id = arguments.get("target_workstream_id")
+        if current_workstream_id is None or not str(current_workstream_id).strip():
+            return [TextContent(type="text", text="Provide current_workstream_id.")]
+        if target_workstream_id is None or not str(target_workstream_id).strip():
+            return [TextContent(type="text", text="Provide target_workstream_id.")]
+        payload = await asyncio.to_thread(
+            build_workstream_switch_package,
+            root,
+            str(current_workstream_id),
+            str(target_workstream_id),
+            current_session_id=arguments.get("current_execution_id"),
+            target_session_id=arguments.get("target_execution_id"),
+            include_deleted=arguments.get("include_deleted", False),
+        )
+        if payload is None:
+            return [TextContent(type="text", text="Workstream switch package not available.")]
+        state_gap = payload.get("state_gap") or {}
+        return [TextContent(type="text", text="\n".join([
+            f"Freeze current: {payload.get('current_workstream_id')}",
+            f"Resume target: {payload.get('target_workstream_id')}",
+            f"Needed now but not open: {', '.join(state_gap.get('needed_now_but_not_open') or []) or 'none'}",
+            f"Risky to carry: {', '.join(state_gap.get('risky_to_carry') or []) or 'none'}",
+        ]))]
+
     async def rememb_workstream_list():
         limit = arguments.get("limit")
         include_deleted = arguments.get("include_deleted", False)
@@ -701,6 +728,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         next_execution = ((payload.get("resume") or {}).get("next_execution") or {})
         if next_execution.get("goal"):
             lines.append(f"Next execution goal: {next_execution['goal']}")
+        execution_snapshot = payload.get("execution_snapshot") or {}
+        if execution_snapshot:
+            lines.append(
+                "Snapshot: "
+                f"inputs={len((execution_snapshot.get('inputs') or {}).get('source_context_entry_ids', []))} "
+                f"outputs={len((execution_snapshot.get('outputs') or {}).get('entry_ids', []))} "
+                f"pending_human_validation={(execution_snapshot.get('review_result') or {}).get('pending_human_validation', 0)}"
+            )
         if payload.get("active_decision_ids"):
             lines.append("Active decisions: " + ", ".join(payload["active_decision_ids"]))
         return [TextContent(type="text", text="\n".join(lines))]
@@ -726,6 +761,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         next_execution = ((payload.get("resume") or {}).get("next_execution") or {})
         if next_execution.get("goal"):
             lines.append(f"Next execution goal: {next_execution['goal']}")
+        review_policy_summary = payload.get("review_policy_summary") or {}
+        if review_policy_summary:
+            lines.append(
+                "Policy summary: "
+                f"escalate={review_policy_summary.get('escalate_for_validation', 0)} "
+                f"auto_approve={review_policy_summary.get('auto_approve', 0)} "
+                f"auto_dismiss={review_policy_summary.get('auto_dismiss', 0)}"
+            )
         return [TextContent(type="text", text="\n".join(lines))]
 
     async def rememb_workstream_queue():
@@ -771,6 +814,13 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"New open loops: {', '.join(delta.get('new_open_loops') or []) or 'none'}",
             f"Resolved open loops: {', '.join(delta.get('resolved_open_loops') or []) or 'none'}",
         ]
+        if delta.get("new_decision_entry_ids"):
+            lines.append("New decisions: " + ", ".join(delta.get("new_decision_entry_ids") or []))
+        risk_shift = delta.get("risk_shift") or {}
+        if risk_shift:
+            lines.append(
+                f"Risk shift: base_pending={risk_shift.get('base_pending_human_validation', 0)} target_pending={risk_shift.get('target_pending_human_validation', 0)}"
+            )
         return [TextContent(type="text", text="\n".join(lines))]
 
     async def rememb_compare_workstreams():
@@ -794,6 +844,11 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Left-only open loops: {', '.join(delta.get('left_only_open_loops') or []) or 'none'}",
             f"Right-only open loops: {', '.join(delta.get('right_only_open_loops') or []) or 'none'}",
         ]
+        switch_package = payload.get("switch_package") or {}
+        if switch_package:
+            lines.append(
+                f"Switch target gap: {', '.join((switch_package.get('state_gap') or {}).get('needed_now_but_not_open') or []) or 'none'}"
+            )
         return [TextContent(type="text", text="\n".join(lines))]
 
     async def rememb_review_update():
@@ -1142,6 +1197,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_workstream_state_update": rememb_workstream_state_update,
         "rememb_workstream_resume": rememb_workstream_resume,
         "rememb_handoff_package": rememb_handoff_package,
+        "rememb_workstream_switch_package": rememb_workstream_switch_package,
         "rememb_execution_start": rememb_execution_start,
         "rememb_execution_close": rememb_execution_close,
         "rememb_execution_close_and_handoff": rememb_execution_close_and_handoff,
@@ -1506,6 +1562,18 @@ def _build_tools(Tool):
                 "include_deleted": {"type": "boolean", "default": False, "description": "Include soft-deleted entries when building the package"},
             },
             required=["workstream_id"],
+        ),
+        _tool(
+            name="rememb_workstream_switch_package",
+            description="Build an anti-context-switch package to freeze one workstream and resume another with the minimum necessary context.",
+            properties={
+                "current_workstream_id": {"type": "string", "description": "Workstream currently in focus"},
+                "target_workstream_id": {"type": "string", "description": "Workstream to resume next"},
+                "current_execution_id": {"type": "string", "description": "Optional current execution anchor identifier"},
+                "target_execution_id": {"type": "string", "description": "Optional target execution anchor identifier"},
+                "include_deleted": {"type": "boolean", "default": False, "description": "Include soft-deleted entries while building the package"},
+            },
+            required=["current_workstream_id", "target_workstream_id"],
         ),
         _tool(
             name="rememb_workstream_list",

@@ -17,6 +17,7 @@ from rememb.config import DEFAULT_SEMANTIC_CONFLICT_THRESHOLD, SEMANTIC_MODEL_CH
 from rememb.exceptions import RemembError, rememb_error_http_status, rememb_error_response_text
 from rememb.store import (
     build_handoff_package,
+    build_workstream_switch_package,
     compare_sessions,
     compare_workstreams,
     close_session,
@@ -659,6 +660,34 @@ async def compare_workstreams_endpoint(
         )
         if payload is None:
             raise HTTPException(status_code=404, detail="Workstream comparison not available.")
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _raise_http_error(exc)
+
+
+@app.get("/api/workstreams/switch-package")
+async def workstream_switch_package_endpoint(
+    current_workstream_id: str = Query(...),
+    target_workstream_id: str = Query(...),
+    current_execution_id: str | None = Query(None),
+    target_execution_id: str | None = Query(None),
+    include_deleted: bool = Query(False),
+) -> dict:
+    root = await asyncio.to_thread(_get_root)
+    try:
+        payload = await asyncio.to_thread(
+            build_workstream_switch_package,
+            root,
+            current_workstream_id,
+            target_workstream_id,
+            current_session_id=current_execution_id,
+            target_session_id=target_execution_id,
+            include_deleted=include_deleted,
+        )
+        if payload is None:
+            raise HTTPException(status_code=404, detail="Workstream switch package not available.")
         return payload
     except HTTPException:
         raise

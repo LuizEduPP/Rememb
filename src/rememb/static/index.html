@@ -198,6 +198,14 @@ a { color: inherit; text-decoration: none; }
   background: var(--panel-soft);
   padding: 4px;
 }
+.nav-surface-label {
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
 .nav-tab {
   border: 0;
   border-radius: 999px;
@@ -525,10 +533,13 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
     <div class="divider"></div>
 
     <nav class="nav-tabs">
+      <span class="nav-surface-label">Supervision Surface</span>
       <button class="nav-tab active" data-view="dashboard">Dashboard</button>
       <button class="nav-tab" data-view="workstreams">Workstreams</button>
-      <button class="nav-tab" data-view="memories">Memory Ledger</button>
+      <button class="nav-tab" data-view="handoffs">Handoffs</button>
       <button class="nav-tab" data-view="review">Review</button>
+      <span class="nav-surface-label">Administrative Surface</span>
+      <button class="nav-tab" data-view="memories">Memory Ledger</button>
       <button class="nav-tab" data-view="stats">Stats</button>
       <button class="nav-tab" data-view="settings">Settings</button>
     </nav>
@@ -836,6 +847,7 @@ const state = {
   workstreams: [],
   handoffs: [],
   reviewItems: [],
+  dashboardSwitchPackage: null,
   skills: null,
   total: 0,
   offset: 0,
@@ -925,6 +937,7 @@ const api = {
   workstreamQueue: (p = {}) => apiFetch('/api/workstreams/queue?' + new URLSearchParams(p)),
   compareExecutions: (workstreamId, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(workstreamId)}/compare/executions?` + new URLSearchParams(p)),
   compareWorkstreams: (p = {}) => apiFetch('/api/workstreams/compare?' + new URLSearchParams(p)),
+  workstreamSwitchPackage: (p = {}) => apiFetch('/api/workstreams/switch-package?' + new URLSearchParams(p)),
   reviewUpdate: (id, body) => apiFetch(`/api/review/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(body) }),
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
@@ -1526,16 +1539,20 @@ async function applyReviewFilters(workstreamId = '', sessionId = '') {
 function renderWorkstreamSummary(items) {
   const total = items.length;
   const sessions = items.reduce((sum, item) => sum + (item.session_count || 0), 0);
+  const awaitingReview = items.filter((item) => item.operational_status === 'awaiting_review').length;
+  const readyToResume = items.filter((item) => item.next_execution?.goal).length;
   const latest = items[0]?.updated_at || '';
   document.getElementById('workstream-summary').innerHTML = `
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Operational map</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Primary operational threads for agent continuity, memory history and validation state.</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Primary operational threads for agent continuity, next-execution packaging and validation state.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
         <span class="count-pill">${sessions} execution cycle${sessions === 1 ? '' : 's'}</span>
+        <span class="count-pill">${awaitingReview} awaiting_review</span>
+        <span class="count-pill">${readyToResume} resume-ready</span>
         <span class="count-pill">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
       </div>
     </div>`;
@@ -1603,11 +1620,14 @@ async function renderDashboardView() {
     state.reviewItems = reviewItems;
     state.handoffs = handoffs;
     state.total = statsData.total_entries ?? 0;
+    state.dashboardSwitchPackage = workstreams.length > 1
+      ? await api.workstreamSwitchPackage({ current_workstream_id: workstreams[0].workstream_id, target_workstream_id: workstreams[1].workstream_id }).catch(() => null)
+      : null;
 
     document.getElementById('dashboard-workstreams-count').textContent = String(workstreams.length);
     document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent execution history` : 'no active workstreams';
     document.getElementById('dashboard-review-count').textContent = String(reviewItems.length);
-    document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items waiting for human validation' : 'nothing waiting right now';
+    document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items escalated to human validation' : 'nothing escalated right now';
     document.getElementById('dashboard-handoffs-count').textContent = String(handoffs.length);
     document.getElementById('dashboard-handoffs-caption').textContent = handoffs[0]?.updated_at ? `latest ${relTime(handoffs[0].updated_at)}` : 'no handoff history yet';
     document.getElementById('dashboard-memory-count').textContent = String(statsData.total_entries ?? 0);
@@ -1615,12 +1635,19 @@ async function renderDashboardView() {
 
     renderDashboardList(
       'dashboard-workstreams-list',
-      workstreams.slice(0, 4).map((item) => ({
+      [
+        ...(state.dashboardSwitchPackage ? [{
+          title: `Switch package: ${state.dashboardSwitchPackage.current_workstream_id} -> ${state.dashboardSwitchPackage.target_workstream_id}`,
+          body: `needed now=${(state.dashboardSwitchPackage.state_gap?.needed_now_but_not_open || []).join(', ') || 'none'} · risky=${(state.dashboardSwitchPackage.state_gap?.risky_to_carry || []).join(', ') || 'none'}`,
+          meta: 'anti-context-switch',
+          action: { name: 'open-workstream', value: state.dashboardSwitchPackage.target_workstream_id, label: 'Inspect target thread', variant: 'ghost' },
+        }] : []),
+        ...workstreams.slice(0, 4).map((item) => ({
         title: item.goal || item.workstream_id,
-        body: item.summary || 'No summary available yet.',
+        body: `${item.summary || 'No summary available yet.'} next=${item.next_execution?.goal || 'not packaged'} · status=${item.operational_status || 'active'}`,
         meta: item.workstream_id,
         action: null,
-      })),
+      }))],
       'No workstreams yet. Agents will start creating continuity here once work begins.'
     );
 
@@ -1635,9 +1662,9 @@ async function renderDashboardView() {
     }
     if (attentionItems.length < 4) {
       attentionItems.push({
-        title: 'Memory maintenance',
-        body: 'Inspect, edit or consolidate persisted memory when the agent has accumulated noise, stale facts or wrong assumptions.',
-        meta: 'memory',
+        title: 'Administrative surface',
+        body: 'Memory ledger, stats and settings stay separate from the supervision flow so humans configure policy instead of operating the agent loop.',
+        meta: 'admin',
         action: { name: 'open-memory-admin', value: '', label: 'Inspect Memory Ledger', variant: 'ghost' },
       });
     }
@@ -1649,7 +1676,7 @@ async function renderDashboardView() {
         action: { name: 'open-handoffs', value: '', label: 'Inspect handoff log', variant: 'ghost' },
       });
     }
-    renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate validation backlog. Review, memory hygiene and settings updates will surface here.');
+    renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate validation backlog. Escalations and admin-only follow-up will surface here.');
   } catch (e) {
     renderDashboardList('dashboard-workstreams-list', [], `Failed to load dashboard: ${e.message}`);
     renderDashboardList('dashboard-attention-list', [], 'Dashboard could not aggregate current state.');
@@ -1658,6 +1685,7 @@ async function renderDashboardView() {
 
 function renderWorkstreamCard(item) {
   const selected = item.workstream_id === state.selectedWorkstreamId ? ' is-selected' : '';
+  const nextExecution = item.next_execution || {};
   return `
     <article class="handoff-card${selected}" data-workstream-id="${escHtml(item.workstream_id)}">
       <div class="card-header" style="background:rgba(18,33,70,0.05)">
@@ -1671,6 +1699,8 @@ function renderWorkstreamCard(item) {
         <div class="pill-row">
           <span class="tag-pill mono">entries:${escHtml(item.entry_count || 0)}</span>
           <span class="tag-pill mono">history:${escHtml(item.session_count || 0)}</span>
+          <span class="tag-pill mono">status:${escHtml(item.operational_status || 'active')}</span>
+          <span class="tag-pill mono">next:${escHtml(nextExecution.goal || 'n/a')}</span>
           ${item.latest_session_id ? `<span class="tag-pill mono">latest:${escHtml(item.latest_session_id)}</span>` : ''}
         </div>
       </div>
@@ -1736,6 +1766,7 @@ function renderWorkstreamDetail() {
   }
 
   const { workstreamId, stateData, resumeData, handoffData, reviewItems = [], reviewSummary = null } = state.workstreamDetail;
+  const switchData = state.workstreamDetail.switchData || null;
   const timeline = renderWorkstreamTimeline(stateData.timeline || []);
   const relatedEntries = (resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>';
   const handoffGoal = handoffData?.goal ? `
@@ -1778,6 +1809,21 @@ function renderWorkstreamDetail() {
       <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
     </div>
   `;
+  const nextExecutionPanel = `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="field-label">Next execution package</div>
+      <div>${escHtml(resumeData.next_execution?.goal || resumeData.goal || '')}</div>
+      <div class="muted" style="font-size:13px; margin-top:6px;">resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</div>
+    </div>
+  `;
+  const switchPanel = switchData ? `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="field-label">Anti-context-switch package</div>
+      <div>${escHtml(switchData.current_workstream_id)} -> ${escHtml(switchData.target_workstream_id)}</div>
+      <div class="muted" style="font-size:13px; margin-top:6px;">needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</div>
+      <div class="pill-row" style="margin-top:10px;">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">Target already fits the current context.</span>'}</div>
+    </div>
+  ` : '';
 
   root.innerHTML = `
     <div class="panel" style="padding:18px;">
@@ -1796,6 +1842,8 @@ function renderWorkstreamDetail() {
         <div class="section-card" style="padding:14px;"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
         <div class="section-card" style="padding:14px;"><div class="field-label">Review pending</div><div>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</div></div>
       </div>
+      ${nextExecutionPanel}
+      ${switchPanel}
       <div class="compare-grid" style="margin-bottom:12px;">
         <div class="section-card" style="padding:14px;"><div class="field-label">Latest entry</div><div class="mono">${escHtml(resumeData.latest_entry_id || '')}</div></div>
         <div class="section-card" style="padding:14px;"><div class="field-label">Focus entries</div><div class="mono">${escHtml((resumeData.focus_entry_ids || []).join(', ') || 'none')}</div></div>
@@ -1849,7 +1897,11 @@ async function selectWorkstream(workstreamId) {
       api.reviewWorkstream(workstreamId).catch(() => null),
     ]);
     const handoffData = stateData.latest_handoff ? await api.readStructuredHandoff(workstreamId, { include_deleted: 'true' }).catch(() => null) : null;
-    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData, reviewItems: reviewData.items || [], reviewSummary };
+    const alternateWorkstream = (state.workstreams || []).find((item) => item.workstream_id !== workstreamId)?.workstream_id || null;
+    const switchData = alternateWorkstream
+      ? await api.workstreamSwitchPackage({ current_workstream_id: workstreamId, target_workstream_id: alternateWorkstream }).catch(() => null)
+      : null;
+    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData, reviewItems: reviewData.items || [], reviewSummary, switchData };
   } catch (e) {
     state.workstreamDetail = { workstreamId, error: e.message };
   }

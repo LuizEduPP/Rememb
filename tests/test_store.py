@@ -12,6 +12,7 @@ from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 from rememb.store import (
     build_handoff_package,
+    build_workstream_switch_package,
     clear_entries,
     compare_sessions,
     compare_workstreams,
@@ -943,14 +944,19 @@ def test_review_aggregations_and_operational_queue(tmp_path):
     assert filtered_queue[0]["supersedes_entry_id"] == first_decision["id"]
     assert filtered_queue[0]["source_context_entry_ids"] == [first_decision["id"], anchor["id"]]
     assert filtered_queue[0]["agent_review"]["risk_level"] == "critical"
+    assert filtered_queue[0]["supervision_status"] == "awaiting_human_validation"
     assert review_session is not None
+    assert review_session["operational_status"] == "awaiting_review"
     assert review_session["pending_review_count"] == 2
     assert review_session["active_decision_ids"] == [second_decision["id"]]
     assert review_session["resume"]["next_execution"]["goal"] == "Ship review supervisor"
+    assert review_session["execution_snapshot"]["inputs"]["source_context_entry_ids"] == [anchor["id"], first_decision["id"]]
+    assert review_session["execution_snapshot"]["review_result"]["pending_human_validation"] == 2
     assert review_workstream is not None
     assert review_workstream["operational_status"] == "awaiting_review"
     assert review_workstream["sessions"][0]["session_id"] == "sess_supervisor"
     assert review_workstream["resume"]["next_execution"]["goal"] == "Ship review supervisor"
+    assert review_workstream["review_policy_summary"]["escalate_for_validation"] == 2
     assert queue[0]["workstream_id"] == "ws_supervisor"
     assert queue[0]["operational_status"] == "awaiting_review"
 
@@ -983,6 +989,16 @@ def test_compare_sessions_and_workstreams(tmp_path):
         open_loops=["ship comparison UI"],
         next_steps=["wire workstream compare"],
     )
+    write_entry(
+        root,
+        "actions",
+        "Agent changed review policy.",
+        workstream_id="ws_compare",
+        session_id="sess_b",
+        entry_kind="decision",
+        actor_type="agent",
+        structured={"risk_flags": ["needs human approval"]},
+    )
 
     open_workstream(root, "Ship handoff dashboard", workstream_id="ws_other")
     start_session(root, "ws_other", session_id="sess_other")
@@ -998,12 +1014,20 @@ def test_compare_sessions_and_workstreams(tmp_path):
 
     session_compare = compare_sessions(root, "ws_compare", "sess_a", "sess_b")
     workstream_compare = compare_workstreams(root, "ws_compare", "ws_other")
+    switch_package = build_workstream_switch_package(root, "ws_compare", "ws_other")
 
     assert session_compare is not None
     assert session_compare["delta"]["new_open_loops"] == ["ship comparison UI"]
     assert session_compare["delta"]["resolved_open_loops"] == ["wire filters"]
     assert session_compare["delta"]["new_next_steps"] == ["wire workstream compare"]
+    assert session_compare["delta"]["risk_shift"]["target_pending_human_validation"] == 1
+    assert session_compare["delta"]["new_decision_entry_ids"]
     assert workstream_compare is not None
     assert workstream_compare["left"]["workstream_id"] == "ws_compare"
     assert workstream_compare["right"]["workstream_id"] == "ws_other"
+    assert workstream_compare["delta"]["left_operational_status"] == "awaiting_review"
+    assert workstream_compare["switch_package"]["target_workstream_id"] == "ws_other"
     assert workstream_compare["open_loops_diff"]
+    assert switch_package is not None
+    assert switch_package["switch_mode"] == "anti_context_switch"
+    assert switch_package["state_gap"]["needed_now_but_not_open"]

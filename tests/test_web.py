@@ -223,7 +223,7 @@ def test_workstream_crud_like_endpoints_and_structured_handoff(monkeypatch, tmp_
     assert listed.json()["items"][0]["workstream_id"] == "ws_ui"
 
     started = client.post(
-        "/api/workstreams/ws_ui/sessions/start",
+        "/api/workstreams/ws_ui/executions/start",
         json={"session_id": "sess_ui", "summary": "first pass"},
     )
     assert started.status_code == 201
@@ -270,7 +270,7 @@ def test_workstream_crud_like_endpoints_and_structured_handoff(monkeypatch, tmp_
     assert any(item["session_id"] == "sess_ui" for item in timeline)
 
     closed = client.post(
-        "/api/workstreams/ws_ui/sessions/close",
+        "/api/workstreams/ws_ui/executions/close",
         json={"session_id": "sess_ui", "outcome": "Implementation complete", "next_steps": ["restart web"]},
     )
     assert closed.status_code == 201
@@ -288,7 +288,7 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
         json={"goal": "Ship review mode", "workstream_id": "ws_review", "summary": "Review surface"},
     )
     client.post(
-        "/api/workstreams/ws_review/sessions/start",
+        "/api/workstreams/ws_review/executions/start",
         json={"session_id": "sess_review", "summary": "first pass"},
     )
     client.post(
@@ -321,7 +321,7 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
         params={"next_goal": "Approve review queue"},
     )
     close_and_handoff = client.post(
-        "/api/workstreams/ws_review/sessions/close-and-handoff",
+        "/api/workstreams/ws_review/executions/close-and-handoff",
         json={
             "session_id": "sess_review",
             "outcome": "Review queue prepared",
@@ -392,7 +392,7 @@ def test_review_summary_queue_and_compare_endpoints(monkeypatch, tmp_path):
         json={"goal": "Ship supervisor", "workstream_id": "ws_supervisor", "summary": "Review flow"},
     )
     client.post(
-        "/api/workstreams/ws_supervisor/sessions/start",
+        "/api/workstreams/ws_supervisor/executions/start",
         json={"session_id": "sess_a", "summary": "first"},
     )
     client.post(
@@ -417,11 +417,11 @@ def test_review_summary_queue_and_compare_endpoints(monkeypatch, tmp_path):
         structured={"risk_flags": ["needs approval"]},
     )
     client.post(
-        "/api/workstreams/ws_supervisor/sessions/close",
+        "/api/workstreams/ws_supervisor/executions/close",
         json={"session_id": "sess_a", "outcome": "paused", "next_goal": "continue"},
     )
     client.post(
-        "/api/workstreams/ws_supervisor/sessions/start",
+        "/api/workstreams/ws_supervisor/executions/start",
         json={"session_id": "sess_b", "summary": "second", "goal": "continue"},
     )
     client.post(
@@ -452,7 +452,7 @@ def test_review_summary_queue_and_compare_endpoints(monkeypatch, tmp_path):
         json={"goal": "Ship handoff board", "workstream_id": "ws_other", "summary": "Other"},
     )
     client.post(
-        "/api/workstreams/ws_other/sessions/start",
+        "/api/workstreams/ws_other/executions/start",
         json={"session_id": "sess_other", "summary": "other"},
     )
     client.post(
@@ -470,12 +470,12 @@ def test_review_summary_queue_and_compare_endpoints(monkeypatch, tmp_path):
         "/api/review",
         params={"workstream_id": "ws_supervisor", "actor_type": "agent", "actor_id": "copilot", "entry_kind": "decision", "pending_only": False},
     )
-    review_session = client.get("/api/review/workstreams/ws_supervisor/sessions/sess_b")
+    review_session = client.get("/api/review/workstreams/ws_supervisor/executions/sess_b")
     review_workstream = client.get("/api/review/workstreams/ws_supervisor")
     queue = client.get("/api/workstreams/queue", params={"status": "awaiting_review"})
     compare_sessions = client.get(
-        "/api/workstreams/ws_supervisor/compare/sessions",
-        params={"base_session_id": "sess_a", "target_session_id": "sess_b"},
+        "/api/workstreams/ws_supervisor/compare/executions",
+        params={"base_execution_id": "sess_a", "target_execution_id": "sess_b"},
     )
     compare_workstreams = client.get(
         "/api/workstreams/compare",
@@ -497,12 +497,15 @@ def test_review_summary_queue_and_compare_endpoints(monkeypatch, tmp_path):
     assert filtered_review.json()["items"][0]["actor_id"] == "copilot"
     assert review_session.status_code == 200
     assert review_session.json()["session_id"] == "sess_b"
+    assert review_session.json()["execution_id"] == "sess_b"
     assert review_session.json()["pending_review_count"] >= 1
     assert review_workstream.status_code == 200
     assert review_workstream.json()["operational_status"] == "awaiting_review"
     assert queue.status_code == 200
     assert queue.json()["items"][0]["workstream_id"] == "ws_supervisor"
     assert compare_sessions.status_code == 200
+    assert compare_sessions.json()["base_execution_id"] == "sess_a"
+    assert compare_sessions.json()["target_execution_id"] == "sess_b"
     assert compare_sessions.json()["delta"]["new_open_loops"] == ["wire dashboard compare"]
     assert compare_workstreams.status_code == 200
     assert "left_only_open_loops" in compare_workstreams.json()["delta"]

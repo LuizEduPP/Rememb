@@ -310,7 +310,7 @@ async def create_handoff(req: HandoffWriteRequest) -> dict:
 @app.get("/api/workstreams/{workstream_id}/state")
 async def workstream_state_endpoint(
     workstream_id: str,
-    session_id: str | None = Query(None),
+    execution_id: str | None = Query(None),
     include_deleted: bool = Query(False),
 ) -> dict:
     root = await asyncio.to_thread(_get_root)
@@ -319,7 +319,7 @@ async def workstream_state_endpoint(
             get_workstream_state,
             root,
             workstream_id,
-            session_id=session_id,
+            session_id=execution_id,
             include_deleted=include_deleted,
         )
         if state is None:
@@ -334,7 +334,7 @@ async def workstream_state_endpoint(
 @app.get("/api/workstreams/{workstream_id}/resume")
 async def workstream_resume_endpoint(
     workstream_id: str,
-    session_id: str | None = Query(None),
+    execution_id: str | None = Query(None),
     include_deleted: bool = Query(False),
 ) -> dict:
     root = await asyncio.to_thread(_get_root)
@@ -343,7 +343,7 @@ async def workstream_resume_endpoint(
             resume_workstream,
             root,
             workstream_id,
-            session_id=session_id,
+            session_id=execution_id,
             include_deleted=include_deleted,
         )
         if resume is None:
@@ -387,8 +387,8 @@ async def workstream_state_update_endpoint(workstream_id: str, req: WorkstreamSt
         _raise_http_error(exc)
 
 
-@app.post("/api/workstreams/{workstream_id}/sessions/start", status_code=201)
-async def session_start_endpoint(workstream_id: str, req: SessionStartRequest) -> dict:
+@app.post("/api/workstreams/{workstream_id}/executions/start", status_code=201)
+async def execution_start_endpoint(workstream_id: str, req: SessionStartRequest) -> dict:
     root = await asyncio.to_thread(_get_root)
     try:
         entry = await asyncio.to_thread(
@@ -409,8 +409,8 @@ async def session_start_endpoint(workstream_id: str, req: SessionStartRequest) -
         _raise_http_error(exc)
 
 
-@app.post("/api/workstreams/{workstream_id}/sessions/close", status_code=201)
-async def session_close_endpoint(workstream_id: str, req: SessionCloseRequest) -> dict:
+@app.post("/api/workstreams/{workstream_id}/executions/close", status_code=201)
+async def execution_close_endpoint(workstream_id: str, req: SessionCloseRequest) -> dict:
     root = await asyncio.to_thread(_get_root)
     try:
         entry = await asyncio.to_thread(
@@ -459,7 +459,7 @@ async def structured_handoff_write_endpoint(workstream_id: str, req: StructuredH
             restore_query=req.restore_query,
             include_deleted=req.include_deleted,
             tags=req.tags,
-            audience=req.audience,
+            audience="agent",
         )
         return {"entry": entry}
     except Exception as exc:
@@ -469,7 +469,7 @@ async def structured_handoff_write_endpoint(workstream_id: str, req: StructuredH
 @app.get("/api/workstreams/{workstream_id}/handoff-package")
 async def handoff_package_endpoint(
     workstream_id: str,
-    session_id: str | None = Query(None),
+    execution_id: str | None = Query(None),
     next_goal: str | None = Query(None),
     include_deleted: bool = Query(False),
 ) -> dict:
@@ -479,7 +479,7 @@ async def handoff_package_endpoint(
             build_handoff_package,
             root,
             workstream_id,
-            session_id=session_id,
+            session_id=execution_id,
             next_goal=next_goal,
             include_deleted=include_deleted,
         )
@@ -492,8 +492,8 @@ async def handoff_package_endpoint(
         _raise_http_error(exc)
 
 
-@app.post("/api/workstreams/{workstream_id}/sessions/close-and-handoff", status_code=201)
-async def session_close_and_handoff_endpoint(workstream_id: str, req: SessionCloseAndHandoffRequest) -> dict:
+@app.post("/api/workstreams/{workstream_id}/executions/close-and-handoff", status_code=201)
+async def execution_close_and_handoff_endpoint(workstream_id: str, req: SessionCloseAndHandoffRequest) -> dict:
     root = await asyncio.to_thread(_get_root)
     try:
         result = await asyncio.to_thread(
@@ -514,7 +514,7 @@ async def session_close_and_handoff_endpoint(workstream_id: str, req: SessionClo
             obsolete_context=req.obsolete_context,
             related_entry_ids=req.related_entry_ids,
             include_deleted=req.include_deleted,
-            audience=req.audience,
+            audience="agent",
         )
         if result is None:
             raise HTTPException(status_code=404, detail="Workstream not found.")
@@ -576,19 +576,19 @@ async def review_workstream_endpoint(workstream_id: str, include_deleted: bool =
         _raise_http_error(exc)
 
 
-@app.get("/api/review/workstreams/{workstream_id}/sessions/{session_id}")
-async def review_session_endpoint(workstream_id: str, session_id: str, include_deleted: bool = Query(False)) -> dict:
+@app.get("/api/review/workstreams/{workstream_id}/executions/{execution_id}")
+async def review_execution_endpoint(workstream_id: str, execution_id: str, include_deleted: bool = Query(False)) -> dict:
     root = await asyncio.to_thread(_get_root)
     try:
         payload = await asyncio.to_thread(
             get_review_session,
             root,
             workstream_id,
-            session_id,
+            execution_id,
             include_deleted=include_deleted,
         )
         if payload is None:
-            raise HTTPException(status_code=404, detail="Session not found.")
+            raise HTTPException(status_code=404, detail="Execution anchor not found.")
         return payload
     except HTTPException:
         raise
@@ -616,11 +616,11 @@ async def workstream_queue_endpoint(
         _raise_http_error(exc)
 
 
-@app.get("/api/workstreams/{workstream_id}/compare/sessions")
-async def compare_sessions_endpoint(
+@app.get("/api/workstreams/{workstream_id}/compare/executions")
+async def compare_executions_endpoint(
     workstream_id: str,
-    base_session_id: str = Query(...),
-    target_session_id: str = Query(...),
+    base_execution_id: str = Query(...),
+    target_execution_id: str = Query(...),
     include_deleted: bool = Query(False),
 ) -> dict:
     root = await asyncio.to_thread(_get_root)
@@ -629,12 +629,12 @@ async def compare_sessions_endpoint(
             compare_sessions,
             root,
             workstream_id,
-            base_session_id,
-            target_session_id,
+            base_execution_id,
+            target_execution_id,
             include_deleted=include_deleted,
         )
         if payload is None:
-            raise HTTPException(status_code=404, detail="Session comparison not available.")
+            raise HTTPException(status_code=404, detail="Execution comparison not available.")
         return payload
     except HTTPException:
         raise

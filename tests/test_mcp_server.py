@@ -44,14 +44,14 @@ def test_build_tools_exposes_expected_public_contract():
         "rememb_workstream_state_get",
         "rememb_workstream_state_update",
         "rememb_workstream_resume",
-        "rememb_session_start",
-        "rememb_session_close",
-        "rememb_session_close_and_handoff",
+        "rememb_execution_start",
+        "rememb_execution_close",
+        "rememb_execution_close_and_handoff",
         "rememb_review_queue",
-        "rememb_review_session_get",
+        "rememb_review_execution_get",
         "rememb_review_workstream_get",
         "rememb_workstream_queue",
-        "rememb_compare_sessions",
+        "rememb_compare_executions",
         "rememb_compare_workstreams",
         "rememb_review_update",
         "rememb_write",
@@ -90,12 +90,12 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_workstream_state_get"].inputSchema["required"] == ["workstream_id"]
     assert by_name["rememb_workstream_state_update"].inputSchema["required"] == ["workstream_id"]
     assert by_name["rememb_workstream_resume"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_session_start"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_session_close"].inputSchema["required"] == ["workstream_id", "outcome"]
-    assert by_name["rememb_session_close_and_handoff"].inputSchema["required"] == ["workstream_id", "outcome", "next_goal"]
-    assert by_name["rememb_review_session_get"].inputSchema["required"] == ["workstream_id", "session_id"]
+    assert by_name["rememb_execution_start"].inputSchema["required"] == ["workstream_id"]
+    assert by_name["rememb_execution_close"].inputSchema["required"] == ["workstream_id", "outcome"]
+    assert by_name["rememb_execution_close_and_handoff"].inputSchema["required"] == ["workstream_id", "outcome", "next_goal"]
+    assert by_name["rememb_review_execution_get"].inputSchema["required"] == ["workstream_id", "execution_id"]
     assert by_name["rememb_review_workstream_get"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_compare_sessions"].inputSchema["required"] == ["workstream_id", "base_session_id", "target_session_id"]
+    assert by_name["rememb_compare_executions"].inputSchema["required"] == ["workstream_id", "base_execution_id", "target_execution_id"]
     assert by_name["rememb_compare_workstreams"].inputSchema["required"] == ["left_workstream_id", "right_workstream_id"]
     assert by_name["rememb_review_update"].inputSchema["required"] == ["entry_id", "review_status"]
     assert "actor_type" in by_name["rememb_review_queue"].inputSchema["properties"]
@@ -477,8 +477,8 @@ def test_handle_tool_closes_session_with_handoff_and_updates_review(monkeypatch,
 
     close_result = asyncio.run(
         mcp_server._handle_tool(
-            "rememb_session_close_and_handoff",
-            {"workstream_id": "ws_agent", "session_id": "sess_a", "outcome": "done", "next_goal": "next"},
+            "rememb_execution_close_and_handoff",
+            {"workstream_id": "ws_agent", "execution_id": "sess_a", "outcome": "done", "next_goal": "next"},
             FakeTextContent,
         )
     )
@@ -547,8 +547,8 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
 
     review_session = asyncio.run(
         mcp_server._handle_tool(
-            "rememb_review_session_get",
-            {"workstream_id": "ws_agent", "session_id": "sess_a"},
+            "rememb_review_execution_get",
+            {"workstream_id": "ws_agent", "execution_id": "sess_a"},
             FakeTextContent,
         )
     )
@@ -568,8 +568,8 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
     )
     compare_session = asyncio.run(
         mcp_server._handle_tool(
-            "rememb_compare_sessions",
-            {"workstream_id": "ws_agent", "base_session_id": "sess_a", "target_session_id": "sess_b"},
+            "rememb_compare_executions",
+            {"workstream_id": "ws_agent", "base_execution_id": "sess_a", "target_execution_id": "sess_b"},
             FakeTextContent,
         )
     )
@@ -581,12 +581,12 @@ def test_handle_tool_reads_advanced_review_and_compare_surfaces(monkeypatch, tmp
         )
     )
 
-    assert "Review session: sess_a" in review_session[0].text
+    assert "Review execution anchor: sess_a" in review_session[0].text
     assert "Active decisions: dec22222" in review_session[0].text
     assert "Review workstream: ws_agent" in review_workstream[0].text
-    assert "Sessions: 2" in review_workstream[0].text
+    assert "Execution history: 2" in review_workstream[0].text
     assert "Workstream queue:" in queue[0].text
-    assert "ws_agent status=awaiting_review pending_review=2 sessions=2" in queue[0].text
+    assert "ws_agent status=awaiting_review pending_review=2 execution_history=2" in queue[0].text
     assert "New open loops: ship compare" in compare_session[0].text
     assert "Status changed: true" in compare_workstream[0].text
 
@@ -619,12 +619,12 @@ def test_handle_tool_manages_workstream_lifecycle(monkeypatch, tmp_path):
         mcp_server._handle_tool("rememb_workstream_open", {"goal": "Ship UI", "workstream_id": "ws_agent"}, FakeTextContent)
     )
     started = asyncio.run(
-        mcp_server._handle_tool("rememb_session_start", {"workstream_id": "ws_agent", "session_id": "sess_a"}, FakeTextContent)
+        mcp_server._handle_tool("rememb_execution_start", {"workstream_id": "ws_agent", "execution_id": "sess_a"}, FakeTextContent)
     )
     closed = asyncio.run(
         mcp_server._handle_tool(
-            "rememb_session_close",
-            {"workstream_id": "ws_agent", "session_id": "sess_a", "outcome": "done"},
+            "rememb_execution_close",
+            {"workstream_id": "ws_agent", "execution_id": "sess_a", "outcome": "done"},
             FakeTextContent,
         )
     )
@@ -632,8 +632,8 @@ def test_handle_tool_manages_workstream_lifecycle(monkeypatch, tmp_path):
     assert "Recent workstreams:" in listed[0].text
     assert "ws_agent" in listed[0].text
     assert "Workstream ws_agent created" in opened[0].text
-    assert "Started session sess_a" in started[0].text
-    assert "Closed session sess_a" in closed[0].text
+    assert "Started execution anchor sess_a" in started[0].text
+    assert "Closed execution anchor sess_a" in closed[0].text
 
 
 def test_handle_tool_reads_and_writes_structured_handoff(monkeypatch, tmp_path):

@@ -1,12 +1,13 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+*.egg
 dist/
 docs/
 build/
-.venv/
 venv/
-*.egg
+.vscode/
+.venv/
 .rememb/embeddings.npy
 .rememb/embeddings.hash
 .mcpregistry_*_token

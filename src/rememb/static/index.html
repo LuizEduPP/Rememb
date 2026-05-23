@@ -525,12 +525,11 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
     <div class="divider"></div>
 
     <nav class="nav-tabs">
-      <button class="nav-tab active" data-view="memories">Memories</button>
+      <button class="nav-tab active" data-view="dashboard">Dashboard</button>
       <button class="nav-tab" data-view="workstreams">Workstreams</button>
-      <button class="nav-tab" data-view="handoffs">Handoffs</button>
+      <button class="nav-tab" data-view="memories">Memory Admin</button>
       <button class="nav-tab" data-view="review">Review</button>
       <button class="nav-tab" data-view="stats">Stats</button>
-      <button class="nav-tab" data-view="skills">Skills</button>
       <button class="nav-tab" data-view="settings">Settings</button>
     </nav>
 
@@ -545,12 +544,68 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
     <div class="header-actions">
       <button class="app-button primary" id="btn-new">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"></path></svg>
-        <span id="btn-new-label">New Entry</span>
+        <span id="btn-new-label">Open Workstream</span>
       </button>
     </div>
   </header>
 
-  <div id="view-memories" class="view view-column active">
+  <div id="view-dashboard" class="view view-scroll active">
+    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+      <div class="section-header">
+        <div>
+          <h2 class="page-title">Dashboard</h2>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Human supervision for agent operations: current work, pending review, recent handoffs and memory health.</div>
+        </div>
+        <button class="app-button primary" id="btn-dashboard-open-workstream">Open workstream</button>
+      </div>
+
+      <div class="stats-grid" style="margin-bottom: 20px;">
+        <div class="section-card">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Active workstreams</span>
+          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-workstreams-count">—</div>
+          <span class="mt-1 block text-[11px] text-mute" id="dashboard-workstreams-caption">loading</span>
+        </div>
+        <div class="section-card">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Pending review</span>
+          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-review-count">—</div>
+          <span class="mt-1 block text-[11px] text-mute" id="dashboard-review-caption">loading</span>
+        </div>
+        <div class="section-card">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Recent handoffs</span>
+          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-handoffs-count">—</div>
+          <span class="mt-1 block text-[11px] text-mute" id="dashboard-handoffs-caption">loading</span>
+        </div>
+        <div class="section-card">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Memory entries</span>
+          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-memory-count">—</div>
+          <span class="mt-1 block text-[11px] text-mute" id="dashboard-memory-caption">loading</span>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="section-card">
+          <div class="section-header" style="margin-bottom: 14px; padding-bottom: 12px;">
+            <div>
+              <div class="section-title">Work needing attention</div>
+              <div class="muted" style="font-size:13px; margin-top:4px;">Open a workstream when you want the full operational picture.</div>
+            </div>
+          </div>
+          <div id="dashboard-workstreams-list" class="space-y-3"></div>
+        </div>
+        <div class="section-card">
+          <div class="section-header" style="margin-bottom: 14px; padding-bottom: 12px;">
+            <div>
+              <div class="section-title">Needs human input</div>
+              <div class="muted" style="font-size:13px; margin-top:4px;">Review items and memory maintenance stay visible here.</div>
+            </div>
+          </div>
+          <div id="dashboard-attention-list" class="space-y-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-memories" class="view view-column">
     <div id="search-results-bar" class="search-results-bar">
       <span id="search-results-label"></span>
       <button id="clear-search" class="text-sm font-medium text-ink underline-offset-4 hover:underline">Clear search</button>
@@ -603,7 +658,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
 
       <main id="main-content" class="content-main">
         <div class="section-header">
-          <h2 id="section-title" class="view-title">All entries</h2>
+          <h2 id="section-title" class="view-title">Memory Admin</h2>
           <span id="total-badge" class="count-pill"></span>
           <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
             <input type="checkbox" id="toggle-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
@@ -630,7 +685,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
       <div class="section-header">
         <div>
           <h2 class="page-title">Workstreams</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operate parallel agents and sessions without losing context, focus or control.</div>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operate parallel agent work without losing context, focus or control.</div>
         </div>
         <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
           <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
@@ -657,7 +712,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
           <input type="checkbox" id="toggle-handoffs-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
           <span>Show deleted</span>
         </label>
-        <button class="app-button primary" id="btn-new-handoff-inline">Generate handoff</button>
+        <button class="app-button ghost" id="btn-new-handoff-inline">Generate handoff</button>
       </div>
       <div id="handoff-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
       <div id="handoff-grid" class="handoff-grid"></div>
@@ -669,14 +724,14 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
       <div class="section-header">
         <div>
           <h2 class="page-title">Review</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Review Mode for agent output, diff-first inspection and context-aware approval.</div>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Global review queue for agent output that still needs human validation across workstreams.</div>
         </div>
         <div class="pill-row" style="margin-left:auto; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
           <select id="review-workstream-filter" class="field-control" style="width:auto; min-width:180px; border-radius:10px; padding:8px 10px; font-size:12px;">
             <option value="">All workstreams</option>
           </select>
           <select id="review-session-filter" class="field-control" style="width:auto; min-width:160px; border-radius:10px; padding:8px 10px; font-size:12px;">
-            <option value="">All sessions</option>
+            <option value="">All execution history</option>
           </select>
           <select id="review-actor-type-filter" class="field-control" style="width:auto; min-width:130px; border-radius:10px; padding:8px 10px; font-size:12px;">
             <option value="">All actors</option>
@@ -783,7 +838,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
 
 <script>
 const state = {
-  view: 'memories',
+  view: 'dashboard',
   section: null,
   config: null,
   entries: [],
@@ -849,20 +904,35 @@ const api = {
   handoffs: (p = {}) => apiFetch('/api/handoffs?' + new URLSearchParams(p)),
   writeHandoff: (body) => apiFetch('/api/handoffs', { method: 'POST', body: JSON.stringify(body) }),
   handoffRestoreContext: (id, p = {}) => apiFetch(`/api/handoffs/${id}/restore-context?` + new URLSearchParams(p)),
-  handoffPackage: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff-package?` + new URLSearchParams(p)),
-  workstreamState: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state?` + new URLSearchParams(p)),
-  workstreamResume: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/resume?` + new URLSearchParams(p)),
+  handoffPackage: (id, p = {}) => {
+    const params = { ...p };
+    if (params.session_id !== undefined && params.execution_id === undefined) params.execution_id = params.session_id;
+    delete params.session_id;
+    return apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff-package?` + new URLSearchParams(params));
+  },
+  workstreamState: (id, p = {}) => {
+    const params = { ...p };
+    if (params.session_id !== undefined && params.execution_id === undefined) params.execution_id = params.session_id;
+    delete params.session_id;
+    return apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state?` + new URLSearchParams(params));
+  },
+  workstreamResume: (id, p = {}) => {
+    const params = { ...p };
+    if (params.session_id !== undefined && params.execution_id === undefined) params.execution_id = params.session_id;
+    delete params.session_id;
+    return apiFetch(`/api/workstreams/${encodeURIComponent(id)}/resume?` + new URLSearchParams(params));
+  },
   updateWorkstreamState: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state`, { method: 'POST', body: JSON.stringify(body) }),
-  startSession: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/sessions/start`, { method: 'POST', body: JSON.stringify(body) }),
-  closeSession: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/sessions/close`, { method: 'POST', body: JSON.stringify(body) }),
-  closeSessionAndHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/sessions/close-and-handoff`, { method: 'POST', body: JSON.stringify(body) }),
+  startExecution: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/executions/start`, { method: 'POST', body: JSON.stringify(body) }),
+  closeExecution: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/executions/close`, { method: 'POST', body: JSON.stringify(body) }),
+  closeExecutionAndHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/executions/close-and-handoff`, { method: 'POST', body: JSON.stringify(body) }),
   writeStructuredHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff`, { method: 'POST', body: JSON.stringify(body) }),
   readStructuredHandoff: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff?` + new URLSearchParams(p)),
   reviewQueue: (p = {}) => apiFetch('/api/review?' + new URLSearchParams(p)),
   reviewWorkstream: (id, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(id)}?` + new URLSearchParams(p)),
-  reviewSession: (workstreamId, sessionId, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(workstreamId)}/sessions/${encodeURIComponent(sessionId)}?` + new URLSearchParams(p)),
+  reviewExecution: (workstreamId, executionId, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(workstreamId)}/executions/${encodeURIComponent(executionId)}?` + new URLSearchParams(p)),
   workstreamQueue: (p = {}) => apiFetch('/api/workstreams/queue?' + new URLSearchParams(p)),
-  compareSessions: (workstreamId, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(workstreamId)}/compare/sessions?` + new URLSearchParams(p)),
+  compareExecutions: (workstreamId, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(workstreamId)}/compare/executions?` + new URLSearchParams(p)),
   compareWorkstreams: (p = {}) => apiFetch('/api/workstreams/compare?' + new URLSearchParams(p)),
   reviewUpdate: (id, body) => apiFetch(`/api/review/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(body) }),
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
@@ -1547,14 +1617,129 @@ function renderWorkstreamSummary(items) {
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Operational map</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Workstreams become the primary operational unit, with entries and handoffs projected underneath.</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Primary operational threads for agent continuity, memory history and human supervision.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
-        <span class="count-pill">${sessions} session${sessions === 1 ? '' : 's'}</span>
+        <span class="count-pill">${sessions} execution cycle${sessions === 1 ? '' : 's'}</span>
         <span class="count-pill">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
       </div>
     </div>`;
+}
+
+function renderDashboardList(rootId, items, emptyMessage) {
+  const root = document.getElementById(rootId);
+  if (!root) return;
+  if (!items.length) {
+    root.innerHTML = `<div class="muted" style="font-size:13px; line-height:1.6;">${escHtml(emptyMessage)}</div>`;
+    return;
+  }
+  root.innerHTML = items.map((item) => `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="flex items-start gap-3">
+        <div class="flex-1">
+          <div class="field-label">${escHtml(item.title || '')}</div>
+          <div class="muted" style="font-size:13px; line-height:1.6; margin-top:6px;">${escHtml(item.body || '')}</div>
+        </div>
+        ${item.meta ? `<span class="tag-pill mono">${escHtml(item.meta)}</span>` : ''}
+      </div>
+      ${item.action ? `<div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;"><button class="${baseButtonClasses(item.action.variant || 'ghost', true)}" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}">${escHtml(item.action.label)}</button></div>` : ''}
+    </div>
+  `).join('');
+  root.querySelectorAll('[data-dashboard-action]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const action = button.dataset.dashboardAction;
+      const value = button.dataset.dashboardValue;
+      if (action === 'open-workstream') {
+        switchView('workstreams');
+        await selectWorkstream(value);
+        return;
+      }
+      if (action === 'open-review') {
+        switchView('review');
+        if (value) {
+          state.selectedReviewId = value;
+          renderReviewDetail();
+        }
+        return;
+      }
+      if (action === 'open-memory-admin') {
+        switchView('memories');
+        return;
+      }
+      if (action === 'open-handoffs') {
+        switchView('handoffs');
+      }
+    });
+  });
+}
+
+async function renderDashboardView() {
+  try {
+    const [statsData, workstreamsData, reviewData, handoffsData] = await Promise.all([
+      api.stats(),
+      api.workstreams({ include_deleted: 'false', limit: '6' }),
+      api.reviewQueue({ pending_only: 'true', limit: '6' }),
+      api.handoffs({ include_deleted: 'false', limit: '6' }),
+    ]);
+    const workstreams = workstreamsData.items || [];
+    const reviewItems = reviewData.items || [];
+    const handoffs = handoffsData.items || [];
+    state.workstreams = workstreams;
+    state.reviewItems = reviewItems;
+    state.handoffs = handoffs;
+    state.total = statsData.total_entries ?? 0;
+
+    document.getElementById('dashboard-workstreams-count').textContent = String(workstreams.length);
+    document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent execution history` : 'no active workstreams';
+    document.getElementById('dashboard-review-count').textContent = String(reviewItems.length);
+    document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items waiting for human validation' : 'nothing waiting right now';
+    document.getElementById('dashboard-handoffs-count').textContent = String(handoffs.length);
+    document.getElementById('dashboard-handoffs-caption').textContent = handoffs[0]?.updated_at ? `latest ${relTime(handoffs[0].updated_at)}` : 'no handoff history yet';
+    document.getElementById('dashboard-memory-count').textContent = String(statsData.total_entries ?? 0);
+    document.getElementById('dashboard-memory-caption').textContent = `${statsData.deleted_entries ?? 0} deleted · ${Object.values(statsData.sections || {}).filter((count) => count > 0).length} active sections`;
+
+    renderDashboardList(
+      'dashboard-workstreams-list',
+      workstreams.slice(0, 4).map((item) => ({
+        title: item.goal || item.workstream_id,
+        body: item.summary || 'No summary available yet.',
+        meta: item.workstream_id,
+        action: { name: 'open-workstream', value: item.workstream_id, label: 'Open workstream', variant: 'primary' },
+      })),
+      'No workstreams yet. Agents will start creating continuity here once work begins.'
+    );
+
+    const attentionItems = [];
+    if (reviewItems.length) {
+      attentionItems.push(...reviewItems.slice(0, 3).map((item) => ({
+        title: item.summary || item.entry_id,
+        body: `${item.workstream_id || 'no workstream'} · ${item.review_status || 'pending'} · ${(item.review_reasons || []).join(', ') || 'no explicit reason'}`,
+        meta: item.entry_kind || 'entry',
+        action: { name: 'open-review', value: item.entry_id, label: 'Open review', variant: 'primary' },
+      })));
+    }
+    if (attentionItems.length < 4) {
+      attentionItems.push({
+        title: 'Memory maintenance',
+        body: 'Inspect, edit or consolidate persisted memory when the agent has accumulated noise, stale facts or wrong assumptions.',
+        meta: 'memory',
+        action: { name: 'open-memory-admin', value: '', label: 'Open Memory Admin', variant: 'ghost' },
+      });
+    }
+    if (handoffs.length && attentionItems.length < 5) {
+      attentionItems.push({
+        title: 'Latest handoff package',
+        body: previewText(handoffs[0].content.replace(/\s+/g, ' '), 140),
+        meta: handoffs[0].workstream_id || 'handoff',
+        action: { name: 'open-handoffs', value: '', label: 'Inspect handoffs', variant: 'ghost' },
+      });
+    }
+    renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate human action. Review, memory hygiene and settings updates will surface here.');
+  } catch (e) {
+    renderDashboardList('dashboard-workstreams-list', [], `Failed to load dashboard: ${e.message}`);
+    renderDashboardList('dashboard-attention-list', [], 'Dashboard could not aggregate current state.');
+  }
 }
 
 function renderWorkstreamCard(item) {
@@ -1571,7 +1756,7 @@ function renderWorkstreamCard(item) {
         <div class="muted" style="font-size:13px; line-height:1.7; margin-bottom:10px;">${escHtml(previewText(item.summary || 'No summary available.', 160))}</div>
         <div class="pill-row">
           <span class="tag-pill mono">entries:${escHtml(item.entry_count || 0)}</span>
-          <span class="tag-pill mono">sessions:${escHtml(item.session_count || 0)}</span>
+          <span class="tag-pill mono">history:${escHtml(item.session_count || 0)}</span>
           ${item.latest_session_id ? `<span class="tag-pill mono">latest:${escHtml(item.latest_session_id)}</span>` : ''}
         </div>
       </div>
@@ -1620,7 +1805,7 @@ function renderWorkstreamTimeline(items) {
 function renderWorkstreamDetail() {
   const root = document.getElementById('workstream-detail-root');
   if (!state.selectedWorkstreamId) {
-    root.innerHTML = '<div class="empty-state">Select a workstream to inspect its current state, resume context, sessions and handoff actions.</div>';
+    root.innerHTML = '<div class="empty-state">Select a workstream to inspect its current state, review, memory trail and handoff actions.</div>';
     return;
   }
   if (
@@ -1637,13 +1822,7 @@ function renderWorkstreamDetail() {
     return;
   }
 
-  const { workstreamId, stateData, resumeData, handoffData } = state.workstreamDetail;
-  const sessions = (stateData.sessions || []).map((session) => `
-    <div class="section-card" style="padding:12px;">
-      <div class="field-label">${escHtml(session.session_id || '(none)')}</div>
-      <div class="muted" style="font-size:13px;">entries=${escHtml(session.entry_count)} latest=${escHtml(session.latest_entry_id || '')}</div>
-    </div>
-  `).join('') || '<div class="muted">No sessions aggregated.</div>';
+  const { workstreamId, stateData, resumeData, handoffData, reviewItems = [], reviewSummary = null } = state.workstreamDetail;
   const timeline = renderWorkstreamTimeline(stateData.timeline || []);
   const relatedEntries = (resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>';
   const handoffGoal = handoffData?.goal ? `
@@ -1653,13 +1832,46 @@ function renderWorkstreamDetail() {
       <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(handoffData.summary || '')}</div>
     </div>
   ` : '';
+  const reviewPanel = `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="flex items-start gap-3" style="justify-content:space-between; margin-bottom:10px;">
+        <div>
+          <div class="field-label">Review in this workstream</div>
+          <div class="muted" style="font-size:13px; margin-top:6px;">Human validation stays attached to the operational thread instead of floating as a separate workflow.</div>
+        </div>
+        <span class="tag-pill mono">pending:${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</span>
+      </div>
+      ${reviewItems.length ? `
+        <div class="version-grid" style="margin-bottom:12px;">
+          ${reviewItems.slice(0, 4).map((item) => `
+            <div class="section-card" style="padding:12px;">
+              <div class="field-label">${escHtml(previewText(item.summary || item.entry_id, 58))}</div>
+              <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
+              <div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;">
+                <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Open review</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<div class="muted" style="font-size:13px;">No pending review items for this workstream.</div>'}
+      <div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;">
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Open review queue</button>
+      </div>
+    </div>
+  `;
+  const historySummary = `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="field-label">Execution history</div>
+      <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
+    </div>
+  `;
 
   root.innerHTML = `
     <div class="panel" style="padding:18px;">
       <div class="section-header" style="margin-bottom:16px;">
         <div>
           <div class="page-title" style="font-size:22px;">${escHtml(workstreamId)}</div>
-          <div class="muted" style="font-size:13px; margin-top:4px;">Persistent workstream detail for current state, resume context and next actions.</div>
+          <div class="muted" style="font-size:13px; margin-top:4px;">Supervise one operational thread: memory, review, handoff and next actions in the same context.</div>
         </div>
       </div>
       <div class="section-card" style="padding:14px; margin-bottom:12px;">
@@ -1669,7 +1881,7 @@ function renderWorkstreamDetail() {
       </div>
       <div class="compare-grid" style="margin-bottom:12px;">
         <div class="section-card" style="padding:14px;"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
-        <div class="section-card" style="padding:14px;"><div class="field-label">Sessions</div><div>${escHtml(stateData.session_count)}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Review pending</div><div>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</div></div>
       </div>
       <div class="compare-grid" style="margin-bottom:12px;">
         <div class="section-card" style="padding:14px;"><div class="field-label">Latest entry</div><div class="mono">${escHtml(resumeData.latest_entry_id || '')}</div></div>
@@ -1686,10 +1898,8 @@ function renderWorkstreamDetail() {
         <div class="field-label">Related entries</div>
         <div class="pill-row">${relatedEntries}</div>
       </div>
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
-        <div class="field-label">Aggregated sessions</div>
-        <div class="version-grid">${sessions}</div>
-      </div>
+      ${historySummary}
+      ${reviewPanel}
       <div class="section-card" style="padding:14px; margin-bottom:12px;">
         <div class="field-label">Workstream timeline</div>
         ${timeline}
@@ -1714,6 +1924,15 @@ function renderWorkstreamDetail() {
   document.getElementById('btn-persisted-workstream-freeze').addEventListener('click', () => openSessionCloseModal(workstreamId, { status: 'frozen', title: 'Freeze workstream', submitLabel: 'Freeze workstream' }));
   document.getElementById('btn-persisted-workstream-close').addEventListener('click', () => openSessionCloseModal(workstreamId));
   document.getElementById('btn-persisted-workstream-handoff').addEventListener('click', () => openStructuredHandoffModal(workstreamId, resumeData));
+  document.getElementById('btn-persisted-workstream-review')?.addEventListener('click', async () => {
+    await applyReviewFilters(workstreamId, '');
+  });
+  root.querySelectorAll('[data-workstream-review-open]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      state.selectedReviewId = button.dataset.workstreamReviewOpen;
+      await applyReviewFilters(workstreamId, '');
+    });
+  });
 }
 
 async function selectWorkstream(workstreamId) {
@@ -1722,12 +1941,14 @@ async function selectWorkstream(workstreamId) {
   renderWorkstreams(state.workstreams);
   renderWorkstreamDetail();
   try {
-    const [stateData, resumeData] = await Promise.all([
+    const [stateData, resumeData, reviewData, reviewSummary] = await Promise.all([
       api.workstreamState(workstreamId, { include_deleted: 'false' }),
       api.workstreamResume(workstreamId, { include_deleted: 'false' }),
+      api.reviewQueue({ workstream_id: workstreamId, pending_only: 'true', limit: '6' }).catch(() => ({ items: [] })),
+      api.reviewWorkstream(workstreamId).catch(() => null),
     ]);
     const handoffData = stateData.latest_handoff ? await api.readStructuredHandoff(workstreamId, { include_deleted: 'true' }).catch(() => null) : null;
-    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData };
+    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData, reviewItems: reviewData.items || [], reviewSummary };
   } catch (e) {
     state.workstreamDetail = { workstreamId, error: e.message };
   }
@@ -1739,7 +1960,7 @@ function renderWorkstreams(items) {
   const grid = document.getElementById('workstream-grid');
   renderWorkstreamSummary(items);
   if (!items.length) {
-    grid.innerHTML = '<div class="empty-state">No workstreams yet. Open a workstream to manage state, sessions and handoffs from one place.</div>';
+    grid.innerHTML = '<div class="empty-state">No workstreams yet. Open a workstream to manage state, review, memory trail and handoffs from one place.</div>';
     state.selectedWorkstreamId = null;
     state.workstreamDetail = null;
     renderWorkstreamDetail();
@@ -1965,11 +2186,11 @@ function renderReviewDetail() {
       return;
     }
     try {
-      const payload = await api.compareSessions(item.workstream_id, { base_session_id: baseSessionId, target_session_id: item.session_id });
+      const payload = await api.compareExecutions(item.workstream_id, { base_execution_id: baseSessionId, target_execution_id: item.session_id });
       openModal(modalShell(`
-        <div class="modal-header"><span class="modal-title">Compare sessions</span><button class="modal-close">×</button></div>
+        <div class="modal-header"><span class="modal-title">Compare execution anchors</span><button class="modal-close">×</button></div>
         <div class="modal-body">
-          <div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">/api/workstreams/${escHtml(item.workstream_id)}/compare/sessions</div><div class="mono">base=${escHtml(baseSessionId)} target=${escHtml(item.session_id)}</div></div>
+          <div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">/api/workstreams/${escHtml(item.workstream_id)}/compare/executions</div><div class="mono">base=${escHtml(baseSessionId)} target=${escHtml(item.session_id)}</div></div>
           <div class="compare-grid"><div class="section-card" style="padding:14px;"><div class="field-label">New open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.new_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div><div class="section-card" style="padding:14px;"><div class="field-label">Resolved open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.resolved_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div></div>
         </div>
       `, ' modal-wide'));
@@ -2040,7 +2261,7 @@ async function loadReviewQueue() {
       api.workstreamQueue({ status: 'awaiting_review', limit: '20' }).catch(() => ({ items: [] })),
       state.reviewFilterWorkstreamId ? api.reviewWorkstream(state.reviewFilterWorkstreamId).catch(() => null) : Promise.resolve(null),
       state.reviewFilterWorkstreamId && state.reviewFilterSessionId
-        ? api.reviewSession(state.reviewFilterWorkstreamId, state.reviewFilterSessionId).catch(() => null)
+        ? api.reviewExecution(state.reviewFilterWorkstreamId, state.reviewFilterSessionId).catch(() => null)
         : Promise.resolve(null),
     ]);
     state.reviewItems = data.items || [];
@@ -2156,7 +2377,7 @@ function openNewHandoffModal() {
       });
       closeModal();
       toast('Handoff saved.', 'success');
-      if (state.view !== 'handoffs') switchView('handoffs');
+      if (state.view !== 'workstreams') switchView('workstreams');
       await loadHandoffs();
     } catch (e) {
       toast('Error: ' + e.message, 'error');
@@ -2237,7 +2458,7 @@ function openSessionStartModal(workstreamId) {
   `));
   document.getElementById('btn-session-start-save').addEventListener('click', async () => {
     try {
-      await api.startSession(workstreamId, {
+      await api.startExecution(workstreamId, {
         goal: document.getElementById('session-start-goal').value.trim() || null,
         session_id: document.getElementById('session-start-id').value.trim() || null,
         summary: document.getElementById('session-start-summary').value.trim() || null,
@@ -2315,7 +2536,7 @@ function openSessionCloseModal(workstreamId, options = {}) {
         next_goal: document.getElementById('session-close-next-goal').value.trim() || null,
       };
       if (payload.next_goal) {
-        const result = await api.closeSessionAndHandoff(workstreamId, payload);
+        const result = await api.closeExecutionAndHandoff(workstreamId, payload);
         closeModal();
         toast('Session closed and handoff saved.', 'success');
         await loadWorkstreams();
@@ -2327,7 +2548,7 @@ function openSessionCloseModal(workstreamId, options = {}) {
         });
         return;
       } else {
-        await api.closeSession(workstreamId, payload);
+        await api.closeExecution(workstreamId, payload);
       }
       state.selectedWorkstreamId = workstreamId;
       closeModal();
@@ -2716,7 +2937,7 @@ async function loadEntries(append = false) {
     state.total = total;
     state.hasMore = data.has_more ?? false;
 
-    document.getElementById('section-title').textContent = state.section || 'All entries';
+    document.getElementById('section-title').textContent = state.section || 'Memory Admin';
     document.getElementById('total-badge').textContent = total ? `${total} entries` : '';
 
     renderCards(items, append);
@@ -3265,9 +3486,10 @@ function switchView(name) {
     const active = tab.dataset.view === name;
     tab.classList.toggle('active', active);
   });
-  document.getElementById('btn-new-label').textContent = name === 'handoffs' ? 'Generate Handoff' : name === 'workstreams' ? 'Open Workstream' : 'New Entry';
+  document.getElementById('btn-new-label').textContent = name === 'handoffs' ? 'Generate Handoff' : name === 'workstreams' || name === 'dashboard' ? 'Open Workstream' : 'New Entry';
   document.getElementById('header-search').style.display = name === 'memories' ? '' : 'none';
-  if (name === 'stats') renderStatsView();
+  if (name === 'dashboard') renderDashboardView();
+  else if (name === 'stats') renderStatsView();
   else if (name === 'skills') renderSkillsView();
   else if (name === 'settings') renderSettingsPage();
   else if (name === 'workstreams') loadWorkstreams();
@@ -3548,6 +3770,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.getElementById('btn-new').addEventListener('click', () => {
+  if (state.view === 'dashboard') {
+    openNewWorkstreamModal();
+    return;
+  }
   if (state.view === 'workstreams') {
     openNewWorkstreamModal();
     return;
@@ -3557,12 +3783,13 @@ document.getElementById('btn-new').addEventListener('click', () => {
     return;
   }
   if (state.view === 'review') {
-    switchView('handoffs');
+    switchView('workstreams');
     openNewHandoffModal();
     return;
   }
   openNewEntryModal();
 });
+document.getElementById('btn-dashboard-open-workstream').addEventListener('click', openNewWorkstreamModal);
 document.getElementById('btn-new-workstream-inline').addEventListener('click', openNewWorkstreamModal);
 document.getElementById('btn-new-handoff-inline').addEventListener('click', openNewHandoffModal);
 document.getElementById('btn-consolidate').addEventListener('click', openConsolidateModal);
@@ -3643,8 +3870,9 @@ async function boot() {
   document.getElementById('toggle-handoffs-include-deleted').checked = state.handoffsIncludeDeleted;
   document.getElementById('toggle-review-pending-only').checked = state.reviewPendingOnly;
   updateReviewFilterControls();
-  await loadReviewQueue();
+  await loadStats();
   await loadEntries();
+  switchView('dashboard');
 }
 
 boot();

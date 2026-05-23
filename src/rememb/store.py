@@ -623,6 +623,7 @@ def _workstream_operational_status(entries: list[dict[str, Any]], pending_review
 def _session_compare_payload(session_id: str, entries: list[dict[str, Any]], resume: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "session_id": session_id,
+        "execution_id": session_id,
         "entry_count": len(entries),
         "latest_entry_id": entries[-1].get("id") if entries else None,
         "goal": (resume or {}).get("goal") or "",
@@ -660,6 +661,7 @@ def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
         "entry_id": entry.get("id"),
         "workstream_id": entry.get("workstream_id"),
         "session_id": entry.get("session_id"),
+        "execution_id": entry.get("session_id"),
         "entry_kind": entry.get("entry_kind"),
         "entry_role": entry.get("entry_role"),
         "actor_type": entry.get("actor_type"),
@@ -749,11 +751,13 @@ def get_workstream_state(
         "session_id": _normalize_optional_session_id(session_id),
         "entry_count": len(entries),
         "session_count": len(ordered_sessions),
+        "execution_history_count": len(ordered_sessions),
         "latest_entry": _entry_preview(latest_entry),
         "latest_handoff": _entry_preview(latest_handoff_entry) if latest_handoff_entry else None,
         "latest_state": _entry_preview(latest_state_entry) if latest_state_entry else None,
         "latest_review": _entry_preview(latest_review_entry) if latest_review_entry else None,
         "sessions": ordered_sessions,
+        "execution_history": ordered_sessions,
         "timeline": timeline,
     }
 
@@ -829,6 +833,7 @@ def resume_workstream(
         "session_id": latest_entry.get("session_id") or state.get("session_id"),
         "entry_count": state["entry_count"],
         "session_count": state["session_count"],
+        "execution_history_count": state["execution_history_count"],
         "focus_entry_ids": focus_entry_ids,
         "latest_entry_id": latest_entry.get("id"),
         "latest_entry_kind": latest_entry.get("entry_kind"),
@@ -874,6 +879,7 @@ def list_workstreams(
                 "workstream_id": workstream_id,
                 "entry_count": len(workstream_entries),
                 "session_count": state["session_count"] if state else 0,
+                "execution_history_count": state["execution_history_count"] if state else 0,
                 "latest_entry": _entry_preview(latest_entry),
                 "latest_handoff": state.get("latest_handoff") if state else None,
                 "latest_state": state.get("latest_state") if state else None,
@@ -1239,7 +1245,8 @@ def read_structured_handoff(
         "archived_context": list(structured.get("archived_context") or []),
         "risk_flags": list(structured.get("risk_flags") or []),
         "obsolete_context": list(structured.get("obsolete_context") or []),
-        "audience": structured.get("audience") or "agent",
+        "audience": "agent",
+        "requested_audience": structured.get("requested_audience") or structured.get("audience") or "agent",
         "restore_context": restore_context,
         "restore_hint": dict(restore_context),
         "related_entries": list(structured.get("related_entries") or []),
@@ -1281,6 +1288,7 @@ def build_handoff_package(
         "handoff_schema": "agent-first-operational-v1",
         "current_goal": resume.get("goal") or "",
         "next_goal": normalized_goal,
+        "execution_history_count": state.get("execution_history_count") or state.get("session_count") or 0,
         "restore_context": dict(resume.get("restore_context") or {}),
         "restore_hint": dict(resume.get("restore_context") or {}),
         "current_state": list(resume.get("current_state") or []),
@@ -1306,6 +1314,7 @@ def build_handoff_package(
         "risk_flags": list(compressed_context.get("risky") or []),
     }
     shared["agent_handoff"] = {
+        "deprecated": True,
         "goal": normalized_goal,
         "summary": resume.get("summary") or "",
         "current_state": list(resume.get("current_state") or []),
@@ -1323,6 +1332,7 @@ def build_handoff_package(
         "audience": "agent",
     }
     shared["human_handoff"] = {
+        "deprecated": True,
         "goal": normalized_goal,
         "summary": resume.get("summary") or "",
         "what_changed": list(resume.get("what_changed") or []),
@@ -1379,6 +1389,7 @@ def close_session_with_handoff(
     ) or {}
     selected_handoff = handoff_package.get("operational_handoff") or handoff_package.get("agent_handoff")
     selected_handoff = selected_handoff if isinstance(selected_handoff, dict) else {}
+    requested_audience = str(audience).strip().lower() or "agent"
     handoff_entry = write_structured_handoff(
         root,
         workstream_id,
@@ -1398,8 +1409,8 @@ def close_session_with_handoff(
         restore_section=str((selected_handoff.get("restore_context") or {}).get("section") or (handoff_package.get("restore_context") or {}).get("section") or _HANDOFF_SECTION),
         restore_query=_normalize_optional_text((selected_handoff.get("restore_context") or {}).get("query")) or _normalize_optional_text((handoff_package.get("restore_context") or {}).get("query")),
         include_deleted=bool((selected_handoff.get("restore_context") or {}).get("include_deleted", include_deleted)),
-        tags=["anti-context-switch", f"handoff-{str(audience).strip().lower() or 'agent'}"],
-        audience=str(audience).strip().lower() or "agent",
+        tags=["anti-context-switch", "handoff-agent"],
+        audience=requested_audience,
     )
     return {
         "review_entry": review_entry,
@@ -1480,6 +1491,7 @@ def get_review_session(
     return {
         "workstream_id": workstream_id,
         "session_id": session_id,
+        "execution_id": session_id,
         "entry_count": len(entries),
         "review_count": len(review_items),
         "pending_review_count": sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"}),
@@ -1511,6 +1523,7 @@ def get_review_workstream(
         get_review_session(root, workstream_id, session_id, include_deleted=include_deleted)
         for session_id in session_ids
     ]
+    execution_history = [item for item in session_groups if item is not None]
     return {
         "workstream_id": workstream_id,
         "operational_status": _workstream_operational_status(entries, sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"})),
@@ -1522,7 +1535,9 @@ def get_review_workstream(
         "latest_state": (state or {}).get("latest_state"),
         "latest_review": (state or {}).get("latest_review"),
         "review_items": review_items,
-        "sessions": [item for item in session_groups if item is not None],
+        "sessions": execution_history,
+        "execution_history": execution_history,
+        "execution_history_count": len(execution_history),
     }
 
 
@@ -1562,6 +1577,8 @@ def compare_sessions(
     right_review = get_review_session(root, workstream_id, right_session_id, include_deleted=include_deleted)
     return {
         "workstream_id": workstream_id,
+        "base_execution_id": left_session_id,
+        "target_execution_id": right_session_id,
         "left": {
             "resume": _session_compare_payload(left_session_id, left_entries, left_resume),
             "review": left_review,

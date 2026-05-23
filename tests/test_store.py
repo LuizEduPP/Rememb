@@ -827,8 +827,10 @@ def test_build_handoff_package_and_close_session_with_handoff(tmp_path):
     assert package is not None
     assert package["next_goal"] == "Ship review mode"
     assert package["handoff_schema"] == "agent-first-operational-v1"
+    assert package["execution_history_count"] == 1
     assert package["operational_handoff"]["goal"] == "Ship review mode"
     assert package["operational_handoff"]["restore_hint"] == package["restore_context"]
+    assert package["human_handoff"]["deprecated"] is True
     assert package["agent_handoff"]["essential_context"] == ["keep workstream-first flow"]
     assert package["human_handoff"]["watchouts"] == ["UI needs diff previews"]
     assert result is not None
@@ -837,7 +839,8 @@ def test_build_handoff_package_and_close_session_with_handoff(tmp_path):
     assert payload is not None
     assert payload["handoff_schema"] == "agent-first-operational-v1"
     assert payload["goal"] == "Ship review mode"
-    assert payload["audience"] == "human"
+    assert payload["audience"] == "agent"
+    assert payload["requested_audience"] == "human"
     assert payload["restore_hint"] == payload["restore_context"]
     assert payload["archived_context"] == ["old entry-first shortcut"]
 

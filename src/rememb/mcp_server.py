@@ -503,7 +503,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text=f"Workstream {workstream_id} not found")]
         lines = [
             f"Workstream: {payload['workstream_id']}",
-            f"Session: {payload.get('session_id') or '(none)'}",
+            f"Execution anchor: {payload.get('session_id') or '(none)'}",
             f"Current goal: {payload.get('current_goal') or ''}",
             f"Next goal: {payload.get('next_goal') or ''}",
             f"Focus entries: {', '.join(payload.get('focus_entry_ids', [])) or 'none'}",
@@ -529,7 +529,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         lines = ["Recent workstreams:"]
         for item in items:
             lines.append(
-                f"- {item['workstream_id']} entries={item['entry_count']} sessions={item['session_count']} goal={item.get('goal', '')}"
+                f"- {item['workstream_id']} entries={item['entry_count']} execution_history={item.get('execution_history_count', item['session_count'])} goal={item.get('goal', '')}"
             )
         return [TextContent(type="text", text="\n".join(lines))]
 
@@ -573,7 +573,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text=f"Workstream {workstream_id} not found")]
         return [TextContent(type="text", text=f"Updated workstream state {workstream_id} (entry={updated['id']})")]
 
-    async def rememb_session_start():
+    async def rememb_execution_start():
         workstream_id = arguments.get("workstream_id")
         if workstream_id is None or not str(workstream_id).strip():
             return [TextContent(type="text", text="Provide workstream_id.")]
@@ -583,14 +583,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             str(workstream_id),
             goal=arguments.get("goal"),
             summary=arguments.get("summary"),
-            session_id=arguments.get("session_id"),
+            session_id=arguments.get("execution_id"),
             tags=arguments.get("tags"),
         )
         if entry is None:
             return [TextContent(type="text", text=f"Workstream {workstream_id} not found")]
-        return [TextContent(type="text", text=f"Started session {entry.get('session_id')} for {workstream_id} (entry={entry['id']})")]
+        return [TextContent(type="text", text=f"Started execution anchor {entry.get('session_id')} for {workstream_id} (entry={entry['id']})")]
 
-    async def rememb_session_close():
+    async def rememb_execution_close():
         workstream_id = arguments.get("workstream_id")
         outcome = arguments.get("outcome")
         if workstream_id is None or not str(workstream_id).strip():
@@ -601,7 +601,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             close_session,
             root,
             str(workstream_id),
-            session_id=arguments.get("session_id"),
+            session_id=arguments.get("execution_id"),
             outcome=str(outcome),
             status=arguments.get("status", "paused"),
             next_steps=arguments.get("next_steps"),
@@ -610,9 +610,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         )
         if entry is None:
             return [TextContent(type="text", text=f"Workstream {workstream_id} not found")]
-        return [TextContent(type="text", text=f"Closed session {entry.get('session_id')} for {workstream_id} (entry={entry['id']})")]
+        return [TextContent(type="text", text=f"Closed execution anchor {entry.get('session_id')} for {workstream_id} (entry={entry['id']})")]
 
-    async def rememb_session_close_and_handoff():
+    async def rememb_execution_close_and_handoff():
         workstream_id = arguments.get("workstream_id")
         outcome = arguments.get("outcome")
         next_goal = arguments.get("next_goal")
@@ -626,7 +626,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             close_session_with_handoff,
             root,
             str(workstream_id),
-            session_id=arguments.get("session_id"),
+            session_id=arguments.get("execution_id"),
             outcome=str(outcome),
             next_goal=str(next_goal),
             status=arguments.get("status", "paused"),
@@ -647,7 +647,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         review_entry = result["review_entry"]
         handoff_entry = result["handoff_entry"]
         return [TextContent(type="text", text=(
-            f"Closed session {review_entry.get('session_id')} for {workstream_id} "
+            f"Closed execution anchor {review_entry.get('session_id')} for {workstream_id} "
             f"(review={review_entry['id']} handoff={handoff_entry['id']})"
         ))]
 
@@ -674,24 +674,24 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             )
         return [TextContent(type="text", text="\n".join(lines))]
 
-    async def rememb_review_session_get():
+    async def rememb_review_execution_get():
         workstream_id = arguments.get("workstream_id")
-        session_id = arguments.get("session_id")
+        execution_id = arguments.get("execution_id")
         if workstream_id is None or not str(workstream_id).strip():
             return [TextContent(type="text", text="Provide workstream_id.")]
-        if session_id is None or not str(session_id).strip():
-            return [TextContent(type="text", text="Provide session_id.")]
+        if execution_id is None or not str(execution_id).strip():
+            return [TextContent(type="text", text="Provide execution_id.")]
         payload = await asyncio.to_thread(
             get_review_session,
             root,
             str(workstream_id),
-            str(session_id),
+            str(execution_id),
             include_deleted=arguments.get("include_deleted", False),
         )
         if payload is None:
-            return [TextContent(type="text", text=f"Session {session_id} not found")]
+            return [TextContent(type="text", text=f"Execution anchor {execution_id} not found")]
         lines = [
-            f"Review session: {payload['session_id']}",
+            f"Review execution anchor: {payload['session_id']}",
             f"Workstream: {payload.get('workstream_id') or '(none)'}",
             f"Status: {payload.get('operational_status') or ''}",
             f"Pending review: {payload.get('pending_review_count') or 0}",
@@ -717,7 +717,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Review workstream: {payload['workstream_id']}",
             f"Status: {payload.get('operational_status') or ''}",
             f"Pending review: {payload.get('pending_review_count') or 0}",
-            f"Sessions: {len(payload.get('sessions') or [])}",
+            f"Execution history: {len(payload.get('sessions') or [])}",
         ]
         return [TextContent(type="text", text="\n".join(lines))]
 
@@ -734,33 +734,33 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         lines = ["Workstream queue:"]
         for item in items:
             lines.append(
-                f"- {item['workstream_id']} status={item.get('operational_status') or ''} pending_review={item.get('pending_review_count') or 0} sessions={item.get('session_count') or 0}"
+                f"- {item['workstream_id']} status={item.get('operational_status') or ''} pending_review={item.get('pending_review_count') or 0} execution_history={item.get('execution_history_count', item.get('session_count') or 0)}"
             )
         return [TextContent(type="text", text="\n".join(lines))]
 
-    async def rememb_compare_sessions():
+    async def rememb_compare_executions():
         workstream_id = arguments.get("workstream_id")
-        base_session_id = arguments.get("base_session_id")
-        target_session_id = arguments.get("target_session_id")
+        base_execution_id = arguments.get("base_execution_id")
+        target_execution_id = arguments.get("target_execution_id")
         if workstream_id is None or not str(workstream_id).strip():
             return [TextContent(type="text", text="Provide workstream_id.")]
-        if base_session_id is None or not str(base_session_id).strip() or target_session_id is None or not str(target_session_id).strip():
-            return [TextContent(type="text", text="Provide base_session_id and target_session_id.")]
+        if base_execution_id is None or not str(base_execution_id).strip() or target_execution_id is None or not str(target_execution_id).strip():
+            return [TextContent(type="text", text="Provide base_execution_id and target_execution_id.")]
         payload = await asyncio.to_thread(
             compare_sessions,
             root,
             str(workstream_id),
-            str(base_session_id),
-            str(target_session_id),
+            str(base_execution_id),
+            str(target_execution_id),
             include_deleted=arguments.get("include_deleted", False),
         )
         if payload is None:
             return [TextContent(type="text", text="Session comparison not available.")]
         delta = payload.get("delta") or {}
         lines = [
-            f"Compare sessions in {payload['workstream_id']}",
-            f"Base: {base_session_id}",
-            f"Target: {target_session_id}",
+            f"Compare execution anchors in {payload['workstream_id']}",
+            f"Base: {base_execution_id}",
+            f"Target: {target_execution_id}",
             f"New open loops: {', '.join(delta.get('new_open_loops') or []) or 'none'}",
             f"Resolved open loops: {', '.join(delta.get('resolved_open_loops') or []) or 'none'}",
         ]
@@ -858,7 +858,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         lines = [
             f"Handoff entry: {payload['entry_id']}",
             f"Workstream: {payload.get('workstream_id') or ''}",
-            f"Session: {payload.get('session_id') or ''}",
+            f"Execution anchor: {payload.get('session_id') or ''}",
             f"Schema: {payload.get('handoff_schema') or 'agent-first-operational-v1'}",
             f"Goal: {payload.get('goal') or ''}",
             f"Summary: {payload.get('summary') or ''}",
@@ -1135,14 +1135,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_workstream_state_update": rememb_workstream_state_update,
         "rememb_workstream_resume": rememb_workstream_resume,
         "rememb_handoff_package": rememb_handoff_package,
-        "rememb_session_start": rememb_session_start,
-        "rememb_session_close": rememb_session_close,
-        "rememb_session_close_and_handoff": rememb_session_close_and_handoff,
+        "rememb_execution_start": rememb_execution_start,
+        "rememb_execution_close": rememb_execution_close,
+        "rememb_execution_close_and_handoff": rememb_execution_close_and_handoff,
         "rememb_review_queue": rememb_review_queue,
-        "rememb_review_session_get": rememb_review_session_get,
+        "rememb_review_execution_get": rememb_review_execution_get,
         "rememb_review_workstream_get": rememb_review_workstream_get,
         "rememb_workstream_queue": rememb_workstream_queue,
-        "rememb_compare_sessions": rememb_compare_sessions,
+        "rememb_compare_executions": rememb_compare_executions,
         "rememb_compare_workstreams": rememb_compare_workstreams,
         "rememb_review_update": rememb_review_update,
         "rememb_write": rememb_write,
@@ -1580,25 +1580,25 @@ def _build_tools(Tool):
             required=["workstream_id"],
         ),
         _tool(
-            name="rememb_session_start",
-            description="Start a new logical session inside a workstream by persisting a checkpoint entry.",
+            name="rememb_execution_start",
+            description="Start a new execution anchor inside a workstream by persisting a checkpoint entry.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
                 "goal": {"type": "string", "description": "Optional goal override for the new session"},
                 "summary": {"type": "string", "description": "Optional compact summary"},
-                "session_id": {"type": "string", "description": "Optional explicit session id"},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags to store alongside the session start"},
+                "execution_id": {"type": "string", "description": "Optional explicit execution anchor id"},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags to store alongside the execution start"},
             },
             required=["workstream_id"],
         ),
         _tool(
-            name="rememb_session_close",
-            description="Close the active or selected session by recording a structured review entry.",
+            name="rememb_execution_close",
+            description="Close the active or selected execution anchor by recording a structured review entry.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
-                "session_id": {"type": "string", "description": "Optional logical session identifier"},
-                "outcome": {"type": "string", "description": "Outcome summary for the session"},
-                "status": {"type": "string", "description": "Session close status such as paused or completed"},
+                "execution_id": {"type": "string", "description": "Optional logical execution anchor identifier"},
+                "outcome": {"type": "string", "description": "Outcome summary for the execution anchor"},
+                "status": {"type": "string", "description": "Execution close status such as paused or completed"},
                 "next_steps": {"type": "array", "items": {"type": "string"}, "description": "Optional next-step list"},
                 "open_loops": {"type": "array", "items": {"type": "string"}, "description": "Optional open loops that remain"},
                 "related_entry_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional related entry ids"},
@@ -1607,14 +1607,14 @@ def _build_tools(Tool):
             required=["workstream_id", "outcome"],
         ),
         _tool(
-            name="rememb_session_close_and_handoff",
-            description="Close a session and persist the next-goal handoff in one operation.",
+            name="rememb_execution_close_and_handoff",
+            description="Close an execution anchor and persist the next-goal handoff in one operation.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
-                "session_id": {"type": "string", "description": "Optional logical session identifier"},
-                "outcome": {"type": "string", "description": "Outcome summary for the session"},
-                "next_goal": {"type": "string", "description": "Goal for the next session"},
-                "status": {"type": "string", "description": "Session close status such as paused or completed"},
+                "execution_id": {"type": "string", "description": "Optional logical execution anchor identifier"},
+                "outcome": {"type": "string", "description": "Outcome summary for the execution anchor"},
+                "next_goal": {"type": "string", "description": "Goal for the next execution anchor"},
+                "status": {"type": "string", "description": "Execution close status such as paused or completed"},
                 "summary": {"type": "string", "description": "Optional handoff summary override"},
                 "open_loops": {"type": "array", "items": {"type": "string"}, "description": "Open loops that remain"},
                 "next_steps": {"type": "array", "items": {"type": "string"}, "description": "Ordered next-step list"},
@@ -1645,14 +1645,14 @@ def _build_tools(Tool):
             },
         ),
         _tool(
-            name="rememb_review_session_get",
-            description="Aggregate review context for one session inside a workstream.",
+            name="rememb_review_execution_get",
+            description="Aggregate review context for one execution anchor inside a workstream.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
-                "session_id": {"type": "string", "description": "Logical session identifier"},
+                "execution_id": {"type": "string", "description": "Logical execution anchor identifier"},
                 "include_deleted": {"type": "boolean", "default": False, "description": "Include soft-deleted entries"},
             },
-            required=["workstream_id", "session_id"],
+            required=["workstream_id", "execution_id"],
         ),
         _tool(
             name="rememb_review_workstream_get",
@@ -1673,15 +1673,15 @@ def _build_tools(Tool):
             },
         ),
         _tool(
-            name="rememb_compare_sessions",
-            description="Compare two sessions inside the same workstream.",
+            name="rememb_compare_executions",
+            description="Compare two execution anchors inside the same workstream.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
-                "base_session_id": {"type": "string", "description": "Base session identifier"},
-                "target_session_id": {"type": "string", "description": "Target session identifier"},
+                "base_execution_id": {"type": "string", "description": "Base execution anchor identifier"},
+                "target_execution_id": {"type": "string", "description": "Target execution anchor identifier"},
                 "include_deleted": {"type": "boolean", "default": False, "description": "Include soft-deleted entries"},
             },
-            required=["workstream_id", "base_session_id", "target_session_id"],
+            required=["workstream_id", "base_execution_id", "target_execution_id"],
         ),
         _tool(
             name="rememb_compare_workstreams",

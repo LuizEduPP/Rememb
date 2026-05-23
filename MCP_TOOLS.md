@@ -4,14 +4,14 @@ This file documents the current public MCP tools exposed by src/rememb/mcp_serve
 
 ## Recommended agent rules
 
-No extra rules are required to make rememb work. If you want the workstream-first flow to be used consistently, use the same strict rules block documented in the README:
+If you want rememb to run as a strictly agent-driven system, use this exact rules block in your IDE instructions or MCP wrapper prompt. The goal is to force the agent to route continuity, handoff, review, recovery and audit through rememb instead of falling back to ad hoc memory behavior:
 
 ```text
-When using rememb, always use the workstream-first flow. Do not fall back to broad entry-first usage when a workstream flow is available.
+When using rememb, always use the workstream-first and agent-driven flow. Do not fall back to broad entry-first usage, manual prompt memory, or non-rememb continuity when a rememb workstream flow is available.
 
 Critical override: if a workstream flow is available, do not skip it or replace it with broad entry-first reads.
 
-1. At the start of a session, if a workstream is already known, call rememb_workstream_resume before any broad rememb_read, rememb_read_page, or rememb_search.
+1. At the start of an execution, if a workstream is already known, call rememb_workstream_resume before any broad rememb_read, rememb_read_page, or rememb_search.
 2. If the workstream is not known yet, first inspect available workstreams with rememb_workstream_list. If no suitable workstream exists, create one with rememb_workstream_open and immediately start an execution anchor with rememb_execution_start.
 3. When you need the factual aggregated state of a workstream, use rememb_workstream_state_get exclusively. When you need the operational continuation context, use rememb_workstream_resume.
 4. Persist meaningful progress with rememb_workstream_state_update. Use rememb_write only for genuinely standalone entries that do not belong to an active workstream or execution lifecycle.
@@ -36,10 +36,18 @@ Critical override: if a workstream flow is available, do not skip it or replace 
 23. When you need store-level maintenance, use rememb_stats to inspect totals and rememb_consolidate only for intentional duplicate cleanup.
 24. Use rememb_init only for compatibility or recovery when explicit initialization is really needed.
 25. When you need bundled skill instructions, use rememb_list_skills to discover them and rememb_use_skill to load one.
-26. Keep the memory flow anchored in rememb from start to finish: discovery, open, state, resume, execution lifecycle, handoffs, review, comparisons, raw entry operations, recovery, maintenance, initialization, and skill lookup should all go through rememb tools rather than ad hoc prompt-only memory.
+26. Keep the memory flow anchored in rememb from start to finish. Discovery, open, state, resume, execution lifecycle, handoffs, review, comparisons, raw entry operations, recovery, maintenance, initialization, and skill lookup must all go through rememb tools rather than ad hoc prompt-only memory.
+27. Treat the full public rememb MCP surface as available to the agent at all times. The current public tool inventory is exactly 37 tools and is part of the routing contract.
+27.1 Use the core memory tools when working with raw persisted memory: rememb_read, rememb_read_page, rememb_search, rememb_write, rememb_edit, rememb_delete, rememb_clear, rememb_stats, rememb_consolidate, rememb_init.
+27.2 Use the versioning and recovery tools when inspecting or restoring history: rememb_versions, rememb_restore, rememb_diff.
+27.3 Use the handoff and continuity tools when handing off, restoring, or packaging the next execution context: rememb_handoff_generate, rememb_handoff_list, rememb_handoff_restore_context, rememb_handoff_write_structured, rememb_handoff_read_structured, rememb_handoff_package, rememb_workstream_switch_package.
+27.4 Use the workstream and execution tools when routing execution lifecycle state: rememb_workstream_list, rememb_workstream_open, rememb_workstream_state_get, rememb_workstream_state_update, rememb_workstream_resume, rememb_execution_start, rememb_execution_close, rememb_execution_close_and_handoff, rememb_workstream_queue.
+27.5 Use the review and comparison tools when classifying, validating, comparing, or escalating agent work: rememb_review_queue, rememb_review_execution_get, rememb_review_workstream_get, rememb_compare_executions, rememb_compare_workstreams, rememb_review_update.
+27.6 Use the skill tools when bundled rememb instructions are required: rememb_list_skills, rememb_use_skill.
+28. Do not invent a manual supervision loop outside rememb. If review, routing, escalation, restore, audit, switching, or handoff is needed, use the corresponding rememb tool instead of describing a manual operator workflow.
 ```
 
-These rules tell the agent which public tools to prefer first. They do not remove the rest of the public rememb surface documented below.
+These rules are the canonical agent-driven routing contract. The documented tools below are the same public surface the agent rules must treat as available.
 
 ## Core memory tools
 

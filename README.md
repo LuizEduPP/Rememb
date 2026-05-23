@@ -69,7 +69,7 @@ Zero friction. No CLI commands. Native IDE integration.
 
 The agent now automatically restores operational context at session start, writes durable state when something changes, and searches only when broader recall is actually needed.
 
-If you want the new workstream-first flow to be followed consistently, add a strict rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is not to add generic workflow rules; the point is to make the agent route session memory behavior through rememb every time.
+If you want the new workstream-first flow to be followed consistently, add a strict rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is not to add generic workflow rules; the point is to make the agent route continuity, review, handoff and recovery through rememb every time.
 
 You can place that block in either of these places:
 
@@ -175,7 +175,7 @@ Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS
 
 ## Web UI
 
-`rememb` includes a local web interface split between supervision and administration.
+`rememb` includes a local web interface for an agent-driven operating loop.
 
 ```bash
 rememb                       # Open the web UI (http://localhost:8080)
@@ -201,15 +201,14 @@ Settings view with limits, semantic search controls, section colors, and mainten
 Skills view listing all bundled skills available in the installed rememb package.
 
 Features:
-- **Supervision surface** — dashboard, workstreams, handoffs and review focus on agent continuity, escalation and audit trail
-- **Administrative surface** — memory ledger, stats and settings stay separate so humans configure policy instead of operating the loop
+- **Agent-driven dashboard** — dashboard, workstreams, handoffs and review stay centered on continuity, escalation and audit trail
 - **Goal-based handoff** — the next execution package carries goal, essential context, optional context, risky context and restore hints
 - **Anti-context-switch switching** — compare the current thread against the target thread and expose what must load now versus what is risky to carry
-- **Agent supervision** — inspect risk, confidence, priority, rationale, provenance and final human validation in one place
+- **Agent review surface** — inspect risk, confidence, priority, rationale, provenance and resulting validation state in one place
 - **Execution snapshots** — each execution can expose inputs, context used, outputs produced and resulting review state
 - **Workstream-first view** — inspect the selected workstream in a persistent detail panel with current state, next execution package, switch package, review and timeline
 - **Structured handoffs** — write and inspect handoffs linked to workstreams and executions, then restore context from Web or MCP
-- **Administrative memory tools** — inspect, search, consolidate and manage raw persisted entries when maintenance is needed
+- **Runtime control surface** — stats, settings and raw memory maintenance remain available as system controls without becoming the primary operating loop
 - **Settings page** — edit limits, semantic search options, section colors and maintenance actions
 - **Skills page** — browse all bundled skills available in the installed rememb package
 
@@ -255,7 +254,7 @@ Short version:
 ### Current feature direction: Anti-fatigue agent operations
 
 `rememb` remains the product.
-The current feature direction is workstream-first memory with structured session handoff.
+The current feature direction is workstream-first memory with structured execution handoff.
 
 This feature slice is meant to solve one concrete problem:
 reduce the operational fatigue of running agents by keeping continuity, supervision and audit trail grouped under one logical workstream.
@@ -268,7 +267,7 @@ The intended shape is deliberately small and compatible with the current archite
 - tag handoffs consistently so they are easy to search and filter
 - expose workstream open, state update, resume, execution lifecycle, switch package and structured handoff through the existing store, Web UI, and MCP surfaces
 - restore context from a handoff through related entries, revisions, and search hints
-- separate agent supervision from admin/configuration in the UI so the human observes and configures rather than manually operates the flow
+- keep settings, maintenance and stats available as runtime controls without framing the product as a human-operated workflow
 
 The current implementation already covers:
 

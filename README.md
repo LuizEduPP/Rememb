@@ -55,6 +55,19 @@ Zero friction. No CLI commands. Native IDE integration.
 
 The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
 
+If you want the new workstream-first flow to be followed consistently, add a strict rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is not to add generic workflow rules; the point is to make the agent route session memory behavior through rememb every time.
+
+You can place that block in either of these places:
+
+- IDE-level custom instructions
+- the system prompt or instruction field of the MCP client that is calling rememb
+
+In both cases, keep the scope explicit: these rules are about how the agent should use rememb, not about replacing the rest of your coding instructions.
+
+For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
+
+That is enough for the new flow. You do not need extra storage setup, extra server config, or a custom schema migration.
+
 The `rememb_init` MCP tool is optional/deprecated for day-to-day usage: in MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed. The tool remains available for compatibility and explicit recovery workflows.
 
 For the current public MCP tool list and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
@@ -174,11 +187,14 @@ Settings view with limits, semantic search controls, section colors, and mainten
 Skills view listing all bundled skills available in the installed rememb package.
 
 Features:
-- **Top-level navigation** — switch between Memories, Stats, Skills, and Settings
+- **Top-level navigation** — switch between Memories, Workstreams, Handoffs, Stats, Skills, and Settings
 - **Section sidebar** — filter by section with live entry counts and a one-click consolidate action
 - **Search and sorting** — search from the header and reorder results by most recent, oldest, storage order, or reversed
 - **Card-based browsing** — scan entries with section badges, relative timestamps, tags, and entry IDs
 - **Modal CRUD flows** — create entries, inspect details, edit content and tags, or delete entries from the detail view
+- **Workstream-first view** — inspect the selected workstream in a persistent detail panel with current state, resume context, sessions, and direct actions
+- **Structured handoffs** — generate or write handoffs linked to workstreams and sessions, then restore context from Web or MCP
+- **Operational metadata** — attach workstream_id and session_id in the general entry create/edit flow when you need raw entries to participate in the same lifecycle
 - **Stats page** — view totals, active sections, store size, date range, and recent entries
 - **Settings page** — edit limits, semantic search options, section colors, and maintenance actions
 - **Skills page** — browse all bundled skills available in the installed rememb package
@@ -221,6 +237,78 @@ Short version:
 - **Portable** — copy `.rememb/` anywhere, it works
 - **Agnostic** — any agent, any IDE (MCP or CLI)
 - **No lock-in** — no servers, no API keys, no accounts
+
+### Current feature direction: Workstream-first handoff and resumption
+
+`rememb` remains the product.
+The current feature direction is workstream-first memory with structured session handoff.
+
+This feature slice is meant to solve one concrete problem:
+resume work in a new session with the minimum necessary context while keeping related state, sessions, and handoffs grouped under one logical workstream.
+
+The intended shape is deliberately small and compatible with the current architecture:
+
+- keep entries as the storage unit and add workstream and session as logical metadata
+- store handoffs as normal entries instead of creating a new storage system
+- use stable markdown sections so handoffs stay human-readable and auditable
+- tag handoffs consistently so they are easy to search and filter
+- expose workstream open, state update, resume, session lifecycle, and structured handoff through the existing store, Web UI, and MCP surfaces
+- restore context from a handoff through related entries, revisions, and search hints
+
+The current implementation already covers:
+
+- opening and listing workstreams
+- starting and closing sessions
+- writing workstream state checkpoints
+- generating and reading structured handoffs
+- resuming a workstream from the latest relevant state and handoff
+- browsing the same flow in the Web UI
+
+This keeps the feature aligned with rememb's core constraints:
+
+- local-first JSON storage
+- no external services
+- additive MCP and Web changes
+- compatibility with the existing `.rememb` layout
+
+Why this direction matters now:
+
+- AI adoption is high, but trust and enthusiasm are not rising at the same pace
+- teams are feeling more review overhead, more supervision work, and more cognitive load
+- context switching across parallel workstreams is still expensive
+- session handoff and context resumption are still poorly solved end to end
+- auditability is becoming a real product need, not a nice-to-have
+
+The strongest product opportunity for rememb is not more text generation.
+It is reducing the operational fatigue of working with agents.
+
+That points rememb toward four concrete strengths:
+
+- goal-oriented handoff between sessions
+- workstream resumption with minimal relevant context
+- supervision and review of agent output, not just fact recall
+- local-first audit trail with versions, diffs, restore, and history
+
+The near-term product adjustments follow directly from that:
+
+- explicit handoff flows such as ending a session, opening the next one, and generating a handoff for a specific goal
+- stronger workstream views around task, session, and resumption instead of isolated entries only
+- review-oriented inspection for agent changes, with before/after and related decision context
+- smarter context compression, separating essential context from optional or risky carry-over
+- distinct output modes for human handoff and agent handoff
+
+In product terms, the less obvious but stronger bet is this:
+help small teams reduce the fatigue of operating agents across real work.
+
+That means rememb should keep pushing on the package formed by:
+
+- handoff
+- resumption
+- compression
+- diff
+- audit trail
+- restore
+- goal-focused context
 
 ---
 

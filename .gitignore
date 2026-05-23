@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
+docs/
 build/
 .venv/
 venv/
@@ -9,4 +10,3 @@ venv/
 .rememb/embeddings.npy
 .rememb/embeddings.hash
 .mcpregistry_*_token
-.RDM.md

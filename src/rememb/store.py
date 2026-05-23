@@ -8,204 +8,1657 @@ from pathlib import Path
 from typing import Any
 
 from rememb.exceptions import (
-    RemembNotInitializedError,
     RemembValidationError,
     RemembStorageError,
     RemembConfigError,
     RemembError,
 )
-from rememb.config import DEFAULT_CONFIG, DEFAULT_REMOVED_SECTION_NAME, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
-from rememb.utils import _rememb_path, _entries_path, _meta_path, _config_path, _now
+from rememb.config import DEFAULT_CONFIG, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
+from rememb.utils import (
+    HANDOFF_SECTION,
+    HANDOFF_TAG,
+    _apply_revision,
+    _config_path,
+    _current_entry_version,
+    _deleted_at,
+    _entries_path,
+    _entry_history,
+    _entry_revision_list,
+    _entry_revision_snapshot,
+    _filter_deleted,
+    _find_entry,
+    _find_entry_revision,
+    _handoff_list_block,
+    _handoff_text_block,
+    _normalize_handoff_goal_tag,
+    _normalize_handoff_lines,
+    _normalize_version_number,
+    _now,
+    _parse_handoff_list,
+    _parse_handoff_reference,
+    _parse_restore_context,
+    _rememb_path,
+    _revision_label,
+    _split_handoff_sections,
+    _is_deleted_entry,
+)
 from rememb.helpers import (
     MemoryStore,
     _load_entries,
     _atomic_modify,
     _get_sections,
-    _is_hex_color,
-    _normalize_sections,
-    _normalize_section_colors,
-    _save_json_object,
+    _migrate_entries_to_section,
+    _restore_migrated_entries,
     _semantic_search,
     _sanitize_content,
     _sanitize_tags,
     _store_context,
+    _sync_meta_sections,
     _validate_section,
+    _validate_config_updates,
     _assert_initialized,
 )
 
 logger = logging.getLogger(__name__)
 
-
-_POSITIVE_INT_CONFIG_KEYS = {
-    "max_content_length",
-    "max_tag_length",
-    "max_tags_per_entry",
-    "max_entries",
-    "entry_batch_size",
-}
-
-_NON_NEGATIVE_INT_CONFIG_KEYS = {
-    "semantic_model_idle_ttl_seconds",
-    "entry_load_threshold",
-}
-
-_FLOAT_0_1_CONFIG_KEYS = {
-    "semantic_conflict_threshold",
-}
-
-
-def _current_entry_version(entry: dict[str, Any]) -> int:
-    raw_version = entry.get("version", 1)
-    try:
-        parsed_version = int(str(raw_version).strip())
-    except (TypeError, ValueError):
-        return 1
-    return parsed_version if parsed_version > 0 else 1
+_HANDOFF_SECTION = HANDOFF_SECTION
+_HANDOFF_TAG = HANDOFF_TAG
+_ENTRY_KIND_VALUES = {"memory", "decision", "state", "handoff", "artifact", "review"}
+_ENTRY_ROLE_VALUES = {"essential", "optional", "supporting", "checkpoint", "final"}
+_ACTOR_TYPE_VALUES = {"agent", "human", "system"}
+_REVIEW_STATUS_VALUES = {"pending", "approved", "needs_revision", "dismissed"}
+_ENTRY_METADATA_FIELDS = (
+    "meta_schema_version",
+    "workstream_id",
+    "session_id",
+    "entry_kind",
+    "entry_role",
+    "actor_type",
+    "actor_id",
+    "parent_entry_id",
+    "supersedes_entry_id",
+    "related_entry_ids",
+    "structured",
+)
 
 
-def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_history = entry.get("history")
-    if not isinstance(raw_history, list):
-        return []
-    return [dict(item) for item in raw_history if isinstance(item, dict)]
+def _normalize_entry_metadata_value(field: str, value: Any) -> Any:
+    if field == "meta_schema_version":
+        if not isinstance(value, int) or value < 1:
+            raise RemembValidationError("meta_schema_version must be a positive integer.")
+        return value
+
+    if field in {"workstream_id", "session_id", "actor_id", "parent_entry_id", "supersedes_entry_id"}:
+        normalized = str(value).strip()
+        if not normalized:
+            raise RemembValidationError(f"{field} cannot be empty.")
+        return normalized
+
+    if field == "entry_kind":
+        normalized = str(value).strip().lower()
+        if normalized not in _ENTRY_KIND_VALUES:
+            raise RemembValidationError(
+                "entry_kind must be one of: memory, decision, state, handoff, artifact, review."
+            )
+        return normalized
+
+    if field == "entry_role":
+        normalized = str(value).strip().lower()
+        if normalized not in _ENTRY_ROLE_VALUES:
+            raise RemembValidationError(
+                "entry_role must be one of: essential, optional, supporting, checkpoint, final."
+            )
+        return normalized
+
+    if field == "actor_type":
+        normalized = str(value).strip().lower()
+        if normalized not in _ACTOR_TYPE_VALUES:
+            raise RemembValidationError("actor_type must be one of: agent, human, system.")
+        return normalized
+
+    if field == "related_entry_ids":
+        if not isinstance(value, list):
+            raise RemembValidationError("related_entry_ids must be an array of non-empty strings.")
+        normalized_list: list[str] = []
+        for item in value:
+            normalized = str(item).strip()
+            if not normalized:
+                raise RemembValidationError("related_entry_ids cannot contain empty values.")
+            normalized_list.append(normalized)
+        return normalized_list
+
+    if field == "structured":
+        if not isinstance(value, dict):
+            raise RemembValidationError("structured must be an object.")
+        try:
+            json.dumps(value)
+        except TypeError as exc:
+            raise RemembValidationError("structured must be JSON-serializable.") from exc
+        return value
+
+    raise RemembValidationError(f"Unsupported entry metadata field: {field}")
 
 
-def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
+def _extract_entry_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for field in _ENTRY_METADATA_FIELDS:
+        if field not in payload or payload[field] is None:
+            continue
+        metadata[field] = _normalize_entry_metadata_value(field, payload[field])
+    return metadata
+
+
+def generate_handoff(
+    goal: str,
+    *,
+    summary: str | None = None,
+    current_state: list[str] | None = None,
+    open_loops: list[str] | None = None,
+    next_steps: list[str] | None = None,
+    related_entries: list[str] | None = None,
+    restore_section: str = _HANDOFF_SECTION,
+    restore_query: str | None = None,
+    include_deleted: bool = False,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Generate a structured handoff payload stored as a normal entry."""
+    normalized_goal = str(goal).strip()
+    if not normalized_goal:
+        raise RemembValidationError("goal is required.")
+
+    normalized_current_state = _normalize_handoff_lines(current_state)
+    normalized_open_loops = _normalize_handoff_lines(open_loops)
+    normalized_next_steps = _normalize_handoff_lines(next_steps)
+    normalized_related_entries = _normalize_handoff_lines(related_entries)
+    normalized_tags = _normalize_handoff_lines(tags)
+    handoff_tags = [_HANDOFF_TAG, _normalize_handoff_goal_tag(normalized_goal), *normalized_tags]
+    restore_query_value = str(restore_query or normalized_goal).strip()
+
+    content_lines = [
+        "# Handoff",
+        "",
+        "## Goal",
+        *_handoff_text_block(normalized_goal, fallback="No goal recorded."),
+        "",
+        "## Summary",
+        *_handoff_text_block(summary, fallback="No summary provided."),
+        "",
+        "## Current State",
+        *_handoff_list_block(normalized_current_state),
+        "",
+        "## Open Loops",
+        *_handoff_list_block(normalized_open_loops),
+        "",
+        "## Next Steps",
+        *_handoff_list_block(normalized_next_steps, ordered=True),
+        "",
+        "## Related Entries",
+        *_handoff_list_block(normalized_related_entries),
+        "",
+        "## Restore Context",
+        f"section={str(restore_section).strip() or _HANDOFF_SECTION}",
+        f"query={restore_query_value}",
+        f"include_deleted={'true' if include_deleted else 'false'}",
+    ]
+
     return {
-        "version": _current_entry_version(entry),
-        "section": str(entry.get("section", "")),
-        "content": str(entry.get("content", "")),
-        "tags": list(entry.get("tags", [])) if isinstance(entry.get("tags"), list) else [],
-        "created_at": str(entry.get("created_at", "")),
-        "updated_at": str(entry.get("updated_at", "")),
-        "deleted_at": str(entry.get("deleted_at", "")),
+        "section": _HANDOFF_SECTION,
+        "tags": handoff_tags,
+        "content": "\n".join(content_lines),
+        "meta_schema_version": 1,
+        "entry_kind": "handoff",
+        "entry_role": "final",
+        "structured": {
+            "goal": normalized_goal,
+            "summary": str(summary or "").strip(),
+            "current_state": normalized_current_state,
+            "decisions": [],
+            "open_loops": normalized_open_loops,
+            "next_steps": normalized_next_steps,
+            "essential_context": normalized_current_state,
+            "optional_context": [],
+            "risk_flags": [],
+            "restore_context": {
+                "section": str(restore_section).strip() or _HANDOFF_SECTION,
+                "query": restore_query_value,
+                "include_deleted": include_deleted,
+            },
+            "restore_hint": {
+                "section": str(restore_section).strip() or _HANDOFF_SECTION,
+                "query": restore_query_value,
+                "include_deleted": include_deleted,
+            },
+            "related_entries": [
+                {"entry_id": item, "version": None, "reason": None}
+                for item in normalized_related_entries
+            ],
+        },
+        "goal": normalized_goal,
+        "restore_context": {
+            "section": str(restore_section).strip() or _HANDOFF_SECTION,
+            "query": restore_query_value,
+            "include_deleted": include_deleted,
+        },
+        "related_entries": normalized_related_entries,
     }
 
 
-def _deleted_at(entry: dict[str, Any]) -> str | None:
-    value = str(entry.get("deleted_at", "")).strip()
-    return value or None
+def write_handoff(
+    root: Path,
+    goal: str,
+    *,
+    summary: str | None = None,
+    current_state: list[str] | None = None,
+    open_loops: list[str] | None = None,
+    next_steps: list[str] | None = None,
+    related_entries: list[str] | None = None,
+    restore_section: str = _HANDOFF_SECTION,
+    restore_query: str | None = None,
+    include_deleted: bool = False,
+    tags: list[str] | None = None,
+    workstream_id: str | None = None,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    """Persist a handoff as a normal entry in the actions section."""
+    payload = generate_handoff(
+        goal,
+        summary=summary,
+        current_state=current_state,
+        open_loops=open_loops,
+        next_steps=next_steps,
+        related_entries=related_entries,
+        restore_section=restore_section,
+        restore_query=restore_query,
+        include_deleted=include_deleted,
+        tags=tags,
+    )
+    return write_entry(
+        root,
+        payload["section"],
+        payload["content"],
+        payload["tags"],
+        meta_schema_version=payload.get("meta_schema_version"),
+        workstream_id=workstream_id,
+        session_id=session_id,
+        entry_kind=payload.get("entry_kind"),
+        entry_role=payload.get("entry_role"),
+        structured=payload.get("structured"),
+    )
 
 
-def _is_deleted_entry(entry: dict[str, Any]) -> bool:
-    return _deleted_at(entry) is not None
+def list_handoffs(root: Path, *, limit: int | None = None, include_deleted: bool = False) -> list[dict[str, Any]]:
+    """List stored handoff entries, newest first."""
+    _assert_initialized(root)
+    handoffs = [
+        entry
+        for entry in read_entries(root, _HANDOFF_SECTION, include_deleted=include_deleted)
+        if _HANDOFF_TAG in entry.get("tags", [])
+    ]
+    handoffs.sort(key=lambda entry: str(entry.get("updated_at") or entry.get("created_at") or ""), reverse=True)
+    if limit is not None and limit >= 0:
+        return handoffs[:limit]
+    return handoffs
 
 
-def _filter_deleted(entries: list[dict[str, Any]], *, include_deleted: bool) -> list[dict[str, Any]]:
-    if include_deleted:
-        return list(entries)
-    return [entry for entry in entries if not _is_deleted_entry(entry)]
+def parse_handoff_restore_context(entry_or_content: dict[str, Any] | str) -> dict[str, Any]:
+    """Parse a handoff entry body and extract restore hints and related references."""
+    content = entry_or_content.get("content", "") if isinstance(entry_or_content, dict) else str(entry_or_content)
+    sections = _split_handoff_sections(content)
+    goal_lines = [line.strip() for line in sections.get("goal", []) if line.strip()]
+    summary_lines = [line.strip() for line in sections.get("summary", []) if line.strip()]
+    current_state = _parse_handoff_list(sections.get("current state", []))
+    open_loops = _parse_handoff_list(sections.get("open loops", []))
+    next_steps = _parse_handoff_list(sections.get("next steps", []))
+    related_entries = [_parse_handoff_reference(item) for item in _parse_handoff_list(sections.get("related entries", []))]
+    restore_context = _parse_restore_context(sections.get("restore context", []))
+
+    return {
+        "goal": " ".join(goal_lines),
+        "summary": " ".join(summary_lines),
+        "current_state": current_state,
+        "open_loops": open_loops,
+        "next_steps": next_steps,
+        "related_entries": related_entries,
+        "restore_context": restore_context,
+    }
 
 
-def _entry_revision_list(entry: dict[str, Any]) -> list[dict[str, Any]]:
-    revisions = _entry_history(entry)
-    revisions.append(_entry_revision_snapshot(entry))
-    revisions.sort(key=lambda revision: int(revision.get("version", 1)))
-    return revisions
-
-
-def _find_entry(entries: list[dict[str, Any]], entry_id: str) -> dict[str, Any] | None:
-    for entry in entries:
-        if str(entry.get("id", "")) == entry_id:
-            return entry
+def get_handoff(root: Path, entry_id: str, *, include_deleted: bool = True) -> dict[str, Any] | None:
+    """Return a stored handoff entry by ID."""
+    for handoff in list_handoffs(root, include_deleted=include_deleted):
+        if str(handoff.get("id", "")) == entry_id:
+            return handoff
     return None
 
 
-def _find_entry_revision(entry: dict[str, Any], version: int) -> dict[str, Any] | None:
-    for revision in _entry_revision_list(entry):
-        if int(revision.get("version", 0)) == version:
-            return dict(revision)
-    return None
+def get_handoff_restore_context(root: Path, entry_id: str, *, include_deleted: bool = True) -> dict[str, Any] | None:
+    """Return parsed restore hints for a stored handoff entry."""
+    handoff = get_handoff(root, entry_id, include_deleted=include_deleted)
+    if handoff is None:
+        return None
+    return parse_handoff_restore_context(handoff)
 
 
-def _apply_revision(entry: dict[str, Any], revision: dict[str, Any], *, restore_deleted: bool = False) -> None:
-    entry["section"] = str(revision.get("section", ""))
-    entry["content"] = str(revision.get("content", ""))
-    entry["tags"] = list(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else []
-    if restore_deleted:
-        entry.pop("deleted_at", None)
+def _entry_timestamp(entry: dict[str, Any]) -> str:
+    return str(entry.get("updated_at") or entry.get("created_at") or "")
 
 
-def _revision_label(entry_id: str, version: int) -> str:
-    return f"{entry_id}@v{version}"
-
-
-def _normalize_version_number(version: object) -> int:
-    try:
-        parsed = int(str(version).strip())
-    except (TypeError, ValueError):
-        raise RemembValidationError("version must be a positive integer.") from None
-    if parsed <= 0:
-        raise RemembValidationError("version must be a positive integer.")
-    return parsed
-
-
-def _validate_sections_config(root: Path, raw_sections: object) -> list[str]:
-    if not isinstance(raw_sections, list):
-        raise RemembValidationError("sections must be a list of section names.")
-
-    for item in raw_sections:
-        if not isinstance(item, str):
-            raise RemembValidationError("sections must contain only strings.")
-
-    normalized = _normalize_sections(raw_sections)
-
+def _normalize_workstream_id(workstream_id: str) -> str:
+    normalized = str(workstream_id).strip()
     if not normalized:
-        raise RemembValidationError("At least one section is required.")
-
+        raise RemembValidationError("workstream_id cannot be empty.")
     return normalized
 
 
-def _plan_section_migration(
+def _normalize_optional_session_id(session_id: str | None) -> str | None:
+    if session_id is None:
+        return None
+    normalized = str(session_id).strip()
+    if not normalized:
+        raise RemembValidationError("session_id cannot be empty when provided.")
+    return normalized
+
+
+def _workstream_entries(
     root: Path,
-    current_sections: list[str],
-    requested_sections: list[str],
-) -> tuple[list[str], set[str], str | None]:
-    entries = _load_entries(root)
-    removed_sections = set(current_sections) - set(requested_sections)
-    used_removed_sections = {
-        str(entry.get("section", "")).strip().lower()
-        for entry in entries
-        if str(entry.get("section", "")).strip().lower() in removed_sections
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    include_deleted: bool = False,
+) -> list[dict[str, Any]]:
+    normalized_workstream_id = _normalize_workstream_id(workstream_id)
+    normalized_session_id = _normalize_optional_session_id(session_id)
+    entries = read_entries(root, include_deleted=include_deleted)
+    filtered_with_order = [
+        (index, entry)
+        for index, entry in enumerate(entries)
+        if entry.get("workstream_id") == normalized_workstream_id
+        and (normalized_session_id is None or entry.get("session_id") == normalized_session_id)
+    ]
+    filtered_with_order.sort(key=lambda item: (_entry_timestamp(item[1]), item[0]))
+    return [entry for _, entry in filtered_with_order]
+
+
+def _entry_preview(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": entry.get("id"),
+        "section": entry.get("section"),
+        "session_id": entry.get("session_id"),
+        "entry_kind": entry.get("entry_kind"),
+        "entry_role": entry.get("entry_role"),
+        "updated_at": entry.get("updated_at"),
+        "created_at": entry.get("created_at"),
+        "related_entry_ids": entry.get("related_entry_ids", []),
     }
 
-    final_sections = list(requested_sections)
-    migration_target: str | None = None
-    if used_removed_sections:
-        migration_target = DEFAULT_REMOVED_SECTION_NAME
-        if migration_target not in final_sections:
-            final_sections.append(migration_target)
 
-    return final_sections, used_removed_sections, migration_target
+def _workstream_timeline_preview(entry: dict[str, Any]) -> dict[str, Any]:
+    structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    summary = ""
+    if isinstance(structured, dict):
+        summary = str(
+            structured.get("summary")
+            or structured.get("goal")
+            or structured.get("outcome")
+            or ""
+        ).strip()
+    if not summary:
+        summary = str(entry.get("content") or "").strip().splitlines()[0] if str(entry.get("content") or "").strip() else ""
+
+    return {
+        "id": entry.get("id"),
+        "section": entry.get("section"),
+        "session_id": entry.get("session_id"),
+        "entry_kind": entry.get("entry_kind"),
+        "entry_role": entry.get("entry_role"),
+        "updated_at": entry.get("updated_at"),
+        "created_at": entry.get("created_at"),
+        "deleted_at": entry.get("deleted_at"),
+        "summary": summary,
+        "related_entry_ids": entry.get("related_entry_ids", []),
+    }
 
 
-def _migrate_entries_to_section(root: Path, source_sections: set[str], target_section: str) -> dict[str, str]:
-    def migrate(entries: list[dict]) -> dict[str, str]:
-        moved_entries: dict[str, str] = {}
-        for entry in entries:
-            current_section = str(entry.get("section", "")).strip().lower()
-            if current_section in source_sections:
-                moved_entries[str(entry.get("id", ""))] = current_section
-                entry["section"] = target_section
-                entry["updated_at"] = _now()
-        return moved_entries
-
-    return _atomic_modify(root, migrate)
+def _handoff_structured_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    structured = entry.get("structured")
+    if isinstance(structured, dict) and structured:
+        return dict(structured)
+    return parse_handoff_restore_context(entry)
 
 
-def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None:
-    if not moved_entries:
-        return
+def _generate_prefixed_identifier(prefix: str, existing_values: set[str]) -> str:
+    candidate = f"{prefix}_{str(uuid.uuid4())[:8]}"
+    attempts = 0
+    while candidate in existing_values and attempts < 100:
+        candidate = f"{prefix}_{str(uuid.uuid4())[:8]}"
+        attempts += 1
+    if candidate in existing_values:
+        raise RemembStorageError(f"Failed to generate unique {prefix} identifier after 100 attempts.")
+    return candidate
 
-    def restore(entries: list[dict]) -> None:
-        for entry in entries:
-            entry_id = str(entry.get("id", ""))
-            if entry_id in moved_entries:
-                entry["section"] = moved_entries[entry_id]
-                entry["updated_at"] = _now()
+
+def _workstream_latest_session_id(entries: list[dict[str, Any]]) -> str | None:
+    for entry in reversed(entries):
+        session_id = entry.get("session_id")
+        if isinstance(session_id, str) and session_id.strip():
+            return session_id.strip()
+    return None
+
+
+def _normalize_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _normalize_optional_lines(values: list[str] | None) -> list[str] | None:
+    if values is None:
+        return None
+    return _normalize_handoff_lines(values)
+
+
+def _workstream_state_content(structured: dict[str, Any], *, label: str) -> str:
+    current_state = structured.get("current_state") or []
+    open_loops = structured.get("open_loops") or []
+    next_steps = structured.get("next_steps") or []
+    lines = [
+        f"# {label}",
+        "",
+        f"Goal: {structured.get('goal') or 'No goal recorded.'}",
+    ]
+    summary = structured.get("summary")
+    if summary:
+        lines.extend(["", f"Summary: {summary}"])
+    if current_state:
+        lines.extend(["", "Current state:", *[f"- {item}" for item in current_state]])
+    if open_loops:
+        lines.extend(["", "Open loops:", *[f"- {item}" for item in open_loops]])
+    if next_steps:
+        lines.extend(["", "Next steps:", *[f"{index + 1}. {item}" for index, item in enumerate(next_steps)]])
+    return "\n".join(lines)
+
+
+def _normalize_related_reference_ids(related_entries: list[str] | None) -> list[str]:
+    if not related_entries:
+        return []
+    normalized: list[str] = []
+    for item in _normalize_handoff_lines(related_entries):
+        parsed = _parse_handoff_reference(item)
+        entry_id = parsed.get("entry_id")
+        if isinstance(entry_id, str) and entry_id and entry_id not in normalized:
+            normalized.append(entry_id)
+    return normalized
+
+
+def _dedupe_preserving_order(values: list[str | None]) -> list[str]:
+    unique_values: list[str] = []
+    for value in values:
+        if not value or value in unique_values:
+            continue
+        unique_values.append(value)
+    return unique_values
+
+
+def _structured_list(structured: dict[str, Any], field: str) -> list[str]:
+    value = structured.get(field)
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _merge_compressed_context(*payloads: dict[str, Any]) -> dict[str, list[str]]:
+    buckets = {
+        "essential": [],
+        "optional": [],
+        "archived": [],
+        "risky": [],
+        "obsolete": [],
+    }
+    field_map = {
+        "essential": "essential_context",
+        "optional": "optional_context",
+        "archived": "archived_context",
+        "risky": "risk_flags",
+        "obsolete": "obsolete_context",
+    }
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for bucket, field in field_map.items():
+            for item in _structured_list(payload, field):
+                if item not in buckets[bucket]:
+                    buckets[bucket].append(item)
+    return buckets
+
+
+def _workstream_anchor_entry(entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for kind in ("review", "handoff", "state"):
+        entry = next((item for item in reversed(entries) if item.get("entry_kind") == kind), None)
+        if entry is not None:
+            return entry
+    return entries[-1] if entries else None
+
+
+def _timeline_since_anchor(entries: list[dict[str, Any]], anchor_entry: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not entries:
+        return []
+    if anchor_entry is None:
+        return [_workstream_timeline_preview(entry) for entry in reversed(entries[-5:])]
+    try:
+        anchor_index = next(index for index, item in enumerate(entries) if item.get("id") == anchor_entry.get("id"))
+    except StopIteration:
+        anchor_index = len(entries) - 1
+    changed_entries = entries[anchor_index + 1 :]
+    return [_workstream_timeline_preview(entry) for entry in reversed(changed_entries[-5:])]
+
+
+def _review_status_from_entry(entry: dict[str, Any]) -> str:
+    structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    status = str(structured.get("review_status") or "pending").strip().lower()
+    if status not in _REVIEW_STATUS_VALUES:
+        return "pending"
+    return status
+
+
+def _review_reasons(entry: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    if entry.get("actor_type") == "agent":
+        reasons.append("agent_generated")
+    if int(_current_entry_version(entry) or 1) > 1:
+        reasons.append("versioned")
+    entry_kind = str(entry.get("entry_kind") or "").strip()
+    if entry_kind in {"decision", "artifact", "review"}:
+        reasons.append(f"kind:{entry_kind}")
+    if _structured_list(structured, "risk_flags"):
+        reasons.append("risk_flags")
+    if str(structured.get("event") or "") == "session_close":
+        reasons.append("session_close")
+    if entry.get("supersedes_entry_id"):
+        reasons.append("superseded")
+    if str(structured.get("restored_from") or "").strip():
+        reasons.append("restored")
+    return reasons
+
+
+def _causal_context_ids(entry: dict[str, Any]) -> list[str]:
+    structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    values = _dedupe_preserving_order([
+        *(entry.get("related_entry_ids") or []),
+        entry.get("parent_entry_id"),
+        entry.get("supersedes_entry_id"),
+        *(_structured_list(structured, "source_context_entry_ids") if isinstance(structured, dict) else []),
+    ])
+    return values
+
+
+def _decision_is_active(entry: dict[str, Any], entries: list[dict[str, Any]]) -> bool:
+    entry_id = str(entry.get("id") or "")
+    if not entry_id or entry.get("entry_kind") != "decision":
+        return False
+    for candidate in entries:
+        if candidate.get("supersedes_entry_id") == entry_id:
+            return False
+    structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    return _review_status_from_entry(entry) not in {"dismissed"} and str(structured.get("status") or "active") != "superseded"
+
+
+def _workstream_operational_status(entries: list[dict[str, Any]], pending_review_count: int) -> str:
+    if pending_review_count > 0:
+        return "awaiting_review"
+    if not entries:
+        return "active"
+    latest_entry = entries[-1]
+    latest_kind = str(latest_entry.get("entry_kind") or "")
+    structured = latest_entry.get("structured") if isinstance(latest_entry.get("structured"), dict) else {}
+    latest_status = str(structured.get("status") or "").strip().lower()
+    if latest_kind == "handoff":
+        return "frozen"
+    if latest_kind == "review" and latest_status in {"paused", "completed", "frozen"}:
+        return "frozen"
+    return "active"
+
+
+def _session_compare_payload(session_id: str, entries: list[dict[str, Any]], resume: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "session_id": session_id,
+        "entry_count": len(entries),
+        "latest_entry_id": entries[-1].get("id") if entries else None,
+        "goal": (resume or {}).get("goal") or "",
+        "summary": (resume or {}).get("summary") or "",
+        "current_state": list((resume or {}).get("current_state") or []),
+        "open_loops": list((resume or {}).get("open_loops") or []),
+        "next_steps": list((resume or {}).get("next_steps") or []),
+        "focus_entry_ids": list((resume or {}).get("focus_entry_ids") or []),
+        "compressed_context": dict((resume or {}).get("compressed_context") or {}),
+        "what_changed": list((resume or {}).get("what_changed") or []),
+    }
+
+
+def _compare_text_block(left: list[str], right: list[str], *, left_label: str, right_label: str) -> str:
+    return "\n".join(
+        unified_diff(
+            left,
+            right,
+            fromfile=left_label,
+            tofile=right_label,
+            lineterm="",
+        )
+    )
+
+
+def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
+    current_version = int(_current_entry_version(entry) or 1)
+    previous_version = current_version - 1 if current_version > 1 else None
+    diff_text = None
+    if previous_version is not None:
+        diff_payload = diff_entry_versions(root, str(entry.get("id") or ""), previous_version, current_version)
+        diff_text = diff_payload.get("diff") if isinstance(diff_payload, dict) else None
+    structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    return {
+        "entry_id": entry.get("id"),
+        "workstream_id": entry.get("workstream_id"),
+        "session_id": entry.get("session_id"),
+        "entry_kind": entry.get("entry_kind"),
+        "entry_role": entry.get("entry_role"),
+        "actor_type": entry.get("actor_type"),
+        "actor_id": entry.get("actor_id"),
+        "updated_at": _entry_timestamp(entry),
+        "review_status": _review_status_from_entry(entry),
+        "review_notes": _normalize_optional_text(structured.get("review_notes")) or "",
+        "review_reasons": _review_reasons(entry),
+        "current_version": current_version,
+        "previous_version": previous_version,
+        "diff": diff_text,
+        "summary": _workstream_timeline_preview(entry).get("summary") or "",
+        "related_entry_ids": list(entry.get("related_entry_ids") or []),
+        "source_context_entry_ids": _causal_context_ids(entry),
+        "supersedes_entry_id": entry.get("supersedes_entry_id"),
+    }
+
+
+def get_workstream_state(
+    root: Path,
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Aggregate the current state of a workstream and its sessions."""
+    entries = _workstream_entries(
+        root,
+        workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+    )
+    if not entries:
         return None
 
-    _atomic_modify(root, restore)
+    sessions: dict[str, dict[str, Any]] = {}
+    latest_state_entry: dict[str, Any] | None = None
+    latest_handoff_entry: dict[str, Any] | None = None
+
+    for entry in entries:
+        entry_session_id = str(entry.get("session_id") or "")
+        if entry_session_id:
+            session_bucket = sessions.setdefault(
+                entry_session_id,
+                {
+                    "session_id": entry.get("session_id"),
+                    "entry_count": 0,
+                    "latest_updated_at": "",
+                    "latest_entry_id": None,
+                    "latest_entry_kind": None,
+                    "latest_handoff_id": None,
+                    "latest_state_id": None,
+                    "latest_position": -1,
+                },
+            )
+            session_bucket["entry_count"] += 1
+            session_bucket["latest_updated_at"] = _entry_timestamp(entry)
+            session_bucket["latest_entry_id"] = entry.get("id")
+            session_bucket["latest_entry_kind"] = entry.get("entry_kind")
+            session_bucket["latest_position"] = len(sessions) + session_bucket["entry_count"]
+            if entry.get("entry_kind") == "handoff":
+                session_bucket["latest_handoff_id"] = entry.get("id")
+            if entry.get("entry_kind") == "state":
+                session_bucket["latest_state_id"] = entry.get("id")
+        if entry.get("entry_kind") == "handoff":
+            latest_handoff_entry = entry
+        if entry.get("entry_kind") == "state":
+            latest_state_entry = entry
+
+    latest_entry = entries[-1]
+    ordered_sessions = sorted(
+        sessions.values(),
+        key=lambda item: (str(item.get("latest_updated_at") or ""), int(item.get("latest_position") or -1)),
+        reverse=True,
+    )
+    timeline = [
+        _workstream_timeline_preview(entry)
+        for entry in reversed(entries)
+    ]
+    for item in ordered_sessions:
+        item.pop("latest_position", None)
+
+    latest_review_entry = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "review"), None)
+
+    return {
+        "workstream_id": _normalize_workstream_id(workstream_id),
+        "session_id": _normalize_optional_session_id(session_id),
+        "entry_count": len(entries),
+        "session_count": len(ordered_sessions),
+        "latest_entry": _entry_preview(latest_entry),
+        "latest_handoff": _entry_preview(latest_handoff_entry) if latest_handoff_entry else None,
+        "latest_state": _entry_preview(latest_state_entry) if latest_state_entry else None,
+        "latest_review": _entry_preview(latest_review_entry) if latest_review_entry else None,
+        "sessions": ordered_sessions,
+        "timeline": timeline,
+    }
+
+
+def resume_workstream(
+    root: Path,
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Return a compact operational resume payload for a workstream."""
+    entries = _workstream_entries(
+        root,
+        workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+    )
+    if not entries:
+        return None
+
+    state = get_workstream_state(
+        root,
+        workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+    )
+    if state is None:
+        return None
+
+    latest_handoff_entry = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "handoff"), None)
+    latest_state_entry = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "state"), None)
+    latest_entry = entries[-1]
+
+    handoff_payload = _handoff_structured_payload(latest_handoff_entry) if latest_handoff_entry else {}
+    state_payload = (
+        latest_state_entry.get("structured")
+        if latest_state_entry is not None and isinstance(latest_state_entry.get("structured"), dict)
+        else {}
+    )
+    related_entry_ids: list[str] = []
+    for source in (latest_handoff_entry, latest_state_entry, latest_entry):
+        if not source:
+            continue
+        for related_entry_id in source.get("related_entry_ids", []):
+            if related_entry_id not in related_entry_ids:
+                related_entry_ids.append(related_entry_id)
+
+    focus_entry_ids = _dedupe_preserving_order([
+        state.get("latest_handoff", {}).get("id") if state.get("latest_handoff") else None,
+        state.get("latest_state", {}).get("id") if state.get("latest_state") else None,
+        state.get("latest_entry", {}).get("id") if state.get("latest_entry") else None,
+    ])
+
+    restore_context = handoff_payload.get("restore_context")
+    if not isinstance(restore_context, dict):
+        restore_context = handoff_payload.get("restore_hint") if isinstance(handoff_payload.get("restore_hint"), dict) else {}
+    if not restore_context:
+        restore_context = {
+            "section": str(latest_entry.get("section") or "actions"),
+            "query": str(handoff_payload.get("goal") or state_payload.get("goal") or latest_entry.get("workstream_id") or workstream_id),
+            "include_deleted": include_deleted,
+        }
+
+    compressed_context = _merge_compressed_context(state_payload, handoff_payload)
+    if not compressed_context["essential"]:
+        compressed_context["essential"] = list(handoff_payload.get("current_state") or state_payload.get("current_state") or [])
+    anchor_entry = _workstream_anchor_entry(entries)
+    changed_entries = _timeline_since_anchor(entries, anchor_entry)
+
+    return {
+        "workstream_id": state["workstream_id"],
+        "session_id": latest_entry.get("session_id") or state.get("session_id"),
+        "entry_count": state["entry_count"],
+        "session_count": state["session_count"],
+        "focus_entry_ids": focus_entry_ids,
+        "latest_entry_id": latest_entry.get("id"),
+        "latest_entry_kind": latest_entry.get("entry_kind"),
+        "goal": handoff_payload.get("goal") or state_payload.get("goal") or latest_entry.get("content", ""),
+        "summary": handoff_payload.get("summary") or state_payload.get("summary") or "",
+        "current_state": handoff_payload.get("current_state") or state_payload.get("current_state") or [],
+        "open_loops": handoff_payload.get("open_loops") or state_payload.get("open_loops") or [],
+        "next_steps": handoff_payload.get("next_steps") or state_payload.get("next_steps") or [],
+        "restore_context": restore_context,
+        "related_entry_ids": related_entry_ids,
+        "compressed_context": compressed_context,
+        "what_changed": changed_entries,
+        "review_anchor_entry_id": anchor_entry.get("id") if anchor_entry else None,
+        "active_decision_ids": [entry.get("id") for entry in entries if _decision_is_active(entry, entries)],
+    }
+
+
+def list_workstreams(
+    root: Path,
+    *,
+    limit: int | None = None,
+    include_deleted: bool = False,
+) -> list[dict[str, Any]]:
+    """List aggregated workstreams derived from existing entries."""
+    entries = read_entries(root, include_deleted=include_deleted)
+    workstream_ids = {
+        str(entry.get("workstream_id")).strip()
+        for entry in entries
+        if isinstance(entry.get("workstream_id"), str) and str(entry.get("workstream_id")).strip()
+    }
+    items: list[dict[str, Any]] = []
+    for workstream_id in workstream_ids:
+        workstream_entries = _workstream_entries(root, workstream_id, include_deleted=include_deleted)
+        if not workstream_entries:
+            continue
+        latest_entry = workstream_entries[-1]
+        state = get_workstream_state(root, workstream_id, include_deleted=include_deleted)
+        resume = resume_workstream(root, workstream_id, include_deleted=include_deleted)
+        pending_review_count = len(list_review_queue(root, workstream_id=workstream_id, include_deleted=include_deleted, pending_only=True))
+        operational_status = _workstream_operational_status(workstream_entries, pending_review_count)
+        items.append(
+            {
+                "workstream_id": workstream_id,
+                "entry_count": len(workstream_entries),
+                "session_count": state["session_count"] if state else 0,
+                "latest_entry": _entry_preview(latest_entry),
+                "latest_handoff": state.get("latest_handoff") if state else None,
+                "latest_state": state.get("latest_state") if state else None,
+                "latest_session_id": _workstream_latest_session_id(workstream_entries),
+                "goal": (resume or {}).get("goal") or latest_entry.get("content", ""),
+                "summary": (resume or {}).get("summary") or "",
+                "operational_status": operational_status,
+                "pending_review_count": pending_review_count,
+                "active_decision_ids": list((resume or {}).get("active_decision_ids") or []),
+                "updated_at": _entry_timestamp(latest_entry),
+            }
+        )
+    items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+    if limit is not None and limit >= 0:
+        return items[:limit]
+    return items
+
+
+def open_workstream(
+    root: Path,
+    goal: str,
+    *,
+    workstream_id: str | None = None,
+    summary: str | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Create or reopen a logical workstream."""
+    normalized_goal = str(goal).strip()
+    if not normalized_goal:
+        raise RemembValidationError("goal is required.")
+
+    existing_entries = read_entries(root, include_deleted=True)
+    normalized_workstream_id = _normalize_optional_text(workstream_id)
+    if normalized_workstream_id is None:
+        used_ids = {
+            str(entry.get("workstream_id")).strip()
+            for entry in existing_entries
+            if isinstance(entry.get("workstream_id"), str) and str(entry.get("workstream_id")).strip()
+        }
+        normalized_workstream_id = _generate_prefixed_identifier("ws", used_ids)
+
+    workstream_entries = _workstream_entries(root, normalized_workstream_id, include_deleted=True)
+    if workstream_entries:
+        latest_entry = workstream_entries[-1]
+        return {
+            "workstream_id": normalized_workstream_id,
+            "created": False,
+            "entry": latest_entry,
+            "state": get_workstream_state(root, normalized_workstream_id, include_deleted=True),
+        }
+
+    structured = {
+        "goal": normalized_goal,
+        "summary": _normalize_optional_text(summary) or "",
+        "current_state": [],
+        "decisions": [],
+        "open_loops": [],
+        "next_steps": [],
+        "essential_context": [],
+        "optional_context": [],
+        "risk_flags": [],
+        "status": "active",
+    }
+    entry = write_entry(
+        root,
+        "actions",
+        _workstream_state_content(structured, label="Workstream Opened"),
+        ["workstream", *(tags or [])],
+        workstream_id=normalized_workstream_id,
+        entry_kind="state",
+        entry_role="checkpoint",
+        structured=structured,
+    )
+    return {
+        "workstream_id": normalized_workstream_id,
+        "created": True,
+        "entry": entry,
+        "state": get_workstream_state(root, normalized_workstream_id),
+    }
+
+
+def update_workstream_state(
+    root: Path,
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    goal: str | None = None,
+    summary: str | None = None,
+    current_state: list[str] | None = None,
+    decisions: list[str] | None = None,
+    open_loops: list[str] | None = None,
+    next_steps: list[str] | None = None,
+    essential_context: list[str] | None = None,
+    optional_context: list[str] | None = None,
+    archived_context: list[str] | None = None,
+    risk_flags: list[str] | None = None,
+    obsolete_context: list[str] | None = None,
+    related_entry_ids: list[str] | None = None,
+    merge: bool = True,
+) -> dict[str, Any] | None:
+    """Write a structured state checkpoint for a workstream."""
+    workstream_entries = _workstream_entries(root, workstream_id, include_deleted=False)
+    if not workstream_entries:
+        return None
+
+    latest_state_entry = next((entry for entry in reversed(workstream_entries) if entry.get("entry_kind") == "state"), None)
+    base_structured = {}
+    if merge and latest_state_entry is not None and isinstance(latest_state_entry.get("structured"), dict):
+        base_structured = dict(latest_state_entry["structured"])
+    resume = resume_workstream(root, workstream_id, session_id=session_id, include_deleted=False) or {}
+    effective_session_id = _normalize_optional_text(session_id) or _workstream_latest_session_id(workstream_entries)
+    structured = {
+        "goal": _normalize_optional_text(goal) or base_structured.get("goal") or resume.get("goal") or workstream_id,
+        "summary": _normalize_optional_text(summary) or base_structured.get("summary") or resume.get("summary") or "",
+        "current_state": _normalize_optional_lines(current_state) if current_state is not None else list(base_structured.get("current_state") or resume.get("current_state") or []),
+        "decisions": _normalize_optional_lines(decisions) if decisions is not None else list(base_structured.get("decisions") or []),
+        "open_loops": _normalize_optional_lines(open_loops) if open_loops is not None else list(base_structured.get("open_loops") or resume.get("open_loops") or []),
+        "next_steps": _normalize_optional_lines(next_steps) if next_steps is not None else list(base_structured.get("next_steps") or resume.get("next_steps") or []),
+        "essential_context": _normalize_optional_lines(essential_context) if essential_context is not None else list(base_structured.get("essential_context") or []),
+        "optional_context": _normalize_optional_lines(optional_context) if optional_context is not None else list(base_structured.get("optional_context") or []),
+        "archived_context": _normalize_optional_lines(archived_context) if archived_context is not None else list(base_structured.get("archived_context") or []),
+        "risk_flags": _normalize_optional_lines(risk_flags) if risk_flags is not None else list(base_structured.get("risk_flags") or []),
+        "obsolete_context": _normalize_optional_lines(obsolete_context) if obsolete_context is not None else list(base_structured.get("obsolete_context") or []),
+        "status": "active",
+    }
+    return write_entry(
+        root,
+        "actions",
+        _workstream_state_content(structured, label="Workstream State Update"),
+        ["workstream", "state"],
+        workstream_id=_normalize_workstream_id(workstream_id),
+        session_id=effective_session_id,
+        entry_kind="state",
+        entry_role="checkpoint",
+        related_entry_ids=related_entry_ids,
+        structured=structured,
+    )
+
+
+def start_session(
+    root: Path,
+    workstream_id: str,
+    *,
+    goal: str | None = None,
+    summary: str | None = None,
+    session_id: str | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Start a new logical session inside a workstream."""
+    normalized_workstream_id = _normalize_workstream_id(workstream_id)
+    workstream_entries = _workstream_entries(root, normalized_workstream_id, include_deleted=False)
+    if not workstream_entries:
+        return None
+    used_session_ids = {
+        str(entry.get("session_id")).strip()
+        for entry in workstream_entries
+        if isinstance(entry.get("session_id"), str) and str(entry.get("session_id")).strip()
+    }
+    effective_session_id = _normalize_optional_text(session_id) or _generate_prefixed_identifier("sess", used_session_ids)
+    resume = resume_workstream(root, normalized_workstream_id, include_deleted=False) or {}
+    structured = {
+        "goal": _normalize_optional_text(goal) or resume.get("goal") or normalized_workstream_id,
+        "summary": _normalize_optional_text(summary) or resume.get("summary") or "",
+        "current_state": list(resume.get("current_state") or []),
+        "decisions": [],
+        "open_loops": list(resume.get("open_loops") or []),
+        "next_steps": list(resume.get("next_steps") or []),
+        "essential_context": list(resume.get("current_state") or []),
+        "optional_context": [],
+        "archived_context": list((resume.get("compressed_context") or {}).get("archived") or []),
+        "risk_flags": [],
+        "obsolete_context": list((resume.get("compressed_context") or {}).get("obsolete") or []),
+        "status": "active",
+        "event": "session_start",
+    }
+    return write_entry(
+        root,
+        "actions",
+        _workstream_state_content(structured, label="Session Started"),
+        ["session", "start", *(tags or [])],
+        workstream_id=normalized_workstream_id,
+        session_id=effective_session_id,
+        entry_kind="state",
+        entry_role="checkpoint",
+        structured=structured,
+    )
+
+
+def close_session(
+    root: Path,
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    outcome: str,
+    status: str = "paused",
+    next_steps: list[str] | None = None,
+    open_loops: list[str] | None = None,
+    related_entry_ids: list[str] | None = None,
+    next_goal: str | None = None,
+) -> dict[str, Any] | None:
+    """Close the active or selected session and record a structured review entry."""
+    normalized_workstream_id = _normalize_workstream_id(workstream_id)
+    normalized_outcome = str(outcome).strip()
+    if not normalized_outcome:
+        raise RemembValidationError("outcome is required.")
+    workstream_entries = _workstream_entries(root, normalized_workstream_id, include_deleted=False)
+    if not workstream_entries:
+        return None
+    effective_session_id = _normalize_optional_text(session_id) or _workstream_latest_session_id(workstream_entries)
+    if effective_session_id is None:
+        return None
+    structured = {
+        "outcome": normalized_outcome,
+        "status": _normalize_optional_text(status) or "paused",
+        "open_loops": _normalize_handoff_lines(open_loops),
+        "next_steps": _normalize_handoff_lines(next_steps),
+        "next_goal": _normalize_optional_text(next_goal) or "",
+        "event": "session_close",
+    }
+    content_lines = [
+        "# Session Closed",
+        "",
+        f"Outcome: {normalized_outcome}",
+        f"Status: {structured['status']}",
+    ]
+    if structured["open_loops"]:
+        content_lines.extend(["", "Open loops:", *[f"- {item}" for item in structured["open_loops"]]])
+    if structured["next_steps"]:
+        content_lines.extend(["", "Next steps:", *[f"{index + 1}. {item}" for index, item in enumerate(structured["next_steps"]) ]])
+    if structured["next_goal"]:
+        content_lines.extend(["", f"Next goal: {structured['next_goal']}"])
+    return write_entry(
+        root,
+        "actions",
+        "\n".join(content_lines),
+        ["session", "close", structured["status"]],
+        workstream_id=normalized_workstream_id,
+        session_id=effective_session_id,
+        entry_kind="review",
+        entry_role="final",
+        related_entry_ids=related_entry_ids,
+        structured=structured,
+    )
+
+
+def write_structured_handoff(
+    root: Path,
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    goal: str,
+    summary: str | None = None,
+    current_state: list[str] | None = None,
+    decisions: list[str] | None = None,
+    open_loops: list[str] | None = None,
+    next_steps: list[str] | None = None,
+    essential_context: list[str] | None = None,
+    optional_context: list[str] | None = None,
+    archived_context: list[str] | None = None,
+    related_entries: list[str] | None = None,
+    risk_flags: list[str] | None = None,
+    obsolete_context: list[str] | None = None,
+    restore_section: str = _HANDOFF_SECTION,
+    restore_query: str | None = None,
+    include_deleted: bool = False,
+    tags: list[str] | None = None,
+    audience: str = "agent",
+) -> dict[str, Any]:
+    """Persist a structured handoff payload for a workstream/session."""
+    normalized_workstream_id = _normalize_workstream_id(workstream_id)
+    effective_session_id = _normalize_optional_text(session_id) or _workstream_latest_session_id(
+        _workstream_entries(root, normalized_workstream_id, include_deleted=include_deleted)
+    )
+    normalized_related_entries = _normalize_handoff_lines(related_entries)
+    payload = generate_handoff(
+        goal,
+        summary=summary,
+        current_state=current_state,
+        open_loops=open_loops,
+        next_steps=next_steps,
+        related_entries=normalized_related_entries,
+        restore_section=restore_section,
+        restore_query=restore_query,
+        include_deleted=include_deleted,
+        tags=tags,
+    )
+    structured = dict(payload.get("structured") or {})
+    structured.update(
+        {
+            "summary": _normalize_optional_text(summary) or structured.get("summary") or "",
+            "decisions": _normalize_handoff_lines(decisions),
+            "essential_context": _normalize_handoff_lines(essential_context) or list(structured.get("current_state") or []),
+            "optional_context": _normalize_handoff_lines(optional_context),
+            "archived_context": _normalize_handoff_lines(archived_context),
+            "risk_flags": _normalize_handoff_lines(risk_flags),
+            "obsolete_context": _normalize_handoff_lines(obsolete_context),
+            "audience": _normalize_optional_text(audience) or "agent",
+            "restore_context": payload.get("restore_context") or structured.get("restore_context") or {},
+            "related_entries": [
+                _parse_handoff_reference(item)
+                for item in normalized_related_entries
+            ],
+        }
+    )
+    return write_entry(
+        root,
+        payload["section"],
+        payload["content"],
+        payload["tags"],
+        meta_schema_version=payload.get("meta_schema_version"),
+        workstream_id=normalized_workstream_id,
+        session_id=effective_session_id,
+        entry_kind=payload.get("entry_kind"),
+        entry_role=payload.get("entry_role"),
+        related_entry_ids=_normalize_related_reference_ids(normalized_related_entries),
+        structured=structured,
+    )
+
+
+def read_structured_handoff(
+    root: Path,
+    *,
+    entry_id: str | None = None,
+    workstream_id: str | None = None,
+    session_id: str | None = None,
+    include_deleted: bool = True,
+) -> dict[str, Any] | None:
+    """Read a structured handoff payload by entry id or workstream scope."""
+    entry: dict[str, Any] | None = None
+    if entry_id is not None:
+        entry = _find_entry(read_entries(root, include_deleted=include_deleted), entry_id)
+    else:
+        if workstream_id is None:
+            raise RemembValidationError("Provide entry_id or workstream_id.")
+        entries = _workstream_entries(root, workstream_id, session_id=session_id, include_deleted=include_deleted)
+        entry = next((item for item in reversed(entries) if item.get("entry_kind") == "handoff"), None)
+
+    if entry is None:
+        return None
+    if entry.get("entry_kind") != "handoff" and _HANDOFF_TAG not in (entry.get("tags") or []):
+        return None
+
+    structured = _handoff_structured_payload(entry)
+    restore_context = structured.get("restore_context")
+    if not isinstance(restore_context, dict):
+        restore_context = structured.get("restore_hint") if isinstance(structured.get("restore_hint"), dict) else {}
+    return {
+        "entry_id": entry.get("id"),
+        "workstream_id": entry.get("workstream_id"),
+        "session_id": entry.get("session_id"),
+        "goal": structured.get("goal") or "",
+        "summary": structured.get("summary") or "",
+        "current_state": list(structured.get("current_state") or []),
+        "decisions": list(structured.get("decisions") or []),
+        "open_loops": list(structured.get("open_loops") or []),
+        "next_steps": list(structured.get("next_steps") or []),
+        "essential_context": list(structured.get("essential_context") or []),
+        "optional_context": list(structured.get("optional_context") or []),
+        "archived_context": list(structured.get("archived_context") or []),
+        "risk_flags": list(structured.get("risk_flags") or []),
+        "obsolete_context": list(structured.get("obsolete_context") or []),
+        "audience": structured.get("audience") or "agent",
+        "restore_context": restore_context,
+        "related_entries": list(structured.get("related_entries") or []),
+    }
+
+
+def build_handoff_package(
+    root: Path,
+    workstream_id: str,
+    *,
+    session_id: str | None = None,
+    next_goal: str | None = None,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Build a minimal anti-context-switch package for the next session."""
+    resume = resume_workstream(
+        root,
+        workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+    )
+    if resume is None:
+        return None
+    state = get_workstream_state(
+        root,
+        workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+    )
+    if state is None:
+        return None
+    normalized_goal = _normalize_optional_text(next_goal) or resume.get("goal") or workstream_id
+    compressed_context = dict(resume.get("compressed_context") or _merge_compressed_context())
+    if not compressed_context.get("essential"):
+        compressed_context["essential"] = list(resume.get("current_state") or [])
+    shared = {
+        "workstream_id": resume["workstream_id"],
+        "session_id": resume.get("session_id"),
+        "current_goal": resume.get("goal") or "",
+        "next_goal": normalized_goal,
+        "restore_context": dict(resume.get("restore_context") or {}),
+        "current_state": list(resume.get("current_state") or []),
+        "open_loops": list(resume.get("open_loops") or []),
+        "next_steps": list(resume.get("next_steps") or []),
+        "related_entry_ids": list(resume.get("related_entry_ids") or []),
+        "focus_entry_ids": list(resume.get("focus_entry_ids") or []),
+        "compressed_context": compressed_context,
+        "what_changed": list(resume.get("what_changed") or []),
+        "latest_review": state.get("latest_review"),
+        "active_decision_ids": list(resume.get("active_decision_ids") or []),
+    }
+    shared["agent_handoff"] = {
+        "goal": normalized_goal,
+        "summary": resume.get("summary") or "",
+        "current_state": list(resume.get("current_state") or []),
+        "open_loops": list(resume.get("open_loops") or []),
+        "next_steps": list(resume.get("next_steps") or []),
+        "essential_context": list(compressed_context.get("essential") or []),
+        "optional_context": list(compressed_context.get("optional") or []),
+        "archived_context": list(compressed_context.get("archived") or []),
+        "risk_flags": list(compressed_context.get("risky") or []),
+        "obsolete_context": list(compressed_context.get("obsolete") or []),
+        "related_entries": list(resume.get("related_entry_ids") or []),
+        "restore_context": dict(resume.get("restore_context") or {}),
+        "audience": "agent",
+    }
+    shared["human_handoff"] = {
+        "goal": normalized_goal,
+        "summary": resume.get("summary") or "",
+        "what_changed": list(resume.get("what_changed") or []),
+        "open_loops": list(resume.get("open_loops") or []),
+        "next_steps": list(resume.get("next_steps") or []),
+        "watchouts": list(compressed_context.get("risky") or []),
+        "related_entries": list(resume.get("related_entry_ids") or []),
+        "restore_context": dict(resume.get("restore_context") or {}),
+        "audience": "human",
+    }
+    return shared
+
+
+def close_session_with_handoff(
+    root: Path,
+    workstream_id: str,
+    *,
+    outcome: str,
+    next_goal: str,
+    session_id: str | None = None,
+    status: str = "paused",
+    summary: str | None = None,
+    open_loops: list[str] | None = None,
+    next_steps: list[str] | None = None,
+    essential_context: list[str] | None = None,
+    optional_context: list[str] | None = None,
+    archived_context: list[str] | None = None,
+    risk_flags: list[str] | None = None,
+    obsolete_context: list[str] | None = None,
+    related_entry_ids: list[str] | None = None,
+    include_deleted: bool = False,
+    audience: str = "agent",
+) -> dict[str, Any] | None:
+    """Close a session and persist the next-goal handoff in one operation."""
+    review_entry = close_session(
+        root,
+        workstream_id,
+        session_id=session_id,
+        outcome=outcome,
+        status=status,
+        next_steps=next_steps,
+        open_loops=open_loops,
+        related_entry_ids=related_entry_ids,
+        next_goal=next_goal,
+    )
+    if review_entry is None:
+        return None
+    handoff_package = build_handoff_package(
+        root,
+        workstream_id,
+        session_id=session_id or review_entry.get("session_id"),
+        next_goal=next_goal,
+        include_deleted=include_deleted,
+    ) or {}
+    selected_handoff = handoff_package.get("human_handoff") if str(audience).strip().lower() == "human" else handoff_package.get("agent_handoff")
+    selected_handoff = selected_handoff if isinstance(selected_handoff, dict) else {}
+    handoff_entry = write_structured_handoff(
+        root,
+        workstream_id,
+        session_id=session_id or review_entry.get("session_id"),
+        goal=str(selected_handoff.get("goal") or next_goal).strip(),
+        summary=_normalize_optional_text(summary) or _normalize_optional_text(selected_handoff.get("summary")) or "",
+        current_state=list(selected_handoff.get("current_state") or handoff_package.get("current_state") or []),
+        open_loops=_normalize_handoff_lines(open_loops) if open_loops is not None else list(selected_handoff.get("open_loops") or handoff_package.get("open_loops") or []),
+        next_steps=_normalize_handoff_lines(next_steps) if next_steps is not None else list(selected_handoff.get("next_steps") or handoff_package.get("next_steps") or []),
+        essential_context=_normalize_handoff_lines(essential_context) if essential_context is not None else list(selected_handoff.get("essential_context") or (handoff_package.get("compressed_context") or {}).get("essential") or []),
+        optional_context=_normalize_handoff_lines(optional_context) if optional_context is not None else list(selected_handoff.get("optional_context") or (handoff_package.get("compressed_context") or {}).get("optional") or []),
+        archived_context=_normalize_handoff_lines(archived_context) if archived_context is not None else list(selected_handoff.get("archived_context") or (handoff_package.get("compressed_context") or {}).get("archived") or []),
+        risk_flags=_normalize_handoff_lines(risk_flags) if risk_flags is not None else list(selected_handoff.get("risk_flags") or (handoff_package.get("compressed_context") or {}).get("risky") or []),
+        obsolete_context=_normalize_handoff_lines(obsolete_context) if obsolete_context is not None else list(selected_handoff.get("obsolete_context") or (handoff_package.get("compressed_context") or {}).get("obsolete") or []),
+        related_entries=list(selected_handoff.get("related_entries") or handoff_package.get("related_entry_ids") or []),
+        restore_section=str((selected_handoff.get("restore_context") or {}).get("section") or (handoff_package.get("restore_context") or {}).get("section") or _HANDOFF_SECTION),
+        restore_query=_normalize_optional_text((selected_handoff.get("restore_context") or {}).get("query")) or _normalize_optional_text((handoff_package.get("restore_context") or {}).get("query")),
+        include_deleted=bool((selected_handoff.get("restore_context") or {}).get("include_deleted", include_deleted)),
+        tags=["anti-context-switch", f"handoff-{str(audience).strip().lower() or 'agent'}"],
+        audience=str(audience).strip().lower() or "agent",
+    )
+    return {
+        "review_entry": review_entry,
+        "handoff_entry": handoff_entry,
+        "handoff_package": handoff_package,
+    }
+
+
+def list_review_queue(
+    root: Path,
+    *,
+    workstream_id: str | None = None,
+    session_id: str | None = None,
+    actor_type: str | None = None,
+    actor_id: str | None = None,
+    entry_kind: str | None = None,
+    review_status: str | None = None,
+    include_deleted: bool = False,
+    pending_only: bool = True,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """List entries that should be reviewed, with diff context when available."""
+    entries = (
+        _workstream_entries(root, workstream_id, session_id=session_id, include_deleted=include_deleted)
+        if workstream_id is not None
+        else read_entries(root, include_deleted=include_deleted)
+    )
+    items: list[dict[str, Any]] = []
+    normalized_actor_type = _normalize_optional_text(actor_type)
+    normalized_actor_id = _normalize_optional_text(actor_id)
+    normalized_entry_kind = _normalize_optional_text(entry_kind)
+    normalized_review_status = _normalize_optional_text(review_status)
+    for entry in reversed(entries):
+        review_item = _review_item(root, entry)
+        if pending_only and review_item["review_status"] in {"approved", "dismissed"}:
+            continue
+        if not review_item["review_reasons"] and review_item["review_status"] == "pending":
+            continue
+        if session_id is not None and entry.get("session_id") != session_id:
+            continue
+        if normalized_actor_type and review_item.get("actor_type") != normalized_actor_type:
+            continue
+        if normalized_actor_id and review_item.get("actor_id") != normalized_actor_id:
+            continue
+        if normalized_entry_kind and review_item.get("entry_kind") != normalized_entry_kind:
+            continue
+        if normalized_review_status and review_item.get("review_status") != normalized_review_status:
+            continue
+        items.append(review_item)
+        if limit is not None and limit >= 0 and len(items) >= limit:
+            break
+    return items
+
+
+def get_review_session(
+    root: Path,
+    workstream_id: str,
+    session_id: str,
+    *,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Aggregate review context for one workstream session."""
+    entries = _workstream_entries(root, workstream_id, session_id=session_id, include_deleted=include_deleted)
+    if not entries:
+        return None
+    review_items = list_review_queue(
+        root,
+        workstream_id=workstream_id,
+        session_id=session_id,
+        include_deleted=include_deleted,
+        pending_only=False,
+    )
+    resume = resume_workstream(root, workstream_id, session_id=session_id, include_deleted=include_deleted)
+    state = get_workstream_state(root, workstream_id, session_id=session_id, include_deleted=include_deleted)
+    latest_handoff = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "handoff"), None)
+    latest_state = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "state"), None)
+    latest_review = next((entry for entry in reversed(entries) if entry.get("entry_kind") == "review"), None)
+    return {
+        "workstream_id": workstream_id,
+        "session_id": session_id,
+        "entry_count": len(entries),
+        "review_count": len(review_items),
+        "pending_review_count": sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"}),
+        "latest_handoff": _entry_preview(latest_handoff) if latest_handoff else None,
+        "latest_state": _entry_preview(latest_state) if latest_state else None,
+        "latest_review": _entry_preview(latest_review) if latest_review else None,
+        "resume": _session_compare_payload(session_id, entries, resume),
+        "review_items": review_items,
+        "timeline": list((state or {}).get("timeline") or []),
+        "active_decision_ids": list((resume or {}).get("active_decision_ids") or []),
+    }
+
+
+def get_review_workstream(
+    root: Path,
+    workstream_id: str,
+    *,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Aggregate review context for a whole workstream."""
+    entries = _workstream_entries(root, workstream_id, include_deleted=include_deleted)
+    if not entries:
+        return None
+    state = get_workstream_state(root, workstream_id, include_deleted=include_deleted)
+    resume = resume_workstream(root, workstream_id, include_deleted=include_deleted)
+    review_items = list_review_queue(root, workstream_id=workstream_id, include_deleted=include_deleted, pending_only=False)
+    session_ids = [item.get("session_id") for item in (state or {}).get("sessions") or [] if item.get("session_id")]
+    session_groups = [
+        get_review_session(root, workstream_id, session_id, include_deleted=include_deleted)
+        for session_id in session_ids
+    ]
+    return {
+        "workstream_id": workstream_id,
+        "operational_status": _workstream_operational_status(entries, sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"})),
+        "entry_count": len(entries),
+        "review_count": len(review_items),
+        "pending_review_count": sum(1 for item in review_items if item.get("review_status") not in {"approved", "dismissed"}),
+        "resume": resume,
+        "latest_handoff": (state or {}).get("latest_handoff"),
+        "latest_state": (state or {}).get("latest_state"),
+        "latest_review": (state or {}).get("latest_review"),
+        "review_items": review_items,
+        "sessions": [item for item in session_groups if item is not None],
+    }
+
+
+def list_workstream_queue(
+    root: Path,
+    *,
+    status: str | None = None,
+    include_deleted: bool = False,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """List workstreams as an operational queue with explicit statuses."""
+    items = list_workstreams(root, limit=None, include_deleted=include_deleted)
+    normalized_status = _normalize_optional_text(status)
+    if normalized_status:
+        items = [item for item in items if item.get("operational_status") == normalized_status]
+    if limit is not None and limit >= 0:
+        return items[:limit]
+    return items
+
+
+def compare_sessions(
+    root: Path,
+    workstream_id: str,
+    left_session_id: str,
+    right_session_id: str,
+    *,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Compare two sessions inside the same workstream."""
+    left_entries = _workstream_entries(root, workstream_id, session_id=left_session_id, include_deleted=include_deleted)
+    right_entries = _workstream_entries(root, workstream_id, session_id=right_session_id, include_deleted=include_deleted)
+    if not left_entries or not right_entries:
+        return None
+    left_resume = resume_workstream(root, workstream_id, session_id=left_session_id, include_deleted=include_deleted)
+    right_resume = resume_workstream(root, workstream_id, session_id=right_session_id, include_deleted=include_deleted)
+    left_review = get_review_session(root, workstream_id, left_session_id, include_deleted=include_deleted)
+    right_review = get_review_session(root, workstream_id, right_session_id, include_deleted=include_deleted)
+    return {
+        "workstream_id": workstream_id,
+        "left": {
+            "resume": _session_compare_payload(left_session_id, left_entries, left_resume),
+            "review": left_review,
+        },
+        "right": {
+            "resume": _session_compare_payload(right_session_id, right_entries, right_resume),
+            "review": right_review,
+        },
+        "delta": {
+            "new_open_loops": [item for item in (right_resume or {}).get("open_loops", []) if item not in (left_resume or {}).get("open_loops", [])],
+            "resolved_open_loops": [item for item in (left_resume or {}).get("open_loops", []) if item not in (right_resume or {}).get("open_loops", [])],
+            "new_next_steps": [item for item in (right_resume or {}).get("next_steps", []) if item not in (left_resume or {}).get("next_steps", [])],
+            "new_focus_entry_ids": [item for item in (right_resume or {}).get("focus_entry_ids", []) if item not in (left_resume or {}).get("focus_entry_ids", [])],
+        },
+        "current_state_diff": _compare_text_block(
+            list((left_resume or {}).get("current_state") or []),
+            list((right_resume or {}).get("current_state") or []),
+            left_label=f"{left_session_id}:current_state",
+            right_label=f"{right_session_id}:current_state",
+        ),
+        "open_loops_diff": _compare_text_block(
+            list((left_resume or {}).get("open_loops") or []),
+            list((right_resume or {}).get("open_loops") or []),
+            left_label=f"{left_session_id}:open_loops",
+            right_label=f"{right_session_id}:open_loops",
+        ),
+        "next_steps_diff": _compare_text_block(
+            list((left_resume or {}).get("next_steps") or []),
+            list((right_resume or {}).get("next_steps") or []),
+            left_label=f"{left_session_id}:next_steps",
+            right_label=f"{right_session_id}:next_steps",
+        ),
+    }
+
+
+def compare_workstreams(
+    root: Path,
+    left_workstream_id: str,
+    right_workstream_id: str,
+    *,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    """Compare two workstreams at the resume layer."""
+    left_resume = resume_workstream(root, left_workstream_id, include_deleted=include_deleted)
+    right_resume = resume_workstream(root, right_workstream_id, include_deleted=include_deleted)
+    left_state = get_workstream_state(root, left_workstream_id, include_deleted=include_deleted)
+    right_state = get_workstream_state(root, right_workstream_id, include_deleted=include_deleted)
+    if left_resume is None or right_resume is None or left_state is None or right_state is None:
+        return None
+    return {
+        "left": {
+            "workstream_id": left_workstream_id,
+            "resume": left_resume,
+            "state": left_state,
+        },
+        "right": {
+            "workstream_id": right_workstream_id,
+            "resume": right_resume,
+            "state": right_state,
+        },
+        "delta": {
+            "operational_status_changed": left_resume.get("operational_status") != right_resume.get("operational_status"),
+            "left_only_open_loops": [item for item in left_resume.get("open_loops", []) if item not in right_resume.get("open_loops", [])],
+            "right_only_open_loops": [item for item in right_resume.get("open_loops", []) if item not in left_resume.get("open_loops", [])],
+            "left_only_focus_entry_ids": [item for item in left_resume.get("focus_entry_ids", []) if item not in right_resume.get("focus_entry_ids", [])],
+            "right_only_focus_entry_ids": [item for item in right_resume.get("focus_entry_ids", []) if item not in left_resume.get("focus_entry_ids", [])],
+        },
+        "open_loops_diff": _compare_text_block(
+            list(left_resume.get("open_loops") or []),
+            list(right_resume.get("open_loops") or []),
+            left_label=f"{left_workstream_id}:open_loops",
+            right_label=f"{right_workstream_id}:open_loops",
+        ),
+        "next_steps_diff": _compare_text_block(
+            list(left_resume.get("next_steps") or []),
+            list(right_resume.get("next_steps") or []),
+            left_label=f"{left_workstream_id}:next_steps",
+            right_label=f"{right_workstream_id}:next_steps",
+        ),
+    }
+
+
+def update_review_status(
+    root: Path,
+    entry_id: str,
+    review_status: str,
+    *,
+    review_notes: str | None = None,
+    review_reason: str | None = None,
+    validation_notes: str | None = None,
+    source_context_entry_ids: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Persist the review decision for one entry."""
+    normalized_status = str(review_status).strip().lower()
+    if normalized_status not in _REVIEW_STATUS_VALUES:
+        raise RemembValidationError("review_status must be one of: pending, approved, needs_revision, dismissed.")
+    entry = _find_entry(read_entries(root, include_deleted=True), entry_id)
+    if entry is None:
+        return None
+    structured = dict(entry.get("structured") or {}) if isinstance(entry.get("structured"), dict) else {}
+    structured["review_status"] = normalized_status
+    structured["review_notes"] = _normalize_optional_text(review_notes) or ""
+    structured["review_reason"] = _normalize_optional_text(review_reason) or ""
+    structured["validation_notes"] = _normalize_optional_text(validation_notes) or ""
+    if source_context_entry_ids is not None:
+        structured["source_context_entry_ids"] = _normalize_handoff_lines(source_context_entry_ids)
+    structured["reviewed_at"] = _now()
+    return edit_entry(
+        root,
+        entry_id,
+        workstream_id=entry.get("workstream_id"),
+        session_id=entry.get("session_id"),
+        entry_kind=entry.get("entry_kind"),
+        entry_role=entry.get("entry_role"),
+        actor_type=entry.get("actor_type"),
+        actor_id=entry.get("actor_id"),
+        related_entry_ids=list(entry.get("related_entry_ids") or []),
+        structured=structured,
+    )
 
 
 def _normalize_semantic_scope(semantic_scope: str) -> str:
@@ -259,6 +1712,7 @@ def write_entries(
                 "section": _validate_section(str(item.get("section", "project")), root),
                 "content": _sanitize_content(item["content"], root),
                 "tags": _sanitize_tags(item.get("tags") or [], root),
+                "metadata": _extract_entry_metadata(item),
             }
         )
 
@@ -329,6 +1783,7 @@ def write_entries(
                 "created_at": now,
                 "updated_at": now,
             }
+            entry.update(item["metadata"])
             entries.append(entry)
             created_entries.append(entry)
         logger.info("Wrote %s entries", len(created_entries))
@@ -337,109 +1792,34 @@ def write_entries(
     return _atomic_modify(root, add_entries)
 
 
-def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
-    meta_file = _meta_path(root)
-    existing_meta: dict[str, object] = {}
-    if meta_file.exists():
-        try:
-            loaded_meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            if isinstance(loaded_meta, dict):
-                existing_meta = dict(loaded_meta)
-        except (json.JSONDecodeError, OSError):
-            existing_meta = {}
-
-    meta = dict(existing_meta)
-    meta["version"] = str(meta.get("version") or "1")
-    meta["project"] = str(meta.get("project") or project_name or root.name)
-    meta["created_at"] = str(meta.get("created_at") or _now())
-    meta["sections"] = list(sections)
-    _save_json_object(meta_file, meta)
-
-
-def _validate_config_updates(
-    root: Path,
-    current_config: dict[str, object],
-    updates: dict[str, object],
-) -> dict[str, object]:
-    if not isinstance(updates, dict) or not updates:
-        raise RemembValidationError("Provide at least one configuration field to update.")
-
-    next_config: dict[str, object] = dict(current_config)
-    for key, value in updates.items():
-        if key not in current_config:
-            raise RemembValidationError(f"Unknown config key: {key}")
-
-        if key in _POSITIVE_INT_CONFIG_KEYS:
-            try:
-                parsed = int(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a positive integer.") from None
-            if parsed <= 0:
-                raise RemembValidationError(f"{key} must be a positive integer.")
-            next_config[key] = parsed
-            continue
-
-        if key in _NON_NEGATIVE_INT_CONFIG_KEYS:
-            try:
-                parsed = int(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a non-negative integer.") from None
-            if parsed < 0:
-                raise RemembValidationError(f"{key} must be a non-negative integer.")
-            next_config[key] = parsed
-            continue
-
-        if key in _FLOAT_0_1_CONFIG_KEYS:
-            try:
-                parsed_f = float(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a float between 0.0 and 1.0.") from None
-            if not (0.0 <= parsed_f <= 1.0):
-                raise RemembValidationError(f"{key} must be between 0.0 and 1.0.")
-            next_config[key] = parsed_f
-            continue
-
-        if key == "semantic_model_name":
-            model_name = str(value).strip()
-            if not model_name:
-                raise RemembValidationError("semantic_model_name cannot be empty.")
-            next_config[key] = model_name
-            continue
-
-        if key == "sections":
-            next_config[key] = _validate_sections_config(root, value)
-            continue
-
-        if key == "section_colors":
-            if not isinstance(value, dict):
-                raise RemembValidationError("section_colors must be a dictionary keyed by section name.")
-            for section_name, color in value.items():
-                if not isinstance(section_name, str) or not _is_hex_color(color):
-                    raise RemembValidationError("section_colors values must be hex colors like #12abef.")
-            next_config[key] = {str(section_name): str(color).strip().lower() for section_name, color in value.items()}
-            continue
-
-        next_config[key] = value
-
-    current_sections = _validate_sections_config(root, current_config["sections"])
-    requested_sections = _validate_sections_config(root, next_config.get("sections", current_sections))
-    final_sections, used_removed_sections, migration_target = _plan_section_migration(
-        root,
-        current_sections,
-        requested_sections,
-    )
-    next_config["sections"] = final_sections
-    next_config["section_colors"] = _normalize_section_colors(next_config.get("section_colors"), final_sections)
-    next_config["_used_removed_sections"] = used_removed_sections
-    next_config["_migration_target"] = migration_target
-
-    return next_config
-
-
 __all__ = [
     "init",
     "get_config",
     "update_config",
+    "generate_handoff",
+    "write_handoff",
+    "list_handoffs",
+    "list_workstreams",
+    "open_workstream",
+    "get_handoff",
+    "get_handoff_restore_context",
+    "get_workstream_state",
+    "parse_handoff_restore_context",
+    "read_structured_handoff",
+    "resume_workstream",
+    "build_handoff_package",
+    "get_review_session",
+    "get_review_workstream",
+    "list_workstream_queue",
+    "compare_sessions",
+    "compare_workstreams",
+    "start_session",
+    "close_session",
+    "close_session_with_handoff",
+    "update_workstream_state",
+    "list_review_queue",
+    "update_review_status",
+    "write_structured_handoff",
     "write_entry",
     "write_entries",
     "consolidate_entries",
@@ -520,6 +1900,18 @@ def write_entry(
     tags: list[str] | None = None,
     skip_duplicates: bool = True,
     semantic_scope: str = "global",
+    *,
+    meta_schema_version: int | None = None,
+    workstream_id: str | None = None,
+    session_id: str | None = None,
+    entry_kind: str | None = None,
+    entry_role: str | None = None,
+    actor_type: str | None = None,
+    actor_id: str | None = None,
+    parent_entry_id: str | None = None,
+    supersedes_entry_id: str | None = None,
+    related_entry_ids: list[str] | None = None,
+    structured: dict[str, Any] | None = None,
 ) -> dict:
     """Write a new entry to memory.
     
@@ -543,7 +1935,22 @@ def write_entry(
     logger.info(f"Writing entry to section '{section}'")
     return write_entries(
         root,
-        [{"section": section, "content": content, "tags": tags or []}],
+        [{
+            "section": section,
+            "content": content,
+            "tags": tags or [],
+            "meta_schema_version": meta_schema_version,
+            "workstream_id": workstream_id,
+            "session_id": session_id,
+            "entry_kind": entry_kind,
+            "entry_role": entry_role,
+            "actor_type": actor_type,
+            "actor_id": actor_id,
+            "parent_entry_id": parent_entry_id,
+            "supersedes_entry_id": supersedes_entry_id,
+            "related_entry_ids": related_entry_ids,
+            "structured": structured,
+        }],
         skip_duplicates=skip_duplicates,
         semantic_scope=semantic_scope,
     )[0]
@@ -893,7 +2300,25 @@ def clear_entries(root: Path, *, confirm: bool = False) -> int:
     return _atomic_modify(root, clear_all)
 
 
-def edit_entry(root: Path, entry_id: str, content: str | None = None, section: str | None = None, tags: list[str] | None = None) -> dict | None:
+def edit_entry(
+    root: Path,
+    entry_id: str,
+    content: str | None = None,
+    section: str | None = None,
+    tags: list[str] | None = None,
+    *,
+    meta_schema_version: int | None = None,
+    workstream_id: str | None = None,
+    session_id: str | None = None,
+    entry_kind: str | None = None,
+    entry_role: str | None = None,
+    actor_type: str | None = None,
+    actor_id: str | None = None,
+    parent_entry_id: str | None = None,
+    supersedes_entry_id: str | None = None,
+    related_entry_ids: list[str] | None = None,
+    structured: dict[str, Any] | None = None,
+) -> dict | None:
     """Edit an existing entry by ID.
     
     Args:
@@ -912,7 +2337,23 @@ def edit_entry(root: Path, entry_id: str, content: str | None = None, section: s
     logger.debug(f"edit_entry called: entry_id={entry_id}, content={content is not None}, section={section is not None}, tags={tags is not None}")
     return edit_entries(
         root,
-        [{"entry_id": entry_id, "content": content, "section": section, "tags": tags}],
+        [{
+            "entry_id": entry_id,
+            "content": content,
+            "section": section,
+            "tags": tags,
+            "meta_schema_version": meta_schema_version,
+            "workstream_id": workstream_id,
+            "session_id": session_id,
+            "entry_kind": entry_kind,
+            "entry_role": entry_role,
+            "actor_type": actor_type,
+            "actor_id": actor_id,
+            "parent_entry_id": parent_entry_id,
+            "supersedes_entry_id": supersedes_entry_id,
+            "related_entry_ids": related_entry_ids,
+            "structured": structured,
+        }],
     )[0]
 
 
@@ -930,9 +2371,10 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
         entry_id = str(update.get("entry_id", "")).strip()
         if not entry_id:
             raise RemembValidationError("Each batch update must include entry_id.")
-        if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
+        metadata_present = any(field in update for field in _ENTRY_METADATA_FIELDS)
+        if update.get("content") is None and update.get("section") is None and update.get("tags") is None and not metadata_present:
             raise RemembValidationError(
-                f"Provide at least one field to update for entry {entry_id}: content, section, or tags."
+                f"Provide at least one field to update for entry {entry_id}: content, section, tags, or metadata."
             )
 
         prepared_update: dict[str, Any] = {"entry_id": entry_id}
@@ -942,6 +2384,14 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
             prepared_update["section"] = _validate_section(update["section"], root)
         if update.get("tags") is not None:
             prepared_update["tags"] = _sanitize_tags(update["tags"], root)
+        for field in _ENTRY_METADATA_FIELDS:
+            if field not in update:
+                continue
+            value = update[field]
+            if value is None:
+                prepared_update[field] = None
+            else:
+                prepared_update[field] = _normalize_entry_metadata_value(field, value)
         prepared_updates.append(prepared_update)
 
     def modify_entries(entries: list[dict]) -> list[dict | None]:
@@ -960,6 +2410,13 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
                 entry["section"] = update["section"]
             if "tags" in update:
                 entry["tags"] = update["tags"]
+            for field in _ENTRY_METADATA_FIELDS:
+                if field not in update:
+                    continue
+                if update[field] is None:
+                    entry.pop(field, None)
+                else:
+                    entry[field] = update[field]
             entry["history"] = history
             entry["version"] = _current_entry_version(entry) + 1
             entry["updated_at"] = _now()

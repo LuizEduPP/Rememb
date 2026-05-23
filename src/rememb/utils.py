@@ -5,22 +5,17 @@ import logging
 import os
 import re
 import warnings
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import typer
-from rich.console import Console
-from rich.columns import Columns
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-from rich import box
-
 from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE, CONFIG_FILE
-from rememb.exceptions import RemembError, RemembNotInitializedError
+from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 
-console = Console()
+HANDOFF_SECTION = "actions"
+HANDOFF_TAG = "handoff"
+HANDOFF_HEADING_PREFIX = "## "
 
 logger = logging.getLogger(__name__)
 
@@ -254,126 +249,234 @@ def is_initialized(root: Path) -> bool:
     return _entries_path(root).exists()
 
 
+def ensure_global_root(initializer: Callable[[Path, str, bool], object]) -> Path:
+    """Return the global root, initializing the store if needed."""
+    root = global_root()
+    if not is_initialized(root):
+        initializer(root, "global", True)
+    if not is_initialized(root):
+        raise RemembNotInitializedError("Global rememb not initialized.")
+    return root
+
+
 def _now() -> str:
     """Get current UTC timestamp."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+
+def _normalize_handoff_lines(items: list[str] | None) -> list[str]:
+    if not items:
+        return []
+    normalized: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def _normalize_handoff_goal_tag(goal: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", goal.strip().lower()).strip("-")
+    return f"goal:{slug or 'handoff'}"
+
+
+def _handoff_list_block(items: list[str], *, ordered: bool = False) -> list[str]:
+    if not items:
+        return ["- None recorded."]
+    if ordered:
+        return [f"{index}. {item}" for index, item in enumerate(items, start=1)]
+    return [f"- {item}" for item in items]
+
+
+def _handoff_text_block(text: str | None, *, fallback: str) -> list[str]:
+    value = str(text or "").strip()
+    return [value or fallback]
+
+
+def _split_handoff_sections(content: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {}
+    current_heading: str | None = None
+    for raw_line in str(content).splitlines():
+        line = raw_line.rstrip()
+        if line.startswith(HANDOFF_HEADING_PREFIX):
+            current_heading = line[len(HANDOFF_HEADING_PREFIX):].strip().lower()
+            sections.setdefault(current_heading, [])
+            continue
+        if current_heading is not None:
+            sections[current_heading].append(line)
+    return sections
+
+
+def _parse_handoff_list(lines: list[str]) -> list[str]:
+    items: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            items.append(stripped[2:].strip())
+            continue
+        numbered = re.match(r"^\d+\.\s+(.*)$", stripped)
+        if numbered:
+            items.append(numbered.group(1).strip())
+    return [item for item in items if item and item.lower() != "none recorded."]
+
+
+def _parse_handoff_reference(value: str) -> dict[str, Any]:
+    raw = value.strip()
+    match = re.match(r"^(?P<entry_id>[0-9a-f]{8})(?:@v(?P<version>\d+))?$", raw, re.IGNORECASE)
+    if not match:
+        return {"raw": raw, "entry_id": raw, "version": None}
+    version = match.group("version")
+    return {
+        "raw": raw,
+        "entry_id": match.group("entry_id").lower(),
+        "version": int(version) if version else None,
+    }
+
+
+def _parse_restore_context(lines: list[str], *, default_section: str = HANDOFF_SECTION) -> dict[str, Any]:
+    restore_context = {
+        "section": default_section,
+        "query": "",
+        "include_deleted": False,
+    }
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        normalized_key = key.strip().lower()
+        normalized_value = value.strip()
+        if normalized_key == "section" and normalized_value:
+            restore_context["section"] = normalized_value
+        elif normalized_key == "query":
+            restore_context["query"] = normalized_value
+        elif normalized_key == "include_deleted":
+            restore_context["include_deleted"] = normalized_value.lower() == "true"
+    return restore_context
+
+
+def _current_entry_version(entry: dict[str, Any]) -> int:
+    raw_version = entry.get("version", 1)
+    try:
+        parsed_version = int(str(raw_version).strip())
+    except (TypeError, ValueError):
+        return 1
+    return parsed_version if parsed_version > 0 else 1
+
+
+_ENTRY_REVISION_METADATA_FIELDS = (
+    "meta_schema_version",
+    "workstream_id",
+    "session_id",
+    "entry_kind",
+    "entry_role",
+    "actor_type",
+    "actor_id",
+    "parent_entry_id",
+    "supersedes_entry_id",
+    "related_entry_ids",
+    "structured",
+)
+
+
+def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_history = entry.get("history")
+    if not isinstance(raw_history, list):
+        return []
+    return [dict(item) for item in raw_history if isinstance(item, dict)]
+
+
+def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
+    snapshot = {
+        "version": _current_entry_version(entry),
+        "section": str(entry.get("section", "")),
+        "content": str(entry.get("content", "")),
+        "tags": list(entry.get("tags", [])) if isinstance(entry.get("tags"), list) else [],
+        "created_at": str(entry.get("created_at", "")),
+        "updated_at": str(entry.get("updated_at", "")),
+        "deleted_at": str(entry.get("deleted_at", "")),
+    }
+    for field in _ENTRY_REVISION_METADATA_FIELDS:
+        if field not in entry:
+            continue
+        value = entry[field]
+        if isinstance(value, list):
+            snapshot[field] = list(value)
+        elif isinstance(value, dict):
+            snapshot[field] = dict(value)
+        else:
+            snapshot[field] = value
+    return snapshot
+
+
+def _deleted_at(entry: dict[str, Any]) -> str | None:
+    value = str(entry.get("deleted_at", "")).strip()
+    return value or None
+
+
+def _is_deleted_entry(entry: dict[str, Any]) -> bool:
+    return _deleted_at(entry) is not None
+
+
+def _filter_deleted(entries: list[dict[str, Any]], *, include_deleted: bool) -> list[dict[str, Any]]:
+    if include_deleted:
+        return list(entries)
+    return [entry for entry in entries if not _is_deleted_entry(entry)]
+
+
+def _entry_revision_list(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    revisions = _entry_history(entry)
+    revisions.append(_entry_revision_snapshot(entry))
+    revisions.sort(key=lambda revision: int(revision.get("version", 1)))
+    return revisions
+
+
+def _find_entry(entries: list[dict[str, Any]], entry_id: str) -> dict[str, Any] | None:
+    for entry in entries:
+        if str(entry.get("id", "")) == entry_id:
+            return entry
+    return None
+
+
+def _find_entry_revision(entry: dict[str, Any], version: int) -> dict[str, Any] | None:
+    for revision in _entry_revision_list(entry):
+        if int(revision.get("version", 0)) == version:
+            return dict(revision)
+    return None
+
+
+def _apply_revision(entry: dict[str, Any], revision: dict[str, Any], *, restore_deleted: bool = False) -> None:
+    entry["section"] = str(revision.get("section", ""))
+    entry["content"] = str(revision.get("content", ""))
+    entry["tags"] = list(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else []
+    for field in _ENTRY_REVISION_METADATA_FIELDS:
+        if field not in revision:
+            entry.pop(field, None)
+            continue
+        value = revision[field]
+        if isinstance(value, list):
+            entry[field] = list(value)
+        elif isinstance(value, dict):
+            entry[field] = dict(value)
+        else:
+            entry[field] = value
+    if restore_deleted:
+        entry.pop("deleted_at", None)
+
+
+def _revision_label(entry_id: str, version: int) -> str:
+    return f"{entry_id}@v{version}"
+
+
+def _normalize_version_number(version: object) -> int:
+    try:
+        parsed = int(str(version).strip())
+    except (TypeError, ValueError):
+        raise RemembValidationError("version must be a positive integer.") from None
+    if parsed <= 0:
+        raise RemembValidationError("version must be a positive integer.")
+    return parsed
+
 def escape(text: str) -> str:
     """Escape markup-like characters for safe terminal output."""
     return html.escape(text)
-
-
-def _print_message(message: str, prefix: str = "") -> None:
-    """Print a formatted terminal message with an optional prefix."""
-    rendered = f"{prefix}{message}" if prefix else message
-    print(f"\n{rendered}\n")
-
-
-def _print_error(message: str, **kwargs) -> None:
-    """Print error message."""
-    _print_message(message, "✗ Error: ")
-
-
-def _print_success(message: str, **kwargs) -> None:
-    """Print success message."""
-    _print_message(message, "✓ ")
-
-
-def _print_warning(message: str, **kwargs) -> None:
-    """Print warning message."""
-    _print_message(message, "⚠ ")
-
-
-def _print_info(message: str, **kwargs) -> None:
-    """Print info message."""
-    _print_message(message)
-
-
-def _handle_error(func, *args, **kwargs) -> Any:
-    """Handle RemembError and print error message.
-    
-    Args:
-        func: Function to execute
-        *args: Arguments to pass to function
-        **kwargs: Keyword arguments to pass to function
-    
-    Returns:
-        Result from function
-    
-    Raises:
-        typer.Exit: If RemembError occurs
-    """
-    try:
-        return func(*args, **kwargs)
-    except RemembError as e:
-        _print_error(str(e))
-        raise typer.Exit(1)
-
-
-def _validate_entry_id_or_exit(entry_id: str) -> None:
-    """Validate entry ID format and exit if invalid.
-    
-    Args:
-        entry_id: Entry ID to validate
-    
-    Raises:
-        typer.Exit: If entry_id is invalid
-    """
-    if not _validate_entry_id(entry_id):
-        _print_error(f"Invalid entry ID format\n{entry_id}\nExpected: 8 hexadecimal characters (e.g., a1b2c3d4)")
-        raise typer.Exit(1)
-
-
-def _root() -> Path:
-    """
-    Get project root, fallback to global if not found.
-    
-    Auto-initializes global root (~/.rememb) if no local .rememb is found.
-    
-    Returns:
-        Path to project root or initialized global root
-    
-    Raises:
-        typer.Exit: If global root cannot be initialized
-    """
-    from rememb.store import init as _init
-    try:
-        root = find_root()
-        if is_initialized(root):
-            return root
-        _print_error("Not initialized\nRun 'rememb init' first")
-        raise typer.Exit(1)
-    except RemembNotInitializedError:
-        root = global_root()
-        if not is_initialized(root):
-            try:
-                _init(root, project_name="global", global_mode=True)
-            except PermissionError as e:
-                _print_error(f"Permission denied\nCannot create ~/.rememb/ directory\n{e}")
-                raise typer.Exit(1)
-            except OSError as e:
-                _print_error(f"System error\nCannot initialize rememb storage\n{e}")
-                raise typer.Exit(1)
-        return root
-
-
-def _print_table(entries: list[dict]) -> None:
-    """Print entries in a formatted table.
-    
-    Args:
-        entries: List of entry dictionaries to display
-    """
-    if not entries:
-        print("No entries found.")
-        return
-
-    print(f"\n{'ID':<10} {'Section':<12} {'Content':<50} {'Tags':<20} {'Created':<22} {'Updated':<22}")
-    print("-" * 130)
-
-    for e in entries:
-        content = e["content"][:47] + "..." if len(e["content"]) > 50 else e["content"]
-        tags = ", ".join(e.get("tags", []))[:17] or "-"
-        if len(", ".join(e.get("tags", []))) > 20:
-            tags = tags[:17] + "..."
-        print(f"{e['id']:<10} {e['section']:<12} {content:<50} {tags:<20} {e['created_at']:<22} {e.get('updated_at', 'N/A'):<22}")
-    print()

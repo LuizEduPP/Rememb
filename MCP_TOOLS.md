@@ -1,146 +1,460 @@
 # MCP Tools
 
-This file documents the public MCP tools defined in src/rememb/mcp_server.py.
+This file documents the current public MCP tools exposed by src/rememb/mcp_server.py.
 
-## rememb_read
+## Recommended agent rules
 
-Description: Read all memory entries or filter by section. This is a safe, read-only operation with no side effects. Use it at the start of each session to load context. Prefer rememb_search when you need to find specific information by keyword or topic.
+No extra rules are required to make rememb work. If you want the workstream-first flow to be used consistently, use the same strict rules block documented in the README:
 
-Parameters:
+```text
+When using rememb, always use the workstream-first flow. Do not fall back to broad entry-first usage when a workstream flow is available.
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| section | string | no | - | sections configured in .rememb/config.json | Filters by section |
-| summary_only | boolean | no | false | true, false | Renders a compact one-line summary per entry |
-| max_chars | integer | no | - | any integer | Maximum number of content characters to include per entry |
+Critical override: if a workstream flow is available, do not skip it or replace it with broad entry-first reads.
 
-## rememb_read_page
+1. At the start of a session, if a workstream is already known, call rememb_workstream_resume before any broad rememb_read, rememb_read_page, or rememb_search.
+2. If the workstream is not known yet, first inspect available workstreams with rememb_workstream_list. If no suitable workstream exists, create one with rememb_workstream_open and immediately start a session with rememb_session_start.
+3. When you need the factual aggregated state of a workstream, use rememb_workstream_state_get exclusively. When you need the operational continuation context, use rememb_workstream_resume.
+4. Persist meaningful progress with rememb_workstream_state_update. Use rememb_write only for genuinely standalone entries that do not belong to an active workstream or session lifecycle.
+5. End or pause a session with rememb_session_close or rememb_handoff_write_structured. Use rememb_handoff_generate only when you want a simpler handoff entry rather than the full structured handoff flow.
+6. When a handoff already exists, inspect it with rememb_handoff_read_structured, rememb_handoff_restore_context, or rememb_handoff_list before falling back to broader reads.
+7. Use rememb_edit to update an existing fact instead of creating duplicates with rememb_write. Use rememb_delete for targeted soft deletion, rememb_restore to recover a deleted entry or prior version, rememb_versions to inspect revision history, and rememb_diff to compare revisions.
+8. Use rememb_read, rememb_read_page, or rememb_search only when the workstream is unknown, when broader context is explicitly required, or when you are intentionally inspecting raw entries outside the workstream flow.
+9. Use rememb_stats to inspect store size and section totals, and rememb_consolidate when you are intentionally cleaning duplicate memory rather than adding new workstream progress.
+10. Treat rememb_init as compatibility or recovery only. Do not use it as a normal step in the session flow when rememb is already running in MCP mode.
+11. Use rememb_list_skills and rememb_use_skill only when you need bundled rememb skill instructions. Do not substitute them for core memory, workstream, session, handoff, versioning, or recovery tools.
+12. Before executing any memory-related tool, perform a silent internal check: does this action strictly follow the workstream-first flow? If not, pivot to the correct rememb tool first.
+13. When you want to close a session and persist the next-goal handoff in one step, use rememb_session_close_and_handoff instead of manually chaining separate close and handoff calls.
+14. When you need a compact anti-context-switch restore package without writing a new handoff entry, use rememb_handoff_package.
+15. When you need the review backlog, use rememb_review_queue.
+16. When you need the review context for one session, use rememb_review_session_get. When you need the review context for a full workstream, use rememb_review_workstream_get.
+17. When you need the operational queue of workstreams, use rememb_workstream_queue.
+18. When you need to compare two sessions in the same workstream, use rememb_compare_sessions. When you need to compare two workstreams, use rememb_compare_workstreams.
+19. When you need to record a review decision, use rememb_review_update.
+20. When you intentionally need raw entry inspection outside the workstream flow, use rememb_read, rememb_read_page, or rememb_search.
+21. When you intentionally need direct low-level entry creation or maintenance outside the workstream flow, use rememb_write, rememb_edit, rememb_delete, or rememb_clear.
+22. When you need entry history or recovery, use rememb_versions to inspect revisions, rememb_restore to recover a deleted entry or prior version, and rememb_diff to compare revisions.
+23. When you need store-level maintenance, use rememb_stats to inspect totals and rememb_consolidate only for intentional duplicate cleanup.
+24. Use rememb_init only for compatibility or recovery when explicit initialization is really needed.
+25. When you need bundled skill instructions, use rememb_list_skills to discover them and rememb_use_skill to load one.
+26. Keep the memory flow anchored in rememb from start to finish: discovery, open, state, resume, session lifecycle, handoffs, review, comparisons, raw entry operations, recovery, maintenance, initialization, and skill lookup should all go through rememb tools rather than ad hoc prompt-only memory.
+```
 
-Description: Read a paginated slice of entries with server-side truncation. This is better for browsing large stores without flooding the context window.
+These rules tell the agent which public tools to prefer first. They do not remove the rest of the public rememb surface documented below.
 
-Parameters:
+## Core memory tools
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| section | string | no | - | sections configured in .rememb/config.json | Optional section filter |
-| tag | string | no | - | any string | Optional exact tag filter applied before pagination |
-| offset | integer | no | 0 | integer >= 0 | Zero-based page offset |
-| limit | integer | no | 100 | integer > 0 | Maximum number of entries to return |
-| sort_by | string | no | storage | storage, recent | Sort order used before pagination |
-| descending | boolean | no | false | true, false | Reverses the selected order |
-| summary_only | boolean | no | true | true, false | Renders a compact one-line summary per entry |
-| max_chars | integer | no | - | any integer | Maximum number of content characters to include per entry |
+### rememb_read
 
-## rememb_search
+Read all entries or filter by section. Safe and read-only.
 
-Description: Search memory entries by content or tags using semantic similarity. This is a safe, read-only operation with no side effects. Use it instead of rememb_read when you need to find specific entries by topic rather than loading everything. It returns the top_k most relevant results ranked by similarity.
+Key parameters:
+- section
+- include_deleted
+- summary_only
+- max_chars
 
-Parameters:
+### rememb_read_page
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| query | string | yes | - | any string | Search query in natural language or keywords |
-| section | string | no | - | sections configured in .rememb/config.json | Optional section filter |
-| tag | string | no | - | any string | Optional exact tag filter applied before semantic search |
-| top_k | integer | no | 5 | integer > 0 | Maximum number of results |
-| summary_only | boolean | no | true | true, false | Renders a compact one-line summary per entry |
-| max_chars | integer | no | - | any integer | Maximum number of content characters to include per entry |
+Read a paginated slice of entries with optional section or tag filtering. Safe and read-only.
 
-## rememb_write
+Key parameters:
+- section
+- tag
+- include_deleted
+- offset
+- limit
+- sort_by
+- descending
+- summary_only
+- max_chars
 
-Description: Save a new memory entry or multiple entries in one call. Single-entry mode creates one new entry and returns its ID without overwriting existing entries. Batch mode accepts entries[]. Use it when you learn something new worth persisting across sessions. Use rememb_edit to update an existing entry by ID. semantic_scope controls whether semantic duplicate checks run globally or only inside the target section.
+### rememb_search
 
-Parameters:
+Semantic search over entries with optional section or tag filtering. Safe and read-only.
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| content | string | no | - | any string | Content to remember, typically 1 to 3 sentences, for single-entry mode |
-| entries | array[object] | no | - | objects with content and optional section/tags | Batch payload for creating multiple entries in one call |
-| section | string | no | context | sections configured in .rememb/config.json | Target section |
-| tags | array[string] | no | - | list of strings | Tags used to categorize the entry |
-| semantic_scope | string | no | global | global, section | Scope of semantic duplicate protection |
+Key parameters:
+- query (required)
+- section
+- tag
+- include_deleted
+- top_k
+- summary_only
+- max_chars
 
-Usage notes: In single-entry mode, send content with optional section and tags. In batch mode, send entries as an array of objects, each with content and optional section or tags, plus optional semantic_scope for the whole request.
+### rememb_write
 
-## rememb_edit
+Create one entry or a batch of entries. Supports operational metadata for workstream-first usage.
 
-Description: Update an existing memory entry in place by ID or multiple entries in one call via updates[]. It modifies only the fields you provide, such as content, section, or tags; omitted fields stay unchanged. This is non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries and rememb_delete to permanently remove them.
+Key parameters:
+- content
+- entries
+- section
+- tags
+- semantic_scope
+- meta_schema_version
+- workstream_id
+- session_id
+- entry_kind
+- entry_role
+- actor_type
+- actor_id
+- parent_entry_id
+- supersedes_entry_id
+- related_entry_ids
+- structured
 
-Parameters:
+### rememb_edit
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| entry_id | string | no | - | 8 hexadecimal characters | Entry ID for single-entry mode |
-| updates | array[object] | no | - | objects with entry_id and at least one of content, section, tags | Batch payload for multiple updates |
-| content | string | no | - | any string | New content |
-| section | string | no | - | sections configured in .rememb/config.json | Moves the entry to a different section |
-| tags | array[string] | no | - | list of strings | Replaces the tags |
+Update one entry or multiple entries in batch. This is non-destructive and creates a new head revision.
 
-Usage notes: In single-entry mode, send entry_id plus one or more fields to change. In batch mode, send updates as an array of objects, each with entry_id and at least one of content, section, or tags.
+Key parameters:
+- entry_id
+- updates
+- content
+- section
+- tags
+- meta_schema_version
+- workstream_id
+- session_id
+- entry_kind
+- entry_role
+- actor_type
+- actor_id
+- parent_entry_id
+- supersedes_entry_id
+- related_entry_ids
+- structured
 
-## rememb_delete
+### rememb_delete
 
-Description: Permanently delete a single memory entry by ID or multiple entries via entry_ids[]. Deletion is irreversible and the entry cannot be recovered. There are no cascading side effects. Use rememb_edit to update an entry and rememb_clear to delete all entries at once.
+Soft-delete one entry or multiple entries. Deleted entries are hidden by default and can be restored later.
 
-Parameters:
+Key parameters:
+- entry_id
+- entry_ids
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| entry_id | string | no | - | 8 hexadecimal characters | Entry ID to remove in single-entry mode |
-| entry_ids | array[string] | no | - | list of 8-character hexadecimal IDs | Batch deletion IDs |
+### rememb_clear
 
-Usage notes: In single-entry mode, send entry_id. In batch mode, send entry_ids as an array of 8-character hexadecimal IDs.
+Delete all entries after explicit confirmation.
 
-## rememb_clear
+Key parameters:
+- confirm (required)
 
-Description: Permanently delete ALL memory entries at once. This is irreversible and there is no recovery after the operation. It requires confirm=true as a safety guard. Use rememb_delete to remove a single entry by ID instead. Use it only to fully reset the store.
+### rememb_stats
 
-Parameters:
+Return totals, size, oldest/newest timestamps, and count by section.
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| confirm | boolean | yes | - | true | Must be true to confirm deletion |
+### rememb_consolidate
 
-## rememb_stats
+Consolidate duplicate entries in exact or semantic mode.
 
-Description: Return memory usage statistics, including total entries, size in KB, oldest entry, newest entry, and count by section. This is a safe, read-only operation with no side effects. Use it to get an overview of the store or decide whether cleanup is needed.
+Key parameters:
+- section
+- mode
+- similarity_threshold
 
-Parameters: none.
+### rememb_init
 
-## rememb_consolidate
+Explicitly initialize storage. Usually optional because home-first MCP mode auto-initializes when needed.
 
-Description: Consolidate duplicate entries and merge metadata such as tags and access data. It supports exact mode, which is the default and uses normalized content comparison, and semantic mode, which uses a cosine similarity threshold. This operation mutates the store by removing redundant entries and keeping one consolidated record per duplicate group.
+Status:
+- deprecated for normal day-to-day MCP usage
+- kept intentionally for compatibility, explicit recovery, and clients that still call it directly
 
-Parameters:
+Key parameters:
+- project_name
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| section | string | no | - | sections configured in .rememb/config.json | Optional section filter |
-| mode | string | no | exact | exact, semantic | Consolidation mode |
-| similarity_threshold | number | no | 0.88 | number > 0 and <= 1 | Similarity threshold used in semantic mode |
+## Versioning and recovery tools
 
-## rememb_init
+### rememb_versions
 
-Description: Initialize rememb memory storage. It is useful for explicit setup and recovery flows. Home-first resolution also auto-initializes ~/.rememb when needed, and this tool remains idempotent and safe to call repeatedly.
+List revisions for a single entry.
 
-Parameters:
+Key parameters:
+- entry_id (required)
+- include_deleted
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| project_name | string | no | - | any string | Optional project name |
+### rememb_restore
 
-## rememb_list_skills
+Restore a soft-deleted entry or restore a specific previous version as the new head.
 
-Description: List bundled rememb skills discovered from the installed package contents. This is a safe, read-only operation.
+Key parameters:
+- entry_id (required)
+- version
 
-Parameters: none.
+### rememb_diff
 
-## rememb_use_skill
+Show a unified diff between two revisions of the same entry.
 
-Description: Load one bundled rememb skill by identifier or exact declared name and return its instructions. This is a safe, read-only operation. Use rememb_list_skills first to inspect available skills.
+Key parameters:
+- entry_id (required)
+- from_version (required)
+- to_version (required)
 
-Parameters:
+## Handoff tools
 
-| Name | Type | Required | Default | Allowed values | Description |
-|------|------|----------|---------|----------------|-------------|
-| skill | string | yes | - | skill identifier or exact name | Skill identifier, usually the directory name, or the exact declared name |
+### rememb_handoff_generate
+
+Generate and save a normal handoff entry, optionally linked to a workstream or session.
+
+Key parameters:
+- goal (required)
+- summary
+- current_state
+- open_loops
+- next_steps
+- related_entries
+- restore_section
+- restore_query
+- include_deleted
+- tags
+- workstream_id
+- session_id
+
+### rememb_handoff_list
+
+List recent handoff entries.
+
+Key parameters:
+- limit
+- include_deleted
+
+### rememb_handoff_restore_context
+
+Read a stored handoff and return its restore hints and related entries.
+
+Key parameters:
+- entry_id (required)
+- include_deleted
+
+### rememb_handoff_write_structured
+
+Write a structured, agent-first handoff for a workstream or session while preserving the normal handoff entry format.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- goal (required)
+- summary
+- current_state
+- decisions
+- open_loops
+- next_steps
+- essential_context
+- optional_context
+- related_entries
+- risk_flags
+- restore_section
+- restore_query
+- include_deleted
+- tags
+
+### rememb_handoff_read_structured
+
+Read the structured payload of a handoff by entry id or by latest handoff in a workstream.
+
+Key parameters:
+- entry_id
+- workstream_id
+- session_id
+- include_deleted
+
+### rememb_handoff_package
+
+Build a minimal anti-context-switch handoff package for a workstream without writing a new entry.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- next_goal
+- include_deleted
+
+## Workstream and session tools
+
+### rememb_workstream_list
+
+List aggregated workstreams derived from existing entries.
+
+Key parameters:
+- limit
+- include_deleted
+
+### rememb_workstream_open
+
+Create or reopen a logical workstream using a checkpoint entry.
+
+Key parameters:
+- goal (required)
+- workstream_id
+- summary
+- tags
+
+### rememb_workstream_state_get
+
+Aggregate the current state of a workstream and its sessions.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- include_deleted
+
+### rememb_workstream_state_update
+
+Write a structured state checkpoint for a workstream.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- goal
+- summary
+- current_state
+- decisions
+- open_loops
+- next_steps
+- essential_context
+- optional_context
+- risk_flags
+- related_entry_ids
+- merge
+
+### rememb_workstream_resume
+
+Return a compact operational resume for a workstream, combining the latest relevant state and handoff.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- include_deleted
+
+### rememb_session_start
+
+Start a new logical session inside a workstream.
+
+Key parameters:
+- workstream_id (required)
+- goal
+- summary
+- session_id
+- tags
+
+### rememb_session_close
+
+Close the active or selected session with a structured review entry.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- outcome (required)
+- status
+- next_steps
+- open_loops
+- related_entry_ids
+
+### rememb_session_close_and_handoff
+
+Close a session and persist the next-goal handoff in one operation.
+
+Key parameters:
+- workstream_id (required)
+- session_id
+- outcome (required)
+- next_goal (required)
+- status
+- summary
+- open_loops
+- next_steps
+- essential_context
+- optional_context
+- archived_context
+- risk_flags
+- obsolete_context
+- related_entry_ids
+- include_deleted
+- audience
+
+### rememb_workstream_queue
+
+List workstreams as an operational queue with explicit statuses.
+
+Key parameters:
+- status
+- include_deleted
+- limit
+
+## Review and comparison tools
+
+### rememb_review_queue
+
+List entries that require review with diff context when available.
+
+Key parameters:
+- workstream_id
+- session_id
+- actor_type
+- actor_id
+- entry_kind
+- review_status
+- include_deleted
+- pending_only
+- limit
+
+### rememb_review_session_get
+
+Aggregate review context for one session inside a workstream.
+
+Key parameters:
+- workstream_id (required)
+- session_id (required)
+- include_deleted
+
+### rememb_review_workstream_get
+
+Aggregate review context for a workstream across its sessions.
+
+Key parameters:
+- workstream_id (required)
+- include_deleted
+
+### rememb_compare_sessions
+
+Compare two sessions inside the same workstream.
+
+Key parameters:
+- workstream_id (required)
+- base_session_id (required)
+- target_session_id (required)
+- include_deleted
+
+### rememb_compare_workstreams
+
+Compare the operational state of two workstreams.
+
+Key parameters:
+- left_workstream_id (required)
+- right_workstream_id (required)
+- include_deleted
+
+### rememb_review_update
+
+Update the review status for a single entry.
+
+Key parameters:
+- entry_id (required)
+- review_status (required)
+- review_notes
+- review_reason
+- validation_notes
+- source_context_entry_ids
+
+## Skill tools
+
+### rememb_list_skills
+
+List bundled rememb skills.
+
+### rememb_use_skill
+
+Load one bundled rememb skill by identifier or exact declared name.
+
+Key parameters:
+- skill (required)

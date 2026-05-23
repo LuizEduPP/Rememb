@@ -4,125 +4,596 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>rememb</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=MuseoModerno:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-  theme: {
-    extend: {
-      colors: {
-        shell: '#FBFDF9',
-        panel: '#FFFFFF',
-        panelSoft: '#EEF2F8',
-        line: '#C6D0E0',
-        lineStrong: '#96AACB',
-        ink: '#122146',
-        mute: '#6A7B8A',
-        accent: '#04D8E7',
-        accentSoft: 'rgba(4, 216, 231, 0.12)',
-        danger: '#c04040',
-        dangerStrong: '#e05050',
-        success: '#30b870'
-      },
-      fontFamily: {
-        sans: ['system-ui', 'sans-serif'],
-        display: ['MuseoModerno', 'system-ui', 'sans-serif'],
-        mono: ['SF Mono', 'Cascadia Code', 'Fira Code', 'monospace']
-      },
-      boxShadow: {
-        hairline: '0 0 0 1px rgba(198,208,224,0.95), 0 2px 8px rgba(18,33,70,0.05)',
-        hairlineStrong: '0 0 0 1px rgba(150,170,203,0.95), 0 8px 28px rgba(18,33,70,0.09)',
-        chrome: '0 1px 24px rgba(18,33,70,0.06), 0 0 0 1px rgba(4,216,231,0.04)',
-        modal: '0 0 0 1px rgba(18,33,70,0.10), 0 24px 48px rgba(18,33,70,0.20), 0 8px 16px rgba(18,33,70,0.10)',
-        toast: '0 8px 24px rgba(18,33,70,0.22), 0 0 0 1px rgba(255,255,255,0.05)'
-      }
-    }
-  }
-};
-</script>
+<style>
+:root {
+  --shell: #FBFDF9;
+  --panel: #FFFFFF;
+  --panel-soft: #EEF2F8;
+  --line: #C6D0E0;
+  --line-strong: #96AACB;
+  --ink: #122146;
+  --mute: #6A7B8A;
+  --accent: #04D8E7;
+  --accent-soft: rgba(4, 216, 231, 0.12);
+  --danger: #c04040;
+  --danger-strong: #e05050;
+  --success: #30b870;
+  --shadow-hairline: 0 0 0 1px rgba(198,208,224,0.95), 0 2px 8px rgba(18,33,70,0.05);
+  --shadow-hairline-strong: 0 0 0 1px rgba(150,170,203,0.95), 0 8px 28px rgba(18,33,70,0.09);
+  --shadow-chrome: 0 1px 24px rgba(18,33,70,0.06), 0 0 0 1px rgba(4,216,231,0.04);
+  --shadow-modal: 0 0 0 1px rgba(18,33,70,0.10), 0 24px 48px rgba(18,33,70,0.20), 0 8px 16px rgba(18,33,70,0.10);
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Aptos Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: linear-gradient(180deg, #f9fcf7 0%, #edf4fb 100%);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+
+/* Minimal utility bridge after removing Tailwind. Keep only what the SPA still uses. */
+.block { display: block; }
+.inline-block { display: inline-block; }
+.inline-flex { display: inline-flex; }
+.flex { display: flex; }
+.grid { display: grid; }
+.hidden { display: none !important; }
+.flex-1 { flex: 1 1 0%; }
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.items-baseline { align-items: baseline; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+.gap-1 { gap: 4px; }
+.gap-1\.5 { gap: 6px; }
+.gap-2 { gap: 8px; }
+.gap-2\.5 { gap: 10px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.ml-auto { margin-left: auto; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.mt-1 { margin-top: 4px; }
+.mt-1\.5 { margin-top: 6px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.mt-5 { margin-top: 20px; }
+.mb-1 { margin-bottom: 4px; }
+.mb-1\.5 { margin-bottom: 6px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+.mb-5 { margin-bottom: 20px; }
+.mb-7 { margin-bottom: 28px; }
+.px-2 { padding-left: 8px; padding-right: 8px; }
+.px-3 { padding-left: 12px; padding-right: 12px; }
+.px-4 { padding-left: 16px; padding-right: 16px; }
+.px-5 { padding-left: 20px; padding-right: 20px; }
+.px-6 { padding-left: 24px; padding-right: 24px; }
+.py-1 { padding-top: 4px; padding-bottom: 4px; }
+.py-1\.5 { padding-top: 6px; padding-bottom: 6px; }
+.py-2 { padding-top: 8px; padding-bottom: 8px; }
+.py-2\.5 { padding-top: 10px; padding-bottom: 10px; }
+.py-3 { padding-top: 12px; padding-bottom: 12px; }
+.py-4 { padding-top: 16px; padding-bottom: 16px; }
+.py-5 { padding-top: 20px; padding-bottom: 20px; }
+.py-7 { padding-top: 28px; padding-bottom: 28px; }
+.pb-0 { padding-bottom: 0; }
+.pb-2 { padding-bottom: 8px; }
+.pb-3 { padding-bottom: 12px; }
+.pb-5 { padding-bottom: 20px; }
+.pt-2 { padding-top: 8px; }
+.pt-3 { padding-top: 12px; }
+.pt-3\.5 { padding-top: 14px; }
+.rounded { border-radius: 6px; }
+.rounded-xl { border-radius: 14px; }
+.rounded-2xl { border-radius: 18px; }
+.rounded-full { border-radius: 999px; }
+.border { border: 1px solid var(--line); }
+.border-b { border-bottom: 1px solid var(--line); }
+.border-t { border-top: 1px solid var(--line); }
+.border-dashed { border-style: dashed; }
+.bg-panel { background: var(--panel); }
+.bg-panelSoft { background: var(--panel-soft); }
+.bg-panelSoft\/80 { background: rgba(238,242,248,0.8); }
+.bg-line { background: var(--line); }
+.bg-\[rgba\(255\,196\,0\,0\.08\)\] { background: rgba(255,196,0,0.08); }
+.bg-\[rgba\(48\,184\,112\,0\.10\)\] { background: rgba(48,184,112,0.10); }
+.bg-\[rgba\(192\,64\,64\,0\.10\)\] { background: rgba(192,64,64,0.10); }
+.bg-\[rgba\(192\,64\,64\,0\.08\)\] { background: rgba(192,64,64,0.08); }
+.bg-\[rgba\(192\,64\,64\,0\.1\)\] { background: rgba(192,64,64,0.1); }
+.bg-\[rgba\(4\,216\,231\,0\.12\)\] { background: rgba(4,216,231,0.12); }
+.bg-\[\#0f1624\] { background: #0f1624; }
+.text-center { text-align: center; }
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 14px; }
+.text-base { font-size: 16px; }
+.text-4xl { font-size: 36px; line-height: 1; }
+.text-ink { color: var(--ink); }
+.text-mute { color: var(--mute); }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+.font-mono { font-family: var(--font-mono); }
+.italic { font-style: italic; }
+.uppercase { text-transform: uppercase; }
+.w-full { width: 100%; }
+.max-w-\[1040px\] { max-width: 1040px; }
+.max-w-\[700px\] { max-width: 700px; }
+.h-px { height: 1px; }
+.h-3\.5, .w-3\.5 { width: 14px; height: 14px; }
+.h-\[30px\] { height: 30px; }
+.w-auto { width: auto; }
+.pointer-events-none { pointer-events: none; }
+.shadow-\[inset_0_1px_0_rgba\(255\,255\,255\,0\.5\)\] { box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); }
+.shadow-\[0_0_0_1px_rgba\(255\,255\,255\,0\.06\)\,0_4px_12px_rgba\(0\,0\,0\,0\.18\)\] { box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.18); }
+.underline-offset-4 { text-underline-offset: 4px; }
+.hover\:underline:hover { text-decoration: underline; }
+.tracking-\[0\.12em\] { letter-spacing: 0.12em; }
+.text-\[10px\] { font-size: 10px; }
+
+#app { display: flex; height: 100vh; flex-direction: column; overflow: hidden; }
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(198,208,224,0.55);
+  background: rgba(251,253,249,0.9);
+  padding: 14px 20px;
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: var(--shadow-chrome);
+}
+.brand-link, .brand-meta, .nav-tabs, .header-actions, .stats-grid, .dashboard-grid, .handoff-actions, .form-row, .compare-grid, .settings-grid, .settings-actions, .inline-actions {
+  display: flex;
+}
+.brand-link { align-items: center; gap: 12px; min-width: 0; white-space: nowrap; }
+.brand-logo {
+  display: block;
+  width: auto;
+  height: 30px;
+  max-width: 108px;
+  object-fit: contain;
+}
+.brand-meta { align-items: center; gap: 8px; line-height: 1; }
+.brand-name, .view-title, .page-title, .modal-title, .section-title, .card-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+.brand-name { font-size: 15px; letter-spacing: 0.02em; }
+.version-badge, .badge, .tag-pill, .score-pill, .section-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+}
+.version-badge {
+  border: 1px solid rgba(4,216,231,0.18);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.divider { width: 1px; height: 20px; background: var(--line); }
+.nav-tabs {
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  padding: 4px;
+}
+.nav-tab {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 8px 14px;
+  color: var(--mute);
+  font-size: 14px;
+  font-weight: 600;
+}
+.nav-tab.active { background: var(--ink); color: var(--accent); box-shadow: 0 1px 8px rgba(18,33,70,0.18); }
+.nav-tab:hover { background: rgba(255,255,255,0.86); color: var(--ink); }
+.header-search { position: relative; margin-left: 8px; flex: 1; max-width: 460px; }
+.header-search input {
+  width: 100%; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink);
+  padding: 10px 42px 10px 34px; outline: none;
+}
+.header-search input:focus, .field-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(4,216,231,0.12);
+}
+.header-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--mute); }
+.header-search kbd {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel-soft); padding: 2px 6px;
+  font-family: var(--font-mono); font-size: 10px; color: var(--mute);
+}
+.header-actions { margin-left: auto; align-items: center; gap: 10px; }
+.app-button, .modal-button, .inline-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 12px; padding: 10px 16px; font-size: 14px; font-weight: 700; transition: 0.18s ease;
+}
+.app-button.primary, .modal-button.primary, .inline-button.primary { background: var(--ink); color: var(--accent); border: 0; }
+.app-button.primary:hover, .modal-button.primary:hover, .inline-button.primary:hover { transform: translateY(-1px); background: #1A2E60; }
+.app-button.ghost, .modal-button.ghost, .inline-button.ghost { background: var(--panel); color: var(--mute); border: 1px solid var(--line); }
+.app-button.ghost:hover, .modal-button.ghost:hover, .inline-button.ghost:hover { background: var(--panel-soft); color: var(--ink); border-color: var(--line-strong); }
+.app-button.danger, .modal-button.danger, .inline-button.danger { background: var(--danger); color: #fff; border: 0; }
+.app-button.danger:hover, .modal-button.danger:hover, .inline-button.danger:hover { transform: translateY(-1px); background: var(--danger-strong); }
+.small-button { padding: 8px 12px; border-radius: 10px; font-size: 13px; }
+
+.view { display: none; min-height: 0; flex: 1; overflow: hidden; }
+.view.active { display: flex; }
+.view-scroll { overflow-y: auto; }
+.view-column { flex-direction: column; }
+.content-shell { display: flex; min-height: 0; flex: 1; overflow: hidden; }
+.sidebar {
+  width: 246px; flex-shrink: 0; display: none; flex-direction: column; overflow: hidden;
+  border-right: 1px solid #dde6f0; background: linear-gradient(180deg, #f4f8fc 0%, #eef4fb 100%);
+}
+.sidebar-body { min-height: 0; flex: 1; overflow-y: auto; padding: 12px 0 8px; }
+.sidebar-footer { margin-top: auto; }
+.content-main { min-height: 0; flex: 1; overflow-y: auto; padding: 24px 26px 28px; }
+.search-results-bar {
+  display: none; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); background: var(--shell); padding: 8px 20px; color: var(--mute);
+}
+.search-results-bar.active { display: flex; }
+.section-header, .panel-header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 20px; }
+.panel { border-radius: 20px; background: var(--panel); box-shadow: var(--shadow-hairline); }
+.panel-soft { border-radius: 16px; background: var(--panel-soft); }
+.stats-mini { margin: 0 8px 8px; padding: 10px; border: 1px solid var(--line); background: rgba(18,33,70,0.04); border-radius: 14px; }
+.stats-mini-row { display: flex; align-items: center; justify-content: space-between; padding: 4px; color: var(--mute); font-size: 11px; }
+.stats-mini-row .value { color: var(--ink); font-family: var(--font-mono); }
+.section-list { padding-bottom: 8px; }
+.section-button {
+  width: calc(100% - 16px); margin: 2px 8px; display: flex; align-items: center; gap: 10px; text-align: left;
+  padding: 10px 12px; border: 0; border-left: 2px solid transparent; border-radius: 14px; background: transparent; color: var(--mute);
+}
+.section-button:hover { background: rgba(18,33,70,0.06); }
+.section-button.active { color: var(--ink); font-weight: 700; box-shadow: 0 1px 6px rgba(18,33,70,0.08); }
+.count-pill { margin-left: auto; border: 1px solid var(--line); border-radius: 999px; background: rgba(18,33,70,0.06); padding: 2px 8px; font-size: 10px; font-family: var(--font-mono); }
+
+.cards-grid, .skills-grid, .handoff-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+.workstream-layout { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+.workstream-detail-panel { position: relative; }
+.entry-card, .handoff-card, .skill-card {
+  overflow: hidden; border-radius: 18px; background: var(--panel); box-shadow: var(--shadow-hairline); transition: 0.18s ease;
+}
+.entry-card:hover, .handoff-card:hover, .skill-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hairline-strong); }
+.handoff-card.is-selected { box-shadow: 0 0 0 2px rgba(4,216,231,0.28), var(--shadow-hairline-strong); }
+.entry-card { display: flex; flex-direction: column; cursor: pointer; }
+.entry-card-accent {
+  height: 3px;
+  width: 100%;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.entry-card:hover .entry-card-accent { opacity: 1; }
+.entry-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(18,33,70,0.08);
+  padding: 11px 14px;
+}
+.entry-card-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.entry-card-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.entry-card-meta {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.entry-card-time {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.entry-card-main {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 14px 0;
+}
+.entry-card-content {
+  position: relative;
+  overflow: hidden;
+  min-height: 172px;
+  max-height: 172px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.72;
+}
+.entry-card-content::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 48px;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, var(--panel) 92%);
+  pointer-events: none;
+}
+.entry-card-content .markdown-body,
+.entry-card-content .markdown-body p:last-child { margin-bottom: 0; }
+.entry-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 32px;
+  align-content: flex-start;
+}
+.entry-card-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(18,33,70,0.06);
+  padding: 12px 14px;
+}
+.entry-card-id {
+  margin-left: auto;
+  color: rgba(106,123,138,0.82);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.entry-card-access {
+  color: var(--mute);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.card-header { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(18,33,70,0.08); padding: 10px 14px; }
+.card-body { padding: 14px; }
+.card-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid rgba(18,33,70,0.06); padding: 10px 14px; }
+.card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; border-top: 1px solid rgba(18,33,70,0.06); padding: 12px 14px; }
+.markdown-body { font-size: 13.5px; line-height: 1.7; }
+.markdown-body h1 { font-family: var(--font-display); font-size: 20px; margin: 0 0 10px; }
+.markdown-body h2 { font-family: var(--font-display); font-size: 16px; margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.markdown-body h3, .markdown-body h4 { margin: 16px 0 6px; color: var(--mute); }
+.markdown-body p { margin: 0 0 10px; }
+.markdown-body ul, .markdown-body ol { margin: 0 0 10px 20px; }
+.markdown-body blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--accent-soft); color: var(--mute); }
+.markdown-body pre { overflow-x: auto; border-radius: 14px; background: #0f1624; padding: 14px; color: #b8cfe8; }
+.markdown-body code { font-family: var(--font-mono); }
+.markdown-body :not(pre) > code { border: 1px solid var(--line); border-radius: 8px; background: rgba(18,33,70,0.07); padding: 2px 6px; color: var(--ink); }
+.empty-state, .loading-state { border-radius: 18px; background: var(--panel); padding: 40px 24px; text-align: center; color: var(--mute); box-shadow: var(--shadow-hairline); }
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+  padding: 12px; background: rgba(8,12,24,0.72); backdrop-filter: blur(12px) saturate(1.4);
+}
+.modal-panel {
+  display: flex; max-height: 90vh; width: min(520px, 94vw); flex-direction: column; overflow: hidden;
+  border-radius: 20px; background: var(--panel); box-shadow: var(--shadow-modal);
+}
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(18,33,70,0.07); padding: 20px 24px; }
+.modal-body { min-height: 0; flex: 1; overflow-y: auto; padding: 20px 24px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid rgba(18,33,70,0.06); padding: 14px 24px 20px; }
+.modal-close {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel-soft); color: var(--mute);
+}
+.field-label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+.field-control {
+  width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--shell); color: var(--ink);
+  padding: 10px 12px; outline: none;
+}
+textarea.field-control { min-height: 110px; resize: vertical; line-height: 1.6; }
+.muted { color: var(--mute); }
+.mono { font-family: var(--font-mono); }
+.pill-row, .meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tag-pill { border: 1px solid var(--line); padding: 4px 10px; font-size: 11px; }
+.version-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.timeline-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.timeline-item {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(18,33,70,0.03);
+  padding: 12px;
+}
+.timeline-time {
+  color: var(--mute);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.timeline-body { min-width: 0; }
+.timeline-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.timeline-summary {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.diff-header { background: var(--panel-soft); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mute); }
+.diff-header > div, .diff-row > div { padding: 8px 12px; }
+.diff-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+.diff-row:last-child { border-bottom: 0; }
+.diff-row > div:first-child, .diff-header > div:first-child { border-right: 1px solid var(--line); }
+.section-card { border-radius: 18px; background: var(--panel); padding: 20px; box-shadow: var(--shadow-hairline); }
+.stats-grid { gap: 12px; flex-wrap: wrap; }
+.stats-grid > .section-card { flex: 1 1 220px; }
+.dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.table-wrap { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px; text-align: left; }
+thead { background: var(--shell); color: var(--mute); font-size: 11px; }
+.toast {
+  display: flex; min-width: 240px; max-width: 340px; align-items: center; gap: 8px;
+  border: 1px solid rgba(255,255,255,0.1); border-left-width: 3px; border-radius: 14px;
+  background: var(--ink); padding: 12px 16px; color: #D4E3FF; box-shadow: 0 8px 24px rgba(18,33,70,0.22);
+}
+
+#clear-search {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+#view-stats > div,
+#view-skills > div,
+#view-settings > div {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+}
+
+#view-settings > div { max-width: 700px; }
+
+#cards-grid > div,
+#handoff-grid > div,
+#skills-root > div {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .sidebar { display: flex; }
+  .cards-grid, .handoff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compare-grid, .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .workstream-layout { grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr); }
+  .workstream-detail-panel { position: sticky; top: 24px; }
+}
+
+@media (min-width: 1280px) {
+  .cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .skills-grid, .handoff-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 880px) {
+  .header-search { display: none; }
+  .app-header { flex-wrap: wrap; }
+  .divider { display: none; }
+  .nav-tabs { order: 3; width: 100%; overflow-x: auto; }
+  .header-actions { margin-left: 0; }
+  .content-main { padding: 18px 16px 20px; }
+}
+</style>
 </head>
-<body class="bg-shell font-sans text-ink antialiased">
+<body>
 <div id="app" class="flex h-screen flex-col overflow-hidden">
-  <header class="sticky top-0 z-40 flex h-[60px] shrink-0 items-center gap-4 border-b border-[rgba(198,208,224,0.55)] bg-[rgba(251,253,249,0.88)] px-5 backdrop-blur-xl backdrop-saturate-150 shadow-chrome">
-    <a class="flex items-center gap-2.5 whitespace-nowrap" href="/">
-      <img src="/static/logo.png" alt="rememb" class="block h-[30px] w-auto">
-      <div class="flex items-center gap-2 leading-none">
-        <span class="font-display text-[15px] font-bold tracking-[0.02em] text-ink">rememb</span>
-        <span class="rounded-full border border-[rgba(4,216,231,0.18)] bg-accentSoft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] text-accent" id="logo-version"></span>
+  <header class="app-header">
+    <a class="brand-link" href="/">
+      <img src="/static/logo.png" alt="rememb" class="brand-logo">
+      <div class="brand-meta">
+        <span class="brand-name">rememb</span>
+        <span class="version-badge" id="logo-version"></span>
       </div>
     </a>
 
-    <div class="mx-0.5 h-5 w-px shrink-0 bg-line"></div>
+    <div class="divider"></div>
 
-    <nav class="flex items-center gap-0.5 rounded-full border border-line bg-panelSoft p-1">
-      <button class="nav-tab rounded-full bg-ink px-3.5 py-1.5 text-sm font-medium text-accent shadow-[0_1px_8px_rgba(18,33,70,0.18)] transition" data-view="memories">Memories</button>
-      <button class="nav-tab rounded-full px-3.5 py-1.5 text-sm font-medium text-mute transition hover:bg-white/80 hover:text-ink" data-view="stats">Stats</button>
-      <button class="nav-tab rounded-full px-3.5 py-1.5 text-sm font-medium text-mute transition hover:bg-white/80 hover:text-ink" data-view="skills">Skills</button>
-      <button class="nav-tab rounded-full px-3.5 py-1.5 text-sm font-medium text-mute transition hover:bg-white/80 hover:text-ink" data-view="settings">Settings</button>
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-view="memories">Memories</button>
+      <button class="nav-tab" data-view="workstreams">Workstreams</button>
+      <button class="nav-tab" data-view="handoffs">Handoffs</button>
+      <button class="nav-tab" data-view="review">Review</button>
+      <button class="nav-tab" data-view="stats">Stats</button>
+      <button class="nav-tab" data-view="skills">Skills</button>
+      <button class="nav-tab" data-view="settings">Settings</button>
     </nav>
 
-    <div class="relative ml-2 hidden max-w-[400px] flex-1 md:block" id="header-search">
+    <div class="header-search" id="header-search">
       <svg class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-mute" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path>
       </svg>
-      <input type="text" id="search-input" placeholder="Search memory…" autocomplete="off" class="w-full rounded-full border border-line bg-panel py-2 pl-8 pr-10 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-[rgba(4,216,231,0.12)]">
-      <kbd class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-line bg-panelSoft px-1.5 py-0.5 font-mono text-[10px] text-mute">/</kbd>
+      <input type="text" id="search-input" placeholder="Search memory…" autocomplete="off">
+      <kbd>/</kbd>
     </div>
 
-    <div class="ml-auto flex items-center gap-2">
-      <button class="inline-flex items-center gap-1.5 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-accent shadow-[0_0_0_1px_rgba(4,216,231,0.18),inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5 hover:bg-[#1A2E60] hover:shadow-[0_0_0_1px_rgba(4,216,231,0.18),0_4px_18px_rgba(4,216,231,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]" id="btn-new">
+    <div class="header-actions">
+      <button class="app-button primary" id="btn-new">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"></path></svg>
-        New Entry
+        <span id="btn-new-label">New Entry</span>
       </button>
     </div>
   </header>
 
-  <div id="view-memories" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-    <div id="search-results-bar" class="hidden items-center gap-3 border-b border-line bg-shell px-5 py-2 text-sm text-mute">
+  <div id="view-memories" class="view view-column active">
+    <div id="search-results-bar" class="search-results-bar">
       <span id="search-results-label"></span>
       <button id="clear-search" class="text-sm font-medium text-ink underline-offset-4 hover:underline">Clear search</button>
     </div>
 
-    <div id="main-body" class="flex min-h-0 flex-1 overflow-hidden">
-      <aside id="sidebar" class="hidden w-[220px] shrink-0 flex-col overflow-hidden border-r border-[#DDE6F0] bg-[#F3F7FC] lg:flex">
-        <div class="min-h-0 flex-1 overflow-y-auto px-0 pb-2 pt-3">
+    <div id="main-body" class="content-shell">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-body">
           <div class="flex items-center gap-2 px-4 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-mute">
             <span>Sections</span>
             <span class="h-px flex-1 bg-line"></span>
           </div>
-          <div id="sections-list"></div>
+          <div id="sections-list" class="section-list"></div>
         </div>
 
-        <div class="mt-auto shrink-0">
-          <div class="mx-2 mb-2 rounded-xl border border-line bg-[rgba(18,33,70,0.04)] px-2 py-2.5">
+        <div class="sidebar-footer">
+          <div class="stats-mini">
             <div class="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-mute">
               <span>Stats</span>
               <span class="h-px flex-1 bg-line"></span>
             </div>
             <div class="space-y-1">
-              <div class="flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-mute hover:bg-[rgba(18,33,70,0.04)]">
+              <div class="stats-mini-row">
                 <span>Total entries</span>
-                <span class="font-mono text-ink" id="stat-total">—</span>
+                <span class="value" id="stat-total">—</span>
               </div>
-              <div class="flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-mute hover:bg-[rgba(18,33,70,0.04)]">
+              <div class="stats-mini-row">
                 <span>Sections active</span>
-                <span class="font-mono text-ink" id="stat-sections">—</span>
+                <span class="value" id="stat-sections">—</span>
               </div>
-              <div class="flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-mute hover:bg-[rgba(18,33,70,0.04)]">
+              <div class="stats-mini-row">
                 <span>Store size</span>
-                <span class="font-mono text-ink" id="stat-size">—</span>
+                <span class="value" id="stat-size">—</span>
               </div>
-              <div class="flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-mute hover:bg-[rgba(18,33,70,0.04)]">
+              <div class="stats-mini-row">
                 <span>Deleted</span>
-                <span class="font-mono text-ink" id="stat-deleted">—</span>
+                <span class="value" id="stat-deleted">—</span>
               </div>
             </div>
           </div>
 
           <div class="border-t border-line px-2 py-2.5">
-            <button class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-mute transition hover:border-lineStrong hover:bg-panelSoft hover:text-ink" id="btn-consolidate">
+            <button class="app-button ghost w-full" id="btn-consolidate">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>
               Consolidate
             </button>
@@ -130,15 +601,15 @@ tailwind.config = {
         </div>
       </aside>
 
-      <main id="main-content" class="min-h-0 flex-1 overflow-y-auto bg-shell p-5">
-        <div class="mb-5 flex items-center gap-2 border-b border-line pb-3.5">
-          <h2 id="section-title" class="font-display text-lg font-bold">All entries</h2>
-          <span id="total-badge" class="rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-mute"></span>
+      <main id="main-content" class="content-main">
+        <div class="section-header">
+          <h2 id="section-title" class="view-title">All entries</h2>
+          <span id="total-badge" class="count-pill"></span>
           <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
             <input type="checkbox" id="toggle-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
             <span>Show deleted</span>
           </label>
-          <select id="sort-select" class="rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink outline-none transition focus:border-accent" title="Sort order">
+          <select id="sort-select" class="field-control" style="width:auto; border-radius:10px; padding:8px 10px; font-size:12px;" title="Sort order">
             <option value="recent-desc">Most recent</option>
             <option value="recent-asc">Oldest first</option>
             <option value="storage-asc">Storage order</option>
@@ -146,50 +617,135 @@ tailwind.config = {
           </select>
         </div>
 
-        <div id="cards-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
+        <div id="cards-grid" class="cards-grid"></div>
         <div id="load-more-wrap" class="mt-5 hidden text-center">
-          <button class="inline-flex items-center justify-center rounded-xl border border-line px-4 py-2 text-sm font-medium text-mute transition hover:border-lineStrong hover:bg-panelSoft hover:text-ink" id="btn-load-more">Load more</button>
+          <button class="app-button ghost" id="btn-load-more">Load more</button>
         </div>
       </main>
     </div>
   </div>
 
-  <div id="view-stats" class="hidden flex-1 overflow-y-auto">
+  <div id="view-workstreams" class="view view-scroll">
+    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+      <div class="section-header">
+        <div>
+          <h2 class="page-title">Workstreams</h2>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operational work units with state, session lifecycle and structured handoff flows.</div>
+        </div>
+        <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
+          <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
+          <span>Show deleted</span>
+        </label>
+        <button class="app-button primary" id="btn-new-workstream-inline">Open workstream</button>
+      </div>
+      <div id="workstream-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
+      <div class="workstream-layout">
+        <div id="workstream-grid" class="handoff-grid"></div>
+        <div id="workstream-detail-root" class="workstream-detail-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-handoffs" class="view view-scroll">
+    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+      <div class="section-header">
+        <div>
+          <h2 class="page-title">Handoffs</h2>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Goal-oriented session handoffs with restore context, related entries and next steps.</div>
+        </div>
+        <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
+          <input type="checkbox" id="toggle-handoffs-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
+          <span>Show deleted</span>
+        </label>
+        <button class="app-button primary" id="btn-new-handoff-inline">Generate handoff</button>
+      </div>
+      <div id="handoff-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
+      <div id="handoff-grid" class="handoff-grid"></div>
+    </div>
+  </div>
+
+  <div id="view-review" class="view view-scroll">
+    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+      <div class="section-header">
+        <div>
+          <h2 class="page-title">Review</h2>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Review Mode for agent output, diff-first inspection and context-aware approval.</div>
+        </div>
+        <div class="pill-row" style="margin-left:auto; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+          <select id="review-workstream-filter" class="field-control" style="width:auto; min-width:180px; border-radius:10px; padding:8px 10px; font-size:12px;">
+            <option value="">All workstreams</option>
+          </select>
+          <select id="review-session-filter" class="field-control" style="width:auto; min-width:160px; border-radius:10px; padding:8px 10px; font-size:12px;">
+            <option value="">All sessions</option>
+          </select>
+          <select id="review-actor-type-filter" class="field-control" style="width:auto; min-width:130px; border-radius:10px; padding:8px 10px; font-size:12px;">
+            <option value="">All actors</option>
+            <option value="agent">agent</option>
+            <option value="human">human</option>
+            <option value="system">system</option>
+          </select>
+          <select id="review-entry-kind-filter" class="field-control" style="width:auto; min-width:140px; border-radius:10px; padding:8px 10px; font-size:12px;">
+            <option value="">All kinds</option>
+            <option value="memory">memory</option>
+            <option value="decision">decision</option>
+            <option value="state">state</option>
+            <option value="handoff">handoff</option>
+            <option value="artifact">artifact</option>
+            <option value="review">review</option>
+          </select>
+          <input id="review-actor-id-filter" class="field-control" style="width:auto; min-width:150px; border-radius:10px; padding:8px 10px; font-size:12px;" placeholder="actor id">
+          <button class="app-button ghost" id="btn-review-clear-filters">Clear filters</button>
+        </div>
+        <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
+          <input type="checkbox" id="toggle-review-pending-only" class="h-3.5 w-3.5 accent-[#122146]" checked>
+          <span>Pending only</span>
+        </label>
+      </div>
+      <div id="review-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
+      <div id="review-operational-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;">Review workstream queue via /api/workstreams/queue, /api/review/workstreams/ and /api/workstreams/compare.</div>
+      <div class="workstream-layout">
+        <div id="review-grid" class="handoff-grid"></div>
+        <div id="review-detail-root" class="workstream-detail-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-stats" class="view view-scroll">
     <div class="mx-auto max-w-[1040px] px-6 py-7">
       <div class="mb-7 flex items-baseline justify-between gap-3">
-        <h2 class="font-display text-[22px] font-bold">Stats</h2>
+        <h2 class="page-title">Stats</h2>
         <span class="text-xs text-mute" id="dash-updated"></span>
       </div>
 
-      <div class="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div class="relative overflow-hidden rounded-2xl bg-panel px-5 py-4 shadow-hairline before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-gradient-to-r before:from-accent before:to-[rgba(4,216,231,0.3)]">
+      <div class="stats-grid" style="margin-bottom: 20px;">
+        <div class="section-card">
           <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Total entries</span>
           <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dash-total">—</div>
           <span class="mt-1 block text-[11px] text-mute">across all sections</span>
         </div>
-        <div class="rounded-2xl bg-panel px-5 py-4 shadow-hairline transition hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(150,170,203,0.95),0_6px_20px_rgba(18,33,70,0.08)]">
+        <div class="section-card">
           <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Active sections</span>
           <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dash-active-sec">—</div>
           <span class="mt-1 block text-[11px] text-mute">with content</span>
         </div>
-        <div class="rounded-2xl bg-panel px-5 py-4 shadow-hairline transition hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(150,170,203,0.95),0_6px_20px_rgba(18,33,70,0.08)]">
+        <div class="section-card">
           <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Store size</span>
           <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dash-size">—</div>
           <span class="mt-1 block text-[11px] text-mute">KB on disk</span>
         </div>
-        <div class="rounded-2xl bg-panel px-5 py-4 shadow-hairline transition hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(150,170,203,0.95),0_6px_20px_rgba(18,33,70,0.08)]">
+        <div class="section-card">
           <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Date range</span>
           <div class="mt-1 flex items-center gap-1 font-mono text-sm font-semibold text-ink"><span id="dash-oldest">—</span><span class="text-mute">→</span><span id="dash-newest">—</span></div>
           <span class="mt-1 block text-[11px] text-mute">oldest to newest</span>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="rounded-2xl bg-panel p-5 shadow-hairline">
+      <div class="dashboard-grid">
+        <div class="section-card">
           <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Entries by section</div>
           <div id="dash-section-bars"></div>
         </div>
-        <div class="rounded-2xl bg-panel p-5 shadow-hairline">
+        <div class="section-card">
           <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Recent entries</div>
           <div id="dash-recent-list"></div>
         </div>
@@ -197,11 +753,11 @@ tailwind.config = {
     </div>
   </div>
 
-  <div id="view-skills" class="hidden flex-1 overflow-y-auto">
+  <div id="view-skills" class="view view-scroll">
     <div class="mx-auto max-w-[1040px] px-6 py-7">
       <div class="mb-7 flex items-baseline justify-between gap-3">
         <div>
-          <h2 class="font-display text-[22px] font-bold">Skills</h2>
+          <h2 class="page-title">Skills</h2>
           <div class="text-xs text-mute">Bundled skills available in the installed rememb package</div>
         </div>
         <span class="text-xs text-mute" id="skills-updated"></span>
@@ -212,9 +768,9 @@ tailwind.config = {
     </div>
   </div>
 
-  <div id="view-settings" class="hidden flex-1 overflow-y-auto">
+  <div id="view-settings" class="view view-scroll">
     <div class="mx-auto max-w-[700px] px-6 py-7">
-      <h2 class="font-display mb-7 text-[22px] font-bold">Settings</h2>
+      <h2 class="page-title" style="margin-bottom: 28px;">Settings</h2>
       <div id="settings-form-root">
         <div class="rounded-2xl bg-panel px-5 py-10 text-center text-sm text-mute shadow-hairline">Loading…</div>
       </div>
@@ -225,13 +781,15 @@ tailwind.config = {
 <div id="toast-container" class="fixed bottom-6 right-6 z-[200] flex max-w-[calc(100vw-2rem)] flex-col gap-2"></div>
 <div id="modal-root"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.1/dist/markdown-it.min.js"></script>
 <script>
 const state = {
   view: 'memories',
   section: null,
   config: null,
   entries: [],
+  workstreams: [],
+  handoffs: [],
+  reviewItems: [],
   skills: null,
   total: 0,
   offset: 0,
@@ -242,6 +800,21 @@ const state = {
   searchMode: false,
   searchQuery: '',
   includeDeleted: false,
+  workstreamsIncludeDeleted: false,
+  handoffsIncludeDeleted: false,
+  reviewPendingOnly: true,
+  reviewFilterWorkstreamId: '',
+  reviewFilterSessionId: '',
+  reviewFilterActorType: '',
+  reviewFilterActorId: '',
+  reviewFilterEntryKind: '',
+  reviewAvailableSessions: [],
+  reviewWorkstreamSummary: null,
+  reviewSessionSummary: null,
+  workstreamQueueItems: [],
+  selectedWorkstreamId: null,
+  workstreamDetail: null,
+  selectedReviewId: null,
   loading: false,
 };
 
@@ -271,12 +844,32 @@ const api = {
   restoreDeletedEntry: (id) => apiFetch(`/api/entries/${id}/restore`, { method: 'POST' }),
   restoreEntryVersion: (id, version) => apiFetch(`/api/entries/${id}/versions/${version}/restore`, { method: 'POST' }),
   diffVersions: (id, p) => apiFetch(`/api/entries/${id}/diff?` + new URLSearchParams(p)),
+  workstreams: (p = {}) => apiFetch('/api/workstreams?' + new URLSearchParams(p)),
+  openWorkstream: (body) => apiFetch('/api/workstreams/open', { method: 'POST', body: JSON.stringify(body) }),
+  handoffs: (p = {}) => apiFetch('/api/handoffs?' + new URLSearchParams(p)),
+  writeHandoff: (body) => apiFetch('/api/handoffs', { method: 'POST', body: JSON.stringify(body) }),
+  handoffRestoreContext: (id, p = {}) => apiFetch(`/api/handoffs/${id}/restore-context?` + new URLSearchParams(p)),
+  handoffPackage: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff-package?` + new URLSearchParams(p)),
+  workstreamState: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state?` + new URLSearchParams(p)),
+  workstreamResume: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/resume?` + new URLSearchParams(p)),
+  updateWorkstreamState: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state`, { method: 'POST', body: JSON.stringify(body) }),
+  startSession: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/sessions/start`, { method: 'POST', body: JSON.stringify(body) }),
+  closeSession: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/sessions/close`, { method: 'POST', body: JSON.stringify(body) }),
+  closeSessionAndHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/sessions/close-and-handoff`, { method: 'POST', body: JSON.stringify(body) }),
+  writeStructuredHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff`, { method: 'POST', body: JSON.stringify(body) }),
+  readStructuredHandoff: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff?` + new URLSearchParams(p)),
+  reviewQueue: (p = {}) => apiFetch('/api/review?' + new URLSearchParams(p)),
+  reviewWorkstream: (id, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(id)}?` + new URLSearchParams(p)),
+  reviewSession: (workstreamId, sessionId, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(workstreamId)}/sessions/${encodeURIComponent(sessionId)}?` + new URLSearchParams(p)),
+  workstreamQueue: (p = {}) => apiFetch('/api/workstreams/queue?' + new URLSearchParams(p)),
+  compareSessions: (workstreamId, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(workstreamId)}/compare/sessions?` + new URLSearchParams(p)),
+  compareWorkstreams: (p = {}) => apiFetch('/api/workstreams/compare?' + new URLSearchParams(p)),
+  reviewUpdate: (id, body) => apiFetch(`/api/review/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(body) }),
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
 };
 
 let semanticModels = [];
-const _md = markdownit({ html: false, linkify: false, typographer: true });
 
 function escHtml(s) {
   return String(s)
@@ -455,56 +1048,131 @@ function renderSideBySideDiff(diffText) {
 
   return `
     <div class="overflow-hidden rounded-xl border border-line bg-panel shadow-hairline">
-      <div class="grid grid-cols-2 border-b border-line bg-panelSoft text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">
-        <div class="border-r border-line px-4 py-2">From</div>
-        <div class="px-4 py-2">To</div>
+      <div class="diff-header">
+        <div>From</div>
+        <div>To</div>
       </div>
       <div class="max-h-[50vh] overflow-auto">
         ${rows.map((row) => `
-          <div class="grid grid-cols-2 border-b border-line last:border-b-0 text-[12px] leading-6 ${rowClasses[row.type] || rowClasses.context}">
-            <div class="min-w-0 border-r border-line px-4 py-2 font-mono text-[#21324d] whitespace-pre-wrap break-words ${row.left ? '' : 'text-mute/50'}">${renderDiffCell(row, 'left')}</div>
-            <div class="min-w-0 px-4 py-2 font-mono text-[#21324d] whitespace-pre-wrap break-words ${row.right ? '' : 'text-mute/50'}">${renderDiffCell(row, 'right')}</div>
+          <div class="diff-row ${rowClasses[row.type] || rowClasses.context}">
+            <div class="${row.left ? '' : 'muted'}">${renderDiffCell(row, 'left')}</div>
+            <div class="${row.right ? '' : 'muted'}">${renderDiffCell(row, 'right')}</div>
           </div>
         `).join('')}
       </div>
     </div>`;
 }
 
-function decorateMarkdown(tmp) {
-  tmp.querySelectorAll('h1').forEach((el) => el.className = 'font-display mb-2 mt-5 text-xl font-bold tracking-tight text-ink first:mt-0');
-  tmp.querySelectorAll('h2').forEach((el) => el.className = 'font-display mb-2 mt-5 border-b border-line pb-1.5 text-base font-bold tracking-tight text-ink first:mt-0');
-  tmp.querySelectorAll('h3, h4').forEach((el) => el.className = 'font-display mb-1.5 mt-4 text-sm font-semibold text-mute first:mt-0');
-  tmp.querySelectorAll('p').forEach((el) => el.className = 'mb-2.5 leading-7 last:mb-0');
-  tmp.querySelectorAll('ul').forEach((el) => el.className = 'mb-2.5 list-disc pl-5');
-  tmp.querySelectorAll('ol').forEach((el) => el.className = 'mb-2.5 list-decimal pl-5');
-  tmp.querySelectorAll('li').forEach((el) => el.classList.add('my-1'));
-  tmp.querySelectorAll('blockquote').forEach((el) => el.className = 'my-3 rounded-r-lg border-l-4 border-accent bg-accentSoft px-4 py-2 text-mute');
-  tmp.querySelectorAll('pre').forEach((el) => el.className = 'my-3 overflow-x-auto rounded-xl bg-[#0f1624] px-4 py-3 text-[12px] text-[#b8cfe8] shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_4px_12px_rgba(0,0,0,0.18)]');
-  tmp.querySelectorAll('pre code').forEach((el) => el.className = 'bg-transparent p-0 text-[12px] text-[#b8cfe8]');
-  tmp.querySelectorAll(':not(pre) > code').forEach((el) => el.className = 'rounded-md border border-line bg-[rgba(18,33,70,0.07)] px-1.5 py-0.5 font-mono text-[11.5px] text-ink');
-  tmp.querySelectorAll('strong').forEach((el) => el.classList.add('font-bold', 'text-ink'));
-  tmp.querySelectorAll('em').forEach((el) => el.classList.add('italic', 'text-mute'));
-  tmp.querySelectorAll('hr').forEach((el) => el.className = 'my-4 border-0 border-t border-line');
-  tmp.querySelectorAll('table').forEach((el) => el.className = 'my-3 w-full border-collapse overflow-hidden rounded-lg border border-line text-xs');
-  tmp.querySelectorAll('th').forEach((el) => el.className = 'border-b-2 border-lineStrong bg-panelSoft px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-ink');
-  tmp.querySelectorAll('td').forEach((el) => el.className = 'border-b border-line px-3 py-2 text-left');
-  tmp.querySelectorAll('tr:last-child td').forEach((el) => el.classList.remove('border-b'));
-  tmp.querySelectorAll('a').forEach((a) => {
-    a.removeAttribute('href');
-    a.setAttribute('aria-disabled', 'true');
-    a.setAttribute('tabindex', '-1');
-    a.setAttribute('title', 'Links desabilitados');
-    a.className = 'cursor-default border-b border-dashed border-lineStrong text-mute pointer-events-none';
-  });
+function formatInlineMarkdown(text) {
+  let html = escHtml(text || '');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  return html;
 }
 
 function renderMarkdown(text) {
   if (!text) return '';
-  const raw = _md.render(String(text));
-  const tmp = document.createElement('div');
-  tmp.innerHTML = raw;
-  decorateMarkdown(tmp);
-  return tmp.innerHTML;
+  const lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+  const blocks = [];
+  let paragraph = [];
+  let listItems = [];
+  let listMode = null;
+  let codeFence = null;
+
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    blocks.push(`<p>${formatInlineMarkdown(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (!listItems.length) return;
+    const tag = listMode === 'ol' ? 'ol' : 'ul';
+    blocks.push(`<${tag}>${listItems.map((item) => `<li>${formatInlineMarkdown(item)}</li>`).join('')}</${tag}>`);
+    listItems = [];
+    listMode = null;
+  }
+
+  function flushCodeFence() {
+    if (!codeFence) return;
+    blocks.push(`<pre><code>${escHtml(codeFence.join('\n'))}</code></pre>`);
+    codeFence = null;
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      flushParagraph();
+      flushList();
+      if (codeFence) {
+        flushCodeFence();
+      } else {
+        codeFence = [];
+      }
+      continue;
+    }
+
+    if (codeFence) {
+      codeFence.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (/^---+$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      blocks.push('<hr>');
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const quote = trimmed.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<blockquote>${formatInlineMarkdown(quote[1])}</blockquote>`);
+      continue;
+    }
+
+    const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (ordered) {
+      flushParagraph();
+      if (listMode && listMode !== 'ol') flushList();
+      listMode = 'ol';
+      listItems.push(ordered[1]);
+      continue;
+    }
+
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      if (listMode && listMode !== 'ul') flushList();
+      listMode = 'ul';
+      listItems.push(unordered[1]);
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  flushCodeFence();
+  return `<div class="markdown-body">${blocks.join('')}</div>`;
 }
 
 function parseFrontmatter(text) {
@@ -611,7 +1279,7 @@ function renderModelSelect(currentValue) {
 function toast(msg, type = 'info', duration = 3000) {
   const accent = type === 'error' ? '#c04040' : (type === 'success' ? '#30b870' : '#04D8E7');
   const el = document.createElement('div');
-  el.className = 'flex min-w-[240px] max-w-[340px] items-center gap-2 rounded-xl border border-white/10 bg-ink px-4 py-3 text-sm text-[#D4E3FF] shadow-toast transition-opacity';
+  el.className = 'toast';
   el.style.borderLeft = `3px solid ${accent}`;
   el.innerHTML = `<span>${msg}</span>`;
   const container = document.getElementById('toast-container');
@@ -623,15 +1291,12 @@ function toast(msg, type = 'info', duration = 3000) {
 }
 
 function baseButtonClasses(kind = 'ghost', small = false) {
-  const size = small ? 'rounded-lg px-3 py-1.5 text-sm' : 'rounded-xl px-4 py-2 text-sm';
-  const base = `inline-flex items-center justify-center gap-2 ${size} font-semibold transition focus:outline-none focus:ring-4 focus:ring-[rgba(4,216,231,0.12)]`;
-  if (kind === 'primary') return `${base} bg-ink text-accent hover:-translate-y-0.5 hover:bg-[#1A2E60]`;
-  if (kind === 'danger') return `${base} bg-danger text-white hover:-translate-y-0.5 hover:bg-dangerStrong`;
-  return `${base} border border-line text-mute hover:border-lineStrong hover:bg-panelSoft hover:text-ink`;
+  const size = small ? ' small-button' : '';
+  return `modal-button ${kind}${size}`;
 }
 
 function textInputClasses(multiline = false) {
-  return `w-full rounded-xl border border-line bg-shell px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-[rgba(4,216,231,0.12)] ${multiline ? 'min-h-[110px] resize-y leading-7' : ''}`;
+  return `field-control${multiline ? ' multiline' : ''}`;
 }
 
 function renderSections() {
@@ -641,20 +1306,20 @@ function renderSections() {
   const allActive = state.section === null && !state.searchMode;
 
   let html = `
-    <button class="mx-2 my-0.5 flex w-[calc(100%-16px)] items-center gap-2 rounded-xl border-l-2 px-3 py-2 text-left transition ${allActive ? 'border-accent bg-cyan-50 text-ink shadow-sm' : 'border-transparent text-mute hover:bg-[rgba(18,33,70,0.06)]'}" data-section="">
-      <span class="w-4 text-center text-sm ${allActive ? 'text-accent' : 'text-mute'}">◉</span>
-      <span class="flex-1 text-sm ${allActive ? 'font-semibold' : ''}">All entries</span>
-      <span class="rounded-full border px-2 py-0.5 font-mono text-[10px] ${allActive ? 'border-cyan-200 bg-cyan-50 text-ink' : 'border-line bg-[rgba(18,33,70,0.06)] text-mute'}" id="count-all">${state.total || ''}</span>
+    <button class="section-button ${allActive ? 'active' : ''}" data-section="" ${allActive ? 'style="border-left-color: var(--accent); background: rgba(4,216,231,0.12);"' : ''}>
+      <span class="w-4 text-center" style="color:${allActive ? 'var(--accent)' : 'var(--mute)'}">◉</span>
+      <span class="flex-1">All entries</span>
+      <span class="count-pill" id="count-all">${state.total || ''}</span>
     </button>`;
 
   for (const s of sections) {
     const theme = sectionTheme(s);
     const active = state.section === s && !state.searchMode;
     html += `
-      <button class="mx-2 my-0.5 flex w-[calc(100%-16px)] items-center gap-2 rounded-xl border-l-2 px-3 py-2 text-left transition ${active ? 'text-ink shadow-sm' : 'border-transparent text-mute hover:bg-[rgba(18,33,70,0.06)]'}" data-section="${escHtml(s)}" ${active ? `style="background:${theme.softBg};border-left-color:${theme.color};"` : ''}>
+      <button class="section-button ${active ? 'active' : ''}" data-section="${escHtml(s)}" ${active ? `style="background:${theme.softBg};border-left-color:${theme.color};"` : ''}>
         <span class="h-2 w-2 shrink-0 rounded-full" style="background:${theme.color}"></span>
-        <span class="flex-1 truncate text-sm ${active ? 'font-semibold' : ''}">${escHtml(s)}</span>
-        <span class="rounded-full border px-2 py-0.5 font-mono text-[10px] ${active ? '' : 'border-line bg-[rgba(18,33,70,0.06)] text-mute'}" id="count-${escHtml(s)}" ${active ? `style="border-color:${theme.softBorder};background:${theme.softBg};color:#122146;"` : ''}>—</span>
+        <span class="flex-1 truncate">${escHtml(s)}</span>
+        <span class="count-pill" id="count-${escHtml(s)}" ${active ? `style="border-color:${theme.softBorder};background:${theme.softBg};color:#122146;"` : ''}>—</span>
       </button>`;
   }
 
@@ -666,6 +1331,1254 @@ function renderSections() {
       selectSection(sec);
     });
   });
+}
+
+function renderHandoffSummary(items) {
+  const total = items.length;
+  const deleted = items.filter((item) => item.deleted_at).length;
+  const latest = items[0]?.updated_at || items[0]?.created_at || '';
+  const workstreams = new Set(items.map((item) => item.workstream_id).filter(Boolean));
+  document.getElementById('handoff-summary').innerHTML = `
+    <div class="pill-row justify-between">
+      <div>
+        <div class="section-title">Session continuity</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Goal-based handoffs for the next session, with restore context and related entries.</div>
+      </div>
+      <div class="pill-row">
+        <span class="count-pill">${total} handoff${total === 1 ? '' : 's'}</span>
+        <span class="count-pill">${workstreams.size} workstream${workstreams.size === 1 ? '' : 's'}</span>
+        <span class="count-pill">${deleted} deleted</span>
+        <span class="count-pill">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
+      </div>
+    </div>`;
+}
+
+function renderReviewSummary(items) {
+  const pending = items.filter((item) => item.review_status === 'pending').length;
+  const approved = items.filter((item) => item.review_status === 'approved').length;
+  const workstreams = new Set(items.map((item) => item.workstream_id).filter(Boolean));
+  const queueAwaiting = (state.workstreamQueueItems || []).filter((item) => item.operational_status === 'awaiting_review').length;
+  document.getElementById('review-summary').innerHTML = `
+    <div class="pill-row justify-between">
+      <div>
+        <div class="section-title">Review queue</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Diff-first review for agent-generated changes, decisions and session close checkpoints. Review workstream queue and comparisons are exposed in this panel.</div>
+      </div>
+      <div class="pill-row">
+        <span class="count-pill">${items.length} item${items.length === 1 ? '' : 's'}</span>
+        <span class="count-pill">${pending} pending</span>
+        <span class="count-pill">${approved} approved</span>
+        <span class="count-pill">${workstreams.size} workstream${workstreams.size === 1 ? '' : 's'}</span>
+        <span class="count-pill">${queueAwaiting} awaiting_review</span>
+      </div>
+    </div>`;
+}
+
+function renderReviewOperationalSummary() {
+  const root = document.getElementById('review-operational-summary');
+  if (!root) return;
+  const workstream = state.reviewWorkstreamSummary;
+  const session = state.reviewSessionSummary;
+  const queueLead = (state.workstreamQueueItems || [])[0];
+  root.innerHTML = `
+    <div class="compare-grid">
+      <div class="section-card" style="padding:14px;">
+        <div class="field-label">Review workstream queue</div>
+        <div>${escHtml(workstream?.workstream_id || queueLead?.workstream_id || state.reviewFilterWorkstreamId || 'All workstreams')}</div>
+        <div class="muted" style="font-size:13px; margin-top:6px;">status=${escHtml(workstream?.operational_status || queueLead?.operational_status || 'mixed')} pending=${escHtml(workstream?.pending_review_count ?? 0)}</div>
+      </div>
+      <div class="section-card" style="padding:14px;">
+        <div class="field-label">Compare focus</div>
+        <div>${escHtml(session?.session_id || state.reviewFilterSessionId || 'All sessions')}</div>
+        <div class="muted" style="font-size:13px; margin-top:6px;">/api/review/workstreams/ · /api/workstreams/compare · /api/workstreams/queue</div>
+      </div>
+    </div>`;
+}
+
+function summarizeDiff(diffText) {
+  const rows = parseUnifiedDiff(diffText);
+  return rows.reduce((summary, row) => {
+    if (row.type === 'added') summary.added += 1;
+    else if (row.type === 'removed') summary.removed += 1;
+    else if (row.type === 'changed') summary.changed += 1;
+    return summary;
+  }, { added: 0, removed: 0, changed: 0 });
+}
+
+function updateReviewFilterControls() {
+  const workstreamSelect = document.getElementById('review-workstream-filter');
+  const sessionSelect = document.getElementById('review-session-filter');
+  if (!workstreamSelect || !sessionSelect) return;
+
+  const workstreamIds = [...new Set([
+    ...(state.workstreams || []).map((item) => item.workstream_id),
+    ...(state.reviewItems || []).map((item) => item.workstream_id),
+  ].filter(Boolean))];
+  workstreamSelect.innerHTML = ['<option value="">All workstreams</option>']
+    .concat(workstreamIds.map((workstreamId) => `<option value="${escHtml(workstreamId)}" ${workstreamId === state.reviewFilterWorkstreamId ? 'selected' : ''}>${escHtml(workstreamId)}</option>`))
+    .join('');
+
+  const fallbackSessions = state.reviewFilterWorkstreamId
+    ? (state.reviewItems || []).filter((item) => item.workstream_id === state.reviewFilterWorkstreamId).map((item) => item.session_id)
+    : (state.reviewItems || []).map((item) => item.session_id);
+  const sessionIds = [...new Set([...(state.reviewAvailableSessions || []), ...fallbackSessions].filter(Boolean))];
+  sessionSelect.innerHTML = ['<option value="">All sessions</option>']
+    .concat(sessionIds.map((sessionId) => `<option value="${escHtml(sessionId)}" ${sessionId === state.reviewFilterSessionId ? 'selected' : ''}>${escHtml(sessionId)}</option>`))
+    .join('');
+}
+
+async function refreshReviewAvailableSessions() {
+  if (!state.reviewFilterWorkstreamId) {
+    state.reviewAvailableSessions = [];
+    updateReviewFilterControls();
+    return;
+  }
+  try {
+    const data = await api.workstreamState(state.reviewFilterWorkstreamId, { include_deleted: 'false' });
+    state.reviewAvailableSessions = (data.sessions || []).map((item) => item.session_id).filter(Boolean);
+  } catch (e) {
+    state.reviewAvailableSessions = [];
+  }
+  updateReviewFilterControls();
+}
+
+async function applyReviewFilters(workstreamId = '', sessionId = '') {
+  state.reviewFilterWorkstreamId = workstreamId || '';
+  state.reviewFilterSessionId = sessionId || '';
+  if (state.reviewFilterWorkstreamId) {
+    state.selectedWorkstreamId = state.reviewFilterWorkstreamId;
+  }
+  await refreshReviewAvailableSessions();
+  if (state.view !== 'review') {
+    switchView('review');
+    await loadReviewQueue();
+    return;
+  }
+  await loadReviewQueue();
+}
+
+async function applyRestoreContext(restoreContext = {}, options = {}) {
+  const normalizedSection = restoreContext.section || options.section || null;
+  const normalizedQuery = restoreContext.query || options.query || '';
+  state.includeDeleted = Boolean(restoreContext.include_deleted);
+  document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
+  if (state.view !== 'memories') {
+    switchView('memories');
+  }
+  clearSearch(true);
+  state.section = normalizedSection;
+  renderSections();
+  await loadEntries();
+  if (normalizedQuery) {
+    document.getElementById('search-input').value = normalizedQuery;
+    await doSearch(normalizedQuery);
+  }
+  closeModal();
+  toast('Restore context applied.', 'success');
+}
+
+function openGuidedRestoreModal(payload, options = {}) {
+  const restoreContext = payload.restore_context || {};
+  const workstreamId = options.workstreamId || payload.workstream_id || '';
+  const sessionId = options.sessionId || payload.session_id || '';
+  const relatedEntries = (payload.related_entries || payload.related_entry_ids || []).map((item) => {
+    if (typeof item === 'string') return item;
+    return item.raw || item.entry_id || '';
+  }).filter(Boolean);
+  openModal(modalShell(`
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Guided restore</div>
+        <div class="muted" style="font-size:12px; margin-top:4px;">Apply the restore context and jump to the right surface.</div>
+      </div>
+      <button class="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Goal</div>
+        <div>${escHtml(payload.next_goal || payload.goal || payload.current_goal || '')}</div>
+        <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(payload.summary || '')}</div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Restore section</div><div>${escHtml(restoreContext.section || '')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Restore query</div><div class="mono">${escHtml(restoreContext.query || '')}</div></div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Workstream</div><div class="mono">${escHtml(workstreamId || '—')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Session</div><div class="mono">${escHtml(sessionId || '—')}</div></div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Next steps</div>
+        <div class="markdown-body">${renderMarkdown((payload.next_steps || []).map((item, index) => `${index + 1}. ${item}`).join('\n') || '_none_')}</div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Essential context</div>
+        <div class="markdown-body">${renderMarkdown((payload.essential_context || payload.current_state || payload.compressed_context?.essential || []).map((item) => `- ${item}`).join('\n') || '_none_')}</div>
+      </div>
+      <div class="section-card" style="padding:14px;">
+        <div class="field-label">Related entries</div>
+        <div class="pill-row">${relatedEntries.map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>'}</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      ${workstreamId ? `<button class="${baseButtonClasses('ghost')}" id="btn-guided-open-workstream">Open workstream</button>` : ''}
+      ${workstreamId ? `<button class="${baseButtonClasses('ghost')}" id="btn-guided-review-session">Review session</button>` : ''}
+      <button class="${baseButtonClasses('primary')}" id="btn-guided-apply">Apply restore</button>
+    </div>
+  `, ' modal-wide'));
+  document.getElementById('btn-guided-apply').addEventListener('click', async () => {
+    await applyRestoreContext(restoreContext);
+  });
+  document.getElementById('btn-guided-open-workstream')?.addEventListener('click', async () => {
+    closeModal();
+    await openWorkstreamDetailModal(workstreamId);
+  });
+  document.getElementById('btn-guided-review-session')?.addEventListener('click', async () => {
+    closeModal();
+    await applyReviewFilters(workstreamId, sessionId);
+  });
+}
+
+function renderWorkstreamSummary(items) {
+  const total = items.length;
+  const sessions = items.reduce((sum, item) => sum + (item.session_count || 0), 0);
+  const latest = items[0]?.updated_at || '';
+  document.getElementById('workstream-summary').innerHTML = `
+    <div class="pill-row justify-between">
+      <div>
+        <div class="section-title">Operational map</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Workstreams become the primary operational unit, with entries and handoffs projected underneath.</div>
+      </div>
+      <div class="pill-row">
+        <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
+        <span class="count-pill">${sessions} session${sessions === 1 ? '' : 's'}</span>
+        <span class="count-pill">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
+      </div>
+    </div>`;
+}
+
+function renderWorkstreamCard(item) {
+  const selected = item.workstream_id === state.selectedWorkstreamId ? ' is-selected' : '';
+  return `
+    <article class="handoff-card${selected}" data-workstream-id="${escHtml(item.workstream_id)}">
+      <div class="card-header" style="background:rgba(18,33,70,0.05)">
+        <span class="section-pill" style="border:1px solid rgba(18,33,70,0.12);background:rgba(255,255,255,0.65);padding:4px 10px;font-size:11px;color:var(--ink)">workstream</span>
+        <span class="tag-pill mono">${escHtml(item.workstream_id)}</span>
+        <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(item.updated_at || ''))}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title" style="font-size:16px; margin-bottom:8px;">${escHtml(previewText(item.goal || 'Untitled workstream', 72))}</div>
+        <div class="muted" style="font-size:13px; line-height:1.7; margin-bottom:10px;">${escHtml(previewText(item.summary || 'No summary available.', 160))}</div>
+        <div class="pill-row">
+          <span class="tag-pill mono">entries:${escHtml(item.entry_count || 0)}</span>
+          <span class="tag-pill mono">sessions:${escHtml(item.session_count || 0)}</span>
+          ${item.latest_session_id ? `<span class="tag-pill mono">latest:${escHtml(item.latest_session_id)}</span>` : ''}
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="${baseButtonClasses('ghost', true)}" data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
+        <button class="${baseButtonClasses('ghost', true)}" data-workstream-state-card="${escHtml(item.workstream_id)}">State</button>
+        <button class="${baseButtonClasses('primary', true)}" data-workstream-resume-card="${escHtml(item.workstream_id)}">Resume</button>
+      </div>
+    </article>`;
+}
+
+function renderResumeListSection(title, items, ordered = false) {
+  return `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="field-label">${escHtml(title)}</div>
+      <div class="markdown-body">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
+    </div>
+  `;
+}
+
+function renderWorkstreamTimeline(items) {
+  if (!items || !items.length) {
+    return '<div class="muted">No timeline events yet.</div>';
+  }
+  return `
+    <div class="timeline-list">
+      ${items.map((item) => `
+        <div class="timeline-item">
+          <div class="timeline-time">${escHtml(relTime(item.updated_at || item.created_at || ''))}</div>
+          <div class="timeline-body">
+            <div class="timeline-title-row">
+              <span class="tag-pill mono">${escHtml(item.entry_kind || 'entry')}</span>
+              ${item.entry_role ? `<span class="tag-pill">${escHtml(item.entry_role)}</span>` : ''}
+              ${item.session_id ? `<span class="tag-pill mono">${escHtml(item.session_id)}</span>` : ''}
+              <span class="tag-pill">${escHtml(item.section || '')}</span>
+            </div>
+            <div class="timeline-summary">${escHtml(item.summary || 'No summary available.')}</div>
+            ${item.related_entry_ids && item.related_entry_ids.length ? `<div class="pill-row" style="margin-top:8px;">${item.related_entry_ids.map((relatedId) => `<span class="tag-pill mono">${escHtml(relatedId)}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderWorkstreamDetail() {
+  const root = document.getElementById('workstream-detail-root');
+  if (!state.selectedWorkstreamId) {
+    root.innerHTML = '<div class="empty-state">Select a workstream to inspect its current state, resume context, sessions and handoff actions.</div>';
+    return;
+  }
+  if (
+    !state.workstreamDetail ||
+    state.workstreamDetail.workstreamId !== state.selectedWorkstreamId ||
+    !state.workstreamDetail.stateData ||
+    !state.workstreamDetail.resumeData
+  ) {
+    root.innerHTML = '<div class="loading-state">Loading workstream detail…</div>';
+    return;
+  }
+  if (state.workstreamDetail.error) {
+    root.innerHTML = `<div class="empty-state">Failed to load workstream detail: ${escHtml(state.workstreamDetail.error)}</div>`;
+    return;
+  }
+
+  const { workstreamId, stateData, resumeData, handoffData } = state.workstreamDetail;
+  const sessions = (stateData.sessions || []).map((session) => `
+    <div class="section-card" style="padding:12px;">
+      <div class="field-label">${escHtml(session.session_id || '(none)')}</div>
+      <div class="muted" style="font-size:13px;">entries=${escHtml(session.entry_count)} latest=${escHtml(session.latest_entry_id || '')}</div>
+    </div>
+  `).join('') || '<div class="muted">No sessions aggregated.</div>';
+  const timeline = renderWorkstreamTimeline(stateData.timeline || []);
+  const relatedEntries = (resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>';
+  const handoffGoal = handoffData?.goal ? `
+    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="field-label">Latest structured handoff</div>
+      <div>${escHtml(handoffData.goal)}</div>
+      <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(handoffData.summary || '')}</div>
+    </div>
+  ` : '';
+
+  root.innerHTML = `
+    <div class="panel" style="padding:18px;">
+      <div class="section-header" style="margin-bottom:16px;">
+        <div>
+          <div class="page-title" style="font-size:22px;">${escHtml(workstreamId)}</div>
+          <div class="muted" style="font-size:13px; margin-top:4px;">Persistent workstream detail for current state, resume context and next actions.</div>
+        </div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Goal</div>
+        <div>${escHtml(resumeData.goal || '')}</div>
+        <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(resumeData.summary || '')}</div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Sessions</div><div>${escHtml(stateData.session_count)}</div></div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Latest entry</div><div class="mono">${escHtml(resumeData.latest_entry_id || '')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Focus entries</div><div class="mono">${escHtml((resumeData.focus_entry_ids || []).join(', ') || 'none')}</div></div>
+      </div>
+      ${renderResumeListSection('Current state', resumeData.current_state)}
+      ${renderResumeListSection('Open loops', resumeData.open_loops)}
+      ${renderResumeListSection('Next steps', resumeData.next_steps, true)}
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Restore context</div>
+        <div class="mono">section=${escHtml(resumeData.restore_context?.section || '')} query=${escHtml(resumeData.restore_context?.query || '')} include_deleted=${resumeData.restore_context?.include_deleted ? 'true' : 'false'}</div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Related entries</div>
+        <div class="pill-row">${relatedEntries}</div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Aggregated sessions</div>
+        <div class="version-grid">${sessions}</div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Workstream timeline</div>
+        ${timeline}
+      </div>
+      ${handoffGoal}
+      <div class="card-actions" style="padding:0; border-top:0; justify-content:flex-start;">
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-state">State</button>
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-resume">Resume</button>
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-start">Start session</button>
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-update">Update state</button>
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-freeze">Freeze workstream</button>
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-close">Close session</button>
+        <button class="${baseButtonClasses('primary', true)}" id="btn-persisted-workstream-handoff">Write handoff</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btn-persisted-workstream-state').addEventListener('click', async () => await openWorkstreamStateModal(workstreamId, null));
+  document.getElementById('btn-persisted-workstream-resume').addEventListener('click', async () => await openWorkstreamResumeModal(workstreamId, null));
+  document.getElementById('btn-persisted-workstream-start').addEventListener('click', () => openSessionStartModal(workstreamId));
+  document.getElementById('btn-persisted-workstream-update').addEventListener('click', () => openWorkstreamStateUpdateModal(workstreamId, resumeData));
+  document.getElementById('btn-persisted-workstream-freeze').addEventListener('click', () => openSessionCloseModal(workstreamId, { status: 'frozen', title: 'Freeze workstream', submitLabel: 'Freeze workstream' }));
+  document.getElementById('btn-persisted-workstream-close').addEventListener('click', () => openSessionCloseModal(workstreamId));
+  document.getElementById('btn-persisted-workstream-handoff').addEventListener('click', () => openStructuredHandoffModal(workstreamId, resumeData));
+}
+
+async function selectWorkstream(workstreamId) {
+  state.selectedWorkstreamId = workstreamId;
+  state.workstreamDetail = { workstreamId };
+  renderWorkstreams(state.workstreams);
+  renderWorkstreamDetail();
+  try {
+    const [stateData, resumeData] = await Promise.all([
+      api.workstreamState(workstreamId, { include_deleted: 'false' }),
+      api.workstreamResume(workstreamId, { include_deleted: 'false' }),
+    ]);
+    const handoffData = stateData.latest_handoff ? await api.readStructuredHandoff(workstreamId, { include_deleted: 'true' }).catch(() => null) : null;
+    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData };
+  } catch (e) {
+    state.workstreamDetail = { workstreamId, error: e.message };
+  }
+  renderWorkstreamDetail();
+  updateReviewFilterControls();
+}
+
+function renderWorkstreams(items) {
+  const grid = document.getElementById('workstream-grid');
+  renderWorkstreamSummary(items);
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty-state">No workstreams yet. Open a workstream to manage state, sessions and handoffs from one place.</div>';
+    state.selectedWorkstreamId = null;
+    state.workstreamDetail = null;
+    renderWorkstreamDetail();
+    return;
+  }
+  grid.innerHTML = items.map(renderWorkstreamCard).join('');
+  grid.querySelectorAll('[data-workstream-open]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await selectWorkstream(button.dataset.workstreamOpen);
+    });
+  });
+  grid.querySelectorAll('[data-workstream-state-card]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await openWorkstreamStateModal(button.dataset.workstreamStateCard, null);
+    });
+  });
+  grid.querySelectorAll('[data-workstream-resume-card]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await openWorkstreamResumeModal(button.dataset.workstreamResumeCard, null);
+    });
+  });
+}
+
+async function loadWorkstreams() {
+  try {
+    const data = await api.workstreams({ include_deleted: String(state.workstreamsIncludeDeleted), limit: '50' });
+    state.workstreams = data.items || [];
+    renderWorkstreams(state.workstreams);
+    const availableIds = new Set(state.workstreams.map((item) => item.workstream_id));
+    const nextSelected = availableIds.has(state.selectedWorkstreamId) ? state.selectedWorkstreamId : state.workstreams[0]?.workstream_id || null;
+    if (!nextSelected) {
+      state.selectedWorkstreamId = null;
+      state.workstreamDetail = null;
+      renderWorkstreamDetail();
+      return;
+    }
+    await selectWorkstream(nextSelected);
+  } catch (e) {
+    document.getElementById('workstream-grid').innerHTML = `<div class="empty-state">Failed to load workstreams: ${escHtml(e.message)}</div>`;
+    document.getElementById('workstream-detail-root').innerHTML = '';
+  }
+}
+
+function renderHandoffCard(entry) {
+  const deletedBadge = entry.deleted_at ? '<span class="tag-pill" style="border-color:rgba(192,64,64,0.25);background:rgba(192,64,64,0.1);color:var(--danger);">Deleted</span>' : '';
+  const workstreamBadges = [
+    entry.workstream_id ? `<span class="tag-pill mono" style="background:rgba(4,216,231,0.10);border-color:rgba(4,216,231,0.24);">ws:${escHtml(entry.workstream_id)}</span>` : '',
+    entry.session_id ? `<span class="tag-pill mono">session:${escHtml(entry.session_id)}</span>` : '',
+  ].filter(Boolean).join('');
+  const workstreamActions = entry.workstream_id ? `
+        <button class="${baseButtonClasses('ghost', true)}" data-workstream-state="${escHtml(entry.id)}">State</button>
+        <button class="${baseButtonClasses('ghost', true)}" data-workstream-resume="${escHtml(entry.id)}">Resume</button>
+  ` : '';
+  return `
+    <article class="handoff-card" data-handoff-id="${escHtml(entry.id)}">
+      <div class="card-header" style="background:rgba(4,216,231,0.08)">
+        <span class="section-pill" style="border:1px solid rgba(4,216,231,0.18);background:rgba(255,255,255,0.65);padding:4px 10px;font-size:11px;color:var(--ink)">handoff</span>
+        ${deletedBadge}
+        <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(entry.updated_at || entry.created_at))}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title" style="font-size:16px; margin-bottom:8px;">${escHtml(previewText(entry.content.split('\n').find((line) => line.trim() && !line.startsWith('#')) || 'Untitled handoff', 64))}</div>
+        <div class="pill-row" style="margin-bottom:10px;">${workstreamBadges || '<span class="muted" style="font-size:12px;">No workstream linked</span>'}</div>
+        <div class="muted" style="font-size:13px; line-height:1.7;">${escHtml(previewText(entry.content.replace(/\s+/g, ' '), 180))}</div>
+      </div>
+      <div class="card-actions">
+        <button class="${baseButtonClasses('ghost', true)}" data-handoff-open="${escHtml(entry.id)}">Open</button>
+        ${workstreamActions}
+        <button class="${baseButtonClasses('primary', true)}" data-handoff-context="${escHtml(entry.id)}">Restore context</button>
+      </div>
+    </article>`;
+}
+
+function renderHandoffs(items) {
+  const grid = document.getElementById('handoff-grid');
+  renderHandoffSummary(items);
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty-state">No handoffs yet. Generate a goal-based handoff to resume a workstream later.</div>';
+    return;
+  }
+  grid.innerHTML = items.map(renderHandoffCard).join('');
+  grid.querySelectorAll('[data-handoff-open]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const entry = state.handoffs.find((item) => item.id === button.dataset.handoffOpen);
+      if (entry) openHandoffViewModal(entry);
+    });
+  });
+  grid.querySelectorAll('[data-handoff-context]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await openHandoffRestoreContext(button.dataset.handoffContext);
+    });
+  });
+  grid.querySelectorAll('[data-workstream-state]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const entry = state.handoffs.find((item) => item.id === button.dataset.workstreamState);
+      if (entry?.workstream_id) await openWorkstreamStateModal(entry.workstream_id, entry.session_id || null);
+    });
+  });
+  grid.querySelectorAll('[data-workstream-resume]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const entry = state.handoffs.find((item) => item.id === button.dataset.workstreamResume);
+      if (entry?.workstream_id) await openWorkstreamResumeModal(entry.workstream_id, entry.session_id || null);
+    });
+  });
+}
+
+async function loadHandoffs() {
+  try {
+    const data = await api.handoffs({ include_deleted: String(state.handoffsIncludeDeleted), limit: '50' });
+    state.handoffs = data.items || [];
+    renderHandoffs(state.handoffs);
+  } catch (e) {
+    document.getElementById('handoff-grid').innerHTML = `<div class="empty-state">Failed to load handoffs: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderReviewCard(item) {
+  const selected = item.entry_id === state.selectedReviewId ? ' is-selected' : '';
+  return `
+    <article class="handoff-card${selected}" data-review-id="${escHtml(item.entry_id)}">
+      <div class="card-header" style="background:rgba(247,149,51,0.08)">
+        <span class="tag-pill mono">${escHtml(item.entry_kind || 'entry')}</span>
+        <span class="tag-pill">${escHtml(item.review_status || 'pending')}</span>
+        <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(item.updated_at || ''))}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title" style="font-size:16px; margin-bottom:8px;">${escHtml(previewText(item.summary || item.entry_id, 80))}</div>
+        <div class="pill-row" style="margin-bottom:10px;">${(item.review_reasons || []).map((reason) => `<span class="tag-pill mono">${escHtml(reason)}</span>`).join('') || '<span class="muted" style="font-size:12px;">No explicit reason</span>'}</div>
+        <div class="muted" style="font-size:13px; line-height:1.7;">${escHtml(item.workstream_id || 'No workstream linked')}</div>
+      </div>
+      <div class="card-actions">
+        <button class="${baseButtonClasses('ghost', true)}" data-review-open="${escHtml(item.entry_id)}">Inspect</button>
+      </div>
+    </article>`;
+}
+
+function renderReviewDetail() {
+  const root = document.getElementById('review-detail-root');
+  const item = state.reviewItems.find((entry) => entry.entry_id === state.selectedReviewId) || state.reviewItems[0];
+  if (!item) {
+    root.innerHTML = '<div class="empty-state">No review items. Agent-generated changes, decisions and session close checkpoints will appear here.</div>';
+    return;
+  }
+  state.selectedReviewId = item.entry_id;
+  const diffSummary = summarizeDiff(item.diff || '');
+  const sessionSummary = state.reviewSessionSummary;
+  const workstreamSummary = state.reviewWorkstreamSummary;
+  root.innerHTML = `
+    <div class="panel" style="padding:18px;">
+      <div class="section-header" style="margin-bottom:16px;">
+        <div>
+          <div class="page-title" style="font-size:22px;">Review ${escHtml(item.entry_id)}</div>
+          <div class="muted" style="font-size:13px; margin-top:4px;">Review Mode with diff context and operational scope.</div>
+        </div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Status</div><div>${escHtml(item.review_status || 'pending')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Scope</div><div class="mono">${escHtml(item.workstream_id || 'global')}${item.session_id ? ` · ${escHtml(item.session_id)}` : ''}</div></div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Why this needs review</div>
+        <div class="pill-row">${(item.review_reasons || []).map((reason) => `<span class="tag-pill mono">${escHtml(reason)}</span>`).join('') || '<span class="muted">No explicit reasons.</span>'}</div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Summary</div>
+        <div>${escHtml(item.summary || '')}</div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Actor</div><div class="mono">${escHtml(item.actor_type || 'unknown')}:${escHtml(item.actor_id || '—')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Causal trail</div><div class="mono">${escHtml((item.source_context_entry_ids || []).join(', ') || 'none')}</div></div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Supersedes</div><div class="mono">${escHtml(item.supersedes_entry_id || '—')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Session pending review</div><div>${escHtml(sessionSummary?.pending_review_count ?? '—')}</div></div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Changed blocks</div><div>${escHtml(diffSummary.changed)}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Added lines</div><div>${escHtml(diffSummary.added)}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Removed lines</div><div>${escHtml(diffSummary.removed)}</div></div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Side-by-side diff</div>
+        ${renderSideBySideDiff(item.diff || '')}
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Unified diff</div>
+        <pre class="diff-block" style="white-space:pre-wrap; overflow:auto;">${escHtml(item.diff || 'No diff available.')}</pre>
+      </div>
+      ${workstreamSummary ? `<div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">Workstream supervision</div><div class="muted" style="font-size:13px; margin-bottom:8px;">status=${escHtml(workstreamSummary.operational_status || '')} sessions=${escHtml((workstreamSummary.sessions || []).length)}</div><div class="pill-row">${(workstreamSummary.source_context_entry_ids || []).map((entryId) => `<span class="tag-pill mono">${escHtml(entryId)}</span>`).join('') || '<span class="muted">No source context IDs.</span>'}</div></div>` : ''}
+      <div class="card-actions" style="padding:0; border-top:0; justify-content:flex-start; flex-wrap:wrap;">
+        <button class="${baseButtonClasses('ghost', true)}" data-review-status="approved">Approve</button>
+        <button class="${baseButtonClasses('ghost', true)}" data-review-status="needs_revision">Needs revision</button>
+        <button class="${baseButtonClasses('ghost', true)}" data-review-status="dismissed">Dismiss</button>
+        ${item.workstream_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-focus-session">Focus session</button>` : ''}
+        ${item.workstream_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-open-resume">Resume</button>` : ''}
+        ${item.workstream_id && item.session_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-compare-session">Compare sessions</button>` : ''}
+        ${item.workstream_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-compare-workstream">Compare workstreams</button>` : ''}
+        ${item.workstream_id ? `<button class="${baseButtonClasses('primary', true)}" id="btn-review-handoff-package">Build handoff package</button>` : ''}
+      </div>
+    </div>`;
+  root.querySelectorAll('[data-review-status]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        await api.reviewUpdate(item.entry_id, { review_status: button.dataset.reviewStatus, review_notes: 'Updated from Review Mode.' });
+        toast('Review updated.', 'success');
+        await loadReviewQueue();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    });
+  });
+  document.getElementById('btn-review-focus-session')?.addEventListener('click', async () => {
+    await applyReviewFilters(item.workstream_id || '', item.session_id || '');
+  });
+  document.getElementById('btn-review-open-resume')?.addEventListener('click', async () => {
+    await openWorkstreamResumeModal(item.workstream_id, item.session_id || null);
+  });
+  document.getElementById('btn-review-compare-session')?.addEventListener('click', async () => {
+    if (!item.workstream_id || !item.session_id) return;
+    const baseSessionId = state.reviewWorkstreamSummary?.sessions?.find((entry) => entry.session_id && entry.session_id !== item.session_id)?.session_id;
+    if (!baseSessionId) {
+      toast('No second session available for comparison.', 'error');
+      return;
+    }
+    try {
+      const payload = await api.compareSessions(item.workstream_id, { base_session_id: baseSessionId, target_session_id: item.session_id });
+      openModal(modalShell(`
+        <div class="modal-header"><span class="modal-title">Compare sessions</span><button class="modal-close">×</button></div>
+        <div class="modal-body">
+          <div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">/api/workstreams/${escHtml(item.workstream_id)}/compare/sessions</div><div class="mono">base=${escHtml(baseSessionId)} target=${escHtml(item.session_id)}</div></div>
+          <div class="compare-grid"><div class="section-card" style="padding:14px;"><div class="field-label">New open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.new_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div><div class="section-card" style="padding:14px;"><div class="field-label">Resolved open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.resolved_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div></div>
+        </div>
+      `, ' modal-wide'));
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+  document.getElementById('btn-review-compare-workstream')?.addEventListener('click', async () => {
+    const other = (state.workstreamQueueItems || []).find((entry) => entry.workstream_id && entry.workstream_id !== item.workstream_id);
+    if (!other) {
+      toast('No second workstream available for comparison.', 'error');
+      return;
+    }
+    try {
+      const payload = await api.compareWorkstreams({ left_workstream_id: item.workstream_id, right_workstream_id: other.workstream_id });
+      openModal(modalShell(`
+        <div class="modal-header"><span class="modal-title">Compare workstreams</span><button class="modal-close">×</button></div>
+        <div class="modal-body">
+          <div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">/api/workstreams/compare</div><div class="mono">left=${escHtml(item.workstream_id)} right=${escHtml(other.workstream_id)}</div></div>
+          <div class="compare-grid"><div class="section-card" style="padding:14px;"><div class="field-label">Left-only open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.left_only_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div><div class="section-card" style="padding:14px;"><div class="field-label">Right-only open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.right_only_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div></div>
+        </div>
+      `, ' modal-wide'));
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+  const handoffButton = document.getElementById('btn-review-handoff-package');
+  if (handoffButton) {
+    handoffButton.addEventListener('click', async () => {
+      try {
+        const payload = await api.handoffPackage(item.workstream_id, { session_id: item.session_id || '' });
+        openGuidedRestoreModal(payload, { workstreamId: item.workstream_id, sessionId: item.session_id || '' });
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    });
+  }
+}
+
+function renderReviewQueue(items) {
+  const grid = document.getElementById('review-grid');
+  renderReviewSummary(items);
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty-state">No review items found for the current filter.</div>';
+    document.getElementById('review-detail-root').innerHTML = '<div class="empty-state">Review detail appears here once an item is selected.</div>';
+    return;
+  }
+  grid.innerHTML = items.map(renderReviewCard).join('');
+  grid.querySelectorAll('[data-review-open]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.selectedReviewId = button.dataset.reviewOpen;
+      renderReviewQueue(state.reviewItems);
+    });
+  });
+  renderReviewDetail();
+}
+
+async function loadReviewQueue() {
+  try {
+    const params = { pending_only: String(state.reviewPendingOnly), limit: '50' };
+    if (state.reviewFilterWorkstreamId) params.workstream_id = state.reviewFilterWorkstreamId;
+    if (state.reviewFilterSessionId) params.session_id = state.reviewFilterSessionId;
+    if (state.reviewFilterActorType) params.actor_type = state.reviewFilterActorType;
+    if (state.reviewFilterActorId) params.actor_id = state.reviewFilterActorId;
+    if (state.reviewFilterEntryKind) params.entry_kind = state.reviewFilterEntryKind;
+    const [data, queueData, reviewWorkstreamData, reviewSessionData] = await Promise.all([
+      api.reviewQueue(params),
+      api.workstreamQueue({ status: 'awaiting_review', limit: '20' }).catch(() => ({ items: [] })),
+      state.reviewFilterWorkstreamId ? api.reviewWorkstream(state.reviewFilterWorkstreamId).catch(() => null) : Promise.resolve(null),
+      state.reviewFilterWorkstreamId && state.reviewFilterSessionId
+        ? api.reviewSession(state.reviewFilterWorkstreamId, state.reviewFilterSessionId).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    state.reviewItems = data.items || [];
+    state.workstreamQueueItems = queueData.items || [];
+    state.reviewWorkstreamSummary = reviewWorkstreamData;
+    state.reviewSessionSummary = reviewSessionData;
+    if (!state.reviewItems.find((item) => item.entry_id === state.selectedReviewId)) {
+      state.selectedReviewId = state.reviewItems[0]?.entry_id || null;
+    }
+    updateReviewFilterControls();
+    renderReviewQueue(state.reviewItems);
+    renderReviewOperationalSummary();
+  } catch (e) {
+    document.getElementById('review-grid').innerHTML = `<div class="empty-state">Failed to load review queue: ${escHtml(e.message)}</div>`;
+    document.getElementById('review-detail-root').innerHTML = '';
+    document.getElementById('review-operational-summary').innerHTML = '';
+  }
+}
+
+function collectCommaSeparated(id) {
+  const raw = document.getElementById(id).value.trim();
+  return raw ? raw.split(',').map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function openNewHandoffModal() {
+  const defaultSection = state.section || 'actions';
+  openModal(modalShell(`
+    <div class="modal-header">
+      <span class="modal-title">Generate handoff</span>
+      <button class="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Goal</label>
+        <input class="${textInputClasses()}" id="handoff-goal" placeholder="Ship review mode for agent output">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Summary</label>
+        <textarea class="${textInputClasses(true)}" id="handoff-summary-input" placeholder="Compact summary of the current state."></textarea>
+      </div>
+      <div class="compare-grid" style="margin-bottom:14px;">
+        <div>
+          <label class="field-label">Current state</label>
+          <textarea class="${textInputClasses(true)}" id="handoff-current-state" placeholder="One bullet per line"></textarea>
+        </div>
+        <div>
+          <label class="field-label">Open loops</label>
+          <textarea class="${textInputClasses(true)}" id="handoff-open-loops" placeholder="One bullet per line"></textarea>
+        </div>
+      </div>
+      <div class="compare-grid" style="margin-bottom:14px;">
+        <div>
+          <label class="field-label">Next steps</label>
+          <textarea class="${textInputClasses(true)}" id="handoff-next-steps" placeholder="One step per line"></textarea>
+        </div>
+        <div>
+          <label class="field-label">Related entries</label>
+          <textarea class="${textInputClasses(true)}" id="handoff-related-entries" placeholder="abcd1234 or deadbeef@v2"></textarea>
+        </div>
+      </div>
+      <div class="compare-grid">
+        <div>
+          <label class="field-label">Restore section</label>
+          <select class="${textInputClasses()}" id="handoff-restore-section">${buildSectionOptions(defaultSection)}</select>
+        </div>
+        <div>
+          <label class="field-label">Restore query</label>
+          <input class="${textInputClasses()}" id="handoff-restore-query" placeholder="optional focused query">
+        </div>
+      </div>
+      <div class="compare-grid" style="margin-top:14px;">
+        <div>
+          <label class="field-label">Workstream ID</label>
+          <input class="${textInputClasses()}" id="handoff-workstream-id" placeholder="ws_agent">
+        </div>
+        <div>
+          <label class="field-label">Session ID</label>
+          <input class="${textInputClasses()}" id="handoff-session-id" placeholder="sess_001">
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="field-label">Extra tags</label>
+        <input class="${textInputClasses()}" id="handoff-tags" placeholder="resume, review, priority">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
+      <button class="${baseButtonClasses('primary')}" id="btn-save-handoff">Save handoff</button>
+    </div>
+  `));
+
+  document.getElementById('handoff-goal').focus();
+  document.getElementById('btn-save-handoff').addEventListener('click', async () => {
+    const goal = document.getElementById('handoff-goal').value.trim();
+    if (!goal) {
+      toast('Goal is required.', 'error');
+      return;
+    }
+    const toLines = (id) => document.getElementById(id).value.split('\n').map((item) => item.trim()).filter(Boolean);
+    try {
+      await api.writeHandoff({
+        goal,
+        summary: document.getElementById('handoff-summary-input').value.trim() || null,
+        current_state: toLines('handoff-current-state'),
+        open_loops: toLines('handoff-open-loops'),
+        next_steps: toLines('handoff-next-steps'),
+        related_entries: toLines('handoff-related-entries'),
+        restore_section: document.getElementById('handoff-restore-section').value,
+        restore_query: document.getElementById('handoff-restore-query').value.trim() || null,
+        workstream_id: document.getElementById('handoff-workstream-id').value.trim() || null,
+        session_id: document.getElementById('handoff-session-id').value.trim() || null,
+        tags: collectCommaSeparated('handoff-tags'),
+      });
+      closeModal();
+      toast('Handoff saved.', 'success');
+      if (state.view !== 'handoffs') switchView('handoffs');
+      await loadHandoffs();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function textLinesFromId(id) {
+  return document.getElementById(id).value.split('\n').map((item) => item.trim()).filter(Boolean);
+}
+
+function openNewWorkstreamModal() {
+  openModal(modalShell(`
+    <div class="modal-header">
+      <span class="modal-title">Open workstream</span>
+      <button class="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Goal</label>
+        <input class="${textInputClasses()}" id="workstream-goal" placeholder="Ship workstream-first UI">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Workstream ID</label>
+        <input class="${textInputClasses()}" id="workstream-id" placeholder="optional, e.g. ws_agent">
+      </div>
+      <div>
+        <label class="field-label">Summary</label>
+        <textarea class="${textInputClasses(true)}" id="workstream-summary-input" placeholder="Compact statement of purpose or current scope."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
+      <button class="${baseButtonClasses('primary')}" id="btn-save-workstream">Open workstream</button>
+    </div>
+  `));
+  document.getElementById('workstream-goal').focus();
+  document.getElementById('btn-save-workstream').addEventListener('click', async () => {
+    const goal = document.getElementById('workstream-goal').value.trim();
+    if (!goal) {
+      toast('Goal is required.', 'error');
+      return;
+    }
+    try {
+      await api.openWorkstream({
+        goal,
+        workstream_id: document.getElementById('workstream-id').value.trim() || null,
+        summary: document.getElementById('workstream-summary-input').value.trim() || null,
+      });
+      state.selectedWorkstreamId = document.getElementById('workstream-id').value.trim() || null;
+      closeModal();
+      toast('Workstream opened.', 'success');
+      if (state.view !== 'workstreams') switchView('workstreams');
+      await loadWorkstreams();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+async function openWorkstreamDetailModal(workstreamId) {
+  if (state.view !== 'workstreams') {
+    switchView('workstreams');
+  }
+  await selectWorkstream(workstreamId);
+  document.getElementById('workstream-detail-root')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openSessionStartModal(workstreamId) {
+  openModal(modalShell(`
+    <div class="modal-header"><span class="modal-title">Start session</span><button class="modal-close">×</button></div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;"><label class="field-label">Goal</label><input class="${textInputClasses()}" id="session-start-goal" placeholder="optional"></div>
+      <div style="margin-bottom:14px;"><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="session-start-id" placeholder="optional"></div>
+      <div><label class="field-label">Summary</label><textarea class="${textInputClasses(true)}" id="session-start-summary" placeholder="optional"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-session-start-save">Start</button></div>
+  `));
+  document.getElementById('btn-session-start-save').addEventListener('click', async () => {
+    try {
+      await api.startSession(workstreamId, {
+        goal: document.getElementById('session-start-goal').value.trim() || null,
+        session_id: document.getElementById('session-start-id').value.trim() || null,
+        summary: document.getElementById('session-start-summary').value.trim() || null,
+      });
+      state.selectedWorkstreamId = workstreamId;
+      closeModal();
+      toast('Session started.', 'success');
+      await loadWorkstreams();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openSessionCloseModal(workstreamId, options = {}) {
+  const modeTitle = options.title || 'Close session';
+  const submitLabel = options.submitLabel || 'Close session';
+  const presetStatus = options.status || 'paused';
+  openModal(modalShell(`
+    <div class="modal-header"><span class="modal-title">${escHtml(modeTitle)}</span><button class="modal-close">×</button></div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;"><label class="field-label">Outcome</label><textarea class="${textInputClasses(true)}" id="session-close-outcome" placeholder="What was achieved in this session?"></textarea></div>
+      <div class="compare-grid">
+        <div><label class="field-label">Status</label><input class="${textInputClasses()}" id="session-close-status" value="${escHtml(presetStatus)}"></div>
+        <div><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="session-close-id" placeholder="optional"></div>
+      </div>
+      <div class="compare-grid" style="margin-top:14px;">
+        <div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="session-close-open-loops" placeholder="One per line"></textarea></div>
+        <div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="session-close-next-steps" placeholder="One per line"></textarea></div>
+      </div>
+      <div class="compare-grid" style="margin-top:14px;">
+        <div><label class="field-label">Next goal</label><input class="${textInputClasses()}" id="session-close-next-goal" placeholder="optional: write anti-context-switch handoff"></div>
+        <div><label class="field-label">Handoff audience</label><select class="${textInputClasses()}" id="session-close-audience"><option value="agent">agent</option><option value="human">human</option></select></div>
+      </div>
+      <div class="compare-grid" style="margin-top:14px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Agent handoff preview</div><div id="session-close-agent-preview" class="muted" style="font-size:13px;">Provide a next goal to preview the agent handoff.</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Human handoff preview</div><div id="session-close-human-preview" class="muted" style="font-size:13px;">Provide a next goal to preview the human handoff.</div></div>
+      </div>
+      <div class="muted" style="font-size:12px; margin-top:12px;">If you provide a next goal, rememb will generate the follow-up handoff automatically and open a guided restore flow. Use status=frozen to make the workstream explicitly resumable later.</div>
+    </div>
+    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-session-close-save">${escHtml(submitLabel)}</button></div>
+  `));
+  const refreshHandoffPreview = async () => {
+    const nextGoal = document.getElementById('session-close-next-goal').value.trim();
+    const agentRoot = document.getElementById('session-close-agent-preview');
+    const humanRoot = document.getElementById('session-close-human-preview');
+    if (!nextGoal) {
+      agentRoot.textContent = 'Provide a next goal to preview the agent handoff.';
+      humanRoot.textContent = 'Provide a next goal to preview the human handoff.';
+      return;
+    }
+    try {
+      const payload = await api.handoffPackage(workstreamId, { next_goal: nextGoal, session_id: document.getElementById('session-close-id').value.trim() || '' });
+      agentRoot.innerHTML = renderMarkdown(`**Goal:** ${payload.agent_handoff?.goal || ''}\n\n- ${((payload.agent_handoff?.essential_context || []).join('\n- ')) || 'No essential context.'}`);
+      humanRoot.innerHTML = renderMarkdown(`**Goal:** ${payload.human_handoff?.goal || ''}\n\n- ${((payload.human_handoff?.what_changed || []).map((item) => item.summary || item).join('\n- ')) || 'No change summary.'}`);
+    } catch (e) {
+      agentRoot.textContent = 'Failed to preview agent handoff.';
+      humanRoot.textContent = 'Failed to preview human handoff.';
+    }
+  };
+  document.getElementById('session-close-next-goal').addEventListener('input', refreshHandoffPreview);
+  document.getElementById('session-close-id').addEventListener('input', refreshHandoffPreview);
+  document.getElementById('btn-session-close-save').addEventListener('click', async () => {
+    const outcome = document.getElementById('session-close-outcome').value.trim();
+    if (!outcome) {
+      toast('Outcome is required.', 'error');
+      return;
+    }
+    try {
+      const payload = {
+        outcome,
+        status: document.getElementById('session-close-status').value.trim() || 'paused',
+        session_id: document.getElementById('session-close-id').value.trim() || null,
+        open_loops: textLinesFromId('session-close-open-loops'),
+        next_steps: textLinesFromId('session-close-next-steps'),
+        next_goal: document.getElementById('session-close-next-goal').value.trim() || null,
+      };
+      if (payload.next_goal) {
+        payload.audience = document.getElementById('session-close-audience').value;
+        const result = await api.closeSessionAndHandoff(workstreamId, payload);
+        closeModal();
+        toast('Session closed and handoff saved.', 'success');
+        await loadWorkstreams();
+        if (state.view === 'handoffs') await loadHandoffs();
+        if (state.view === 'review') await loadReviewQueue();
+        openGuidedRestoreModal(result.handoff_package || {}, {
+          workstreamId,
+          sessionId: result.review_entry?.session_id || payload.session_id || '',
+        });
+        return;
+      } else {
+        await api.closeSession(workstreamId, payload);
+      }
+      state.selectedWorkstreamId = workstreamId;
+      closeModal();
+      toast(payload.next_goal ? 'Session closed and handoff saved.' : 'Session closed.', 'success');
+      await loadWorkstreams();
+      if (state.view === 'handoffs') await loadHandoffs();
+      if (state.view === 'review') await loadReviewQueue();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openWorkstreamStateUpdateModal(workstreamId, resumeData = {}) {
+  openModal(modalShell(`
+    <div class="modal-header"><span class="modal-title">Update workstream state</span><button class="modal-close">×</button></div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;"><label class="field-label">Goal</label><input class="${textInputClasses()}" id="ws-state-goal" value="${escHtml(resumeData.goal || '')}"></div>
+      <div style="margin-bottom:14px;"><label class="field-label">Summary</label><textarea class="${textInputClasses(true)}" id="ws-state-summary">${escHtml(resumeData.summary || '')}</textarea></div>
+      <div class="compare-grid" style="margin-bottom:14px;"><div><label class="field-label">Current state</label><textarea class="${textInputClasses(true)}" id="ws-state-current">${escHtml((resumeData.current_state || []).join('\n'))}</textarea></div><div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="ws-state-open-loops">${escHtml((resumeData.open_loops || []).join('\n'))}</textarea></div></div>
+      <div class="compare-grid"><div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="ws-state-next-steps">${escHtml((resumeData.next_steps || []).join('\n'))}</textarea></div><div><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="ws-state-session-id" value="${escHtml(resumeData.session_id || '')}"></div></div>
+    </div>
+    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-ws-state-save">Save state</button></div>
+  `));
+  document.getElementById('btn-ws-state-save').addEventListener('click', async () => {
+    try {
+      await api.updateWorkstreamState(workstreamId, {
+        goal: document.getElementById('ws-state-goal').value.trim() || null,
+        summary: document.getElementById('ws-state-summary').value.trim() || null,
+        current_state: textLinesFromId('ws-state-current'),
+        open_loops: textLinesFromId('ws-state-open-loops'),
+        next_steps: textLinesFromId('ws-state-next-steps'),
+        session_id: document.getElementById('ws-state-session-id').value.trim() || null,
+      });
+      state.selectedWorkstreamId = workstreamId;
+      closeModal();
+      toast('Workstream state updated.', 'success');
+      await loadWorkstreams();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openStructuredHandoffModal(workstreamId, resumeData = {}) {
+  openModal(modalShell(`
+    <div class="modal-header"><span class="modal-title">Write structured handoff</span><button class="modal-close">×</button></div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;"><label class="field-label">Goal</label><input class="${textInputClasses()}" id="ws-handoff-goal" value="${escHtml(resumeData.goal || '')}"></div>
+      <div style="margin-bottom:14px;"><label class="field-label">Summary</label><textarea class="${textInputClasses(true)}" id="ws-handoff-summary">${escHtml(resumeData.summary || '')}</textarea></div>
+      <div class="compare-grid" style="margin-bottom:14px;"><div><label class="field-label">Current state</label><textarea class="${textInputClasses(true)}" id="ws-handoff-current">${escHtml((resumeData.current_state || []).join('\n'))}</textarea></div><div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="ws-handoff-open-loops">${escHtml((resumeData.open_loops || []).join('\n'))}</textarea></div></div>
+      <div class="compare-grid" style="margin-bottom:14px;"><div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="ws-handoff-next-steps">${escHtml((resumeData.next_steps || []).join('\n'))}</textarea></div><div><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="ws-handoff-session-id" value="${escHtml(resumeData.session_id || '')}"></div></div>
+      <div><label class="field-label">Related entries</label><input class="${textInputClasses()}" id="ws-handoff-related" value="${escHtml((resumeData.related_entry_ids || []).join(', '))}"></div>
+    </div>
+    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-ws-handoff-save">Save handoff</button></div>
+  `));
+  document.getElementById('btn-ws-handoff-save').addEventListener('click', async () => {
+    const goal = document.getElementById('ws-handoff-goal').value.trim();
+    if (!goal) {
+      toast('Goal is required.', 'error');
+      return;
+    }
+    try {
+      await api.writeStructuredHandoff(workstreamId, {
+        goal,
+        summary: document.getElementById('ws-handoff-summary').value.trim() || null,
+        current_state: textLinesFromId('ws-handoff-current'),
+        open_loops: textLinesFromId('ws-handoff-open-loops'),
+        next_steps: textLinesFromId('ws-handoff-next-steps'),
+        session_id: document.getElementById('ws-handoff-session-id').value.trim() || null,
+        related_entries: collectCommaSeparated('ws-handoff-related'),
+      });
+      state.selectedWorkstreamId = workstreamId;
+      closeModal();
+      toast('Structured handoff saved.', 'success');
+      await loadWorkstreams();
+      if (state.view === 'handoffs') await loadHandoffs();
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  });
+}
+
+function openHandoffViewModal(entry) {
+  openModal(modalShell(`
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Handoff</div>
+        <div class="muted" style="font-size:12px; margin-top:4px;">${escHtml(entry.id)} · ${escHtml(relTime(entry.updated_at || entry.created_at))}</div>
+      </div>
+      <button class="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="markdown-body">${renderMarkdown(entry.content)}</div>
+      <div class="meta-row" style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px;">
+        <span class="mono muted">${escHtml(entry.id)}</span>
+        ${entry.workstream_id ? `<span class="tag-pill mono">workstream:${escHtml(entry.workstream_id)}</span>` : ''}
+        ${entry.session_id ? `<span class="tag-pill mono">session:${escHtml(entry.session_id)}</span>` : ''}
+        ${(entry.tags || []).map((tag) => `<span class="tag-pill">${escHtml(tag)}</span>`).join('')}
+      </div>
+    </div>
+    <div class="modal-footer">
+      ${entry.workstream_id ? `<button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-state">Workstream state</button>` : ''}
+      ${entry.workstream_id ? `<button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-resume">Workstream resume</button>` : ''}
+      <button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-context">Restore context</button>
+      <button class="${baseButtonClasses('primary')}" id="btn-handoff-history">History</button>
+    </div>
+  `, ' modal-wide'));
+  if (entry.workstream_id) {
+    document.getElementById('btn-handoff-open-state').addEventListener('click', async () => {
+      await openWorkstreamStateModal(entry.workstream_id, entry.session_id || null);
+    });
+    document.getElementById('btn-handoff-open-resume').addEventListener('click', async () => {
+      await openWorkstreamResumeModal(entry.workstream_id, entry.session_id || null);
+    });
+  }
+  document.getElementById('btn-handoff-open-context').addEventListener('click', async () => {
+    await openHandoffRestoreContext(entry.id);
+  });
+  document.getElementById('btn-handoff-history').addEventListener('click', () => {
+    closeModal();
+    openVersionsModal(entry);
+  });
+}
+
+async function openHandoffRestoreContext(entryId) {
+  try {
+    const parsed = await api.handoffRestoreContext(entryId, { include_deleted: 'true' });
+    const handoffEntry = state.handoffs.find((item) => item.id === entryId);
+    openGuidedRestoreModal(parsed, {
+      workstreamId: handoffEntry?.workstream_id || '',
+      sessionId: handoffEntry?.session_id || '',
+    });
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function openWorkstreamStateModal(workstreamId, sessionId = null) {
+  try {
+    const params = { include_deleted: 'false' };
+    if (sessionId) params.session_id = sessionId;
+    const data = await api.workstreamState(workstreamId, params);
+    const sessions = (data.sessions || []).map((session) => `
+      <div class="section-card" style="padding:12px;">
+        <div class="field-label">${escHtml(session.session_id || '(none)')}</div>
+        <div class="muted" style="font-size:13px;">entries=${escHtml(session.entry_count)} latest=${escHtml(session.latest_entry_id || '')}</div>
+      </div>
+    `).join('') || '<div class="muted">No sessions aggregated.</div>';
+    openModal(modalShell(`
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Workstream state</div>
+          <div class="muted" style="font-size:12px; margin-top:4px;">${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</div>
+        </div>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="compare-grid" style="margin-bottom:12px;">
+          <div class="section-card" style="padding:14px;"><div class="field-label">Entries</div><div>${escHtml(data.entry_count)}</div></div>
+          <div class="section-card" style="padding:14px;"><div class="field-label">Sessions</div><div>${escHtml(data.session_count)}</div></div>
+        </div>
+        <div class="section-card" style="padding:14px; margin-bottom:12px;">
+          <div class="field-label">Latest entry</div>
+          <div class="mono">${escHtml(data.latest_entry?.id || '')}</div>
+          <div class="muted" style="font-size:13px; margin-top:6px;">kind=${escHtml(data.latest_entry?.entry_kind || '')} session=${escHtml(data.latest_entry?.session_id || '')}</div>
+        </div>
+        <div class="compare-grid" style="margin-bottom:12px;">
+          <div class="section-card" style="padding:14px;"><div class="field-label">Latest handoff</div><div class="mono">${escHtml(data.latest_handoff?.id || '—')}</div></div>
+          <div class="section-card" style="padding:14px;"><div class="field-label">Latest state</div><div class="mono">${escHtml(data.latest_state?.id || '—')}</div></div>
+        </div>
+        <div class="field-label">Aggregated sessions</div>
+        <div class="version-grid">${sessions}</div>
+      </div>
+      <div class="modal-footer">
+        <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Close</button>
+      </div>
+    `, ' modal-wide'));
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
+  try {
+    const params = { include_deleted: 'false' };
+    if (sessionId) params.session_id = sessionId;
+    const data = await api.workstreamResume(workstreamId, params);
+    const listBlock = (title, items, ordered = false) => `
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">${escHtml(title)}</div>
+        <div class="markdown-body">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
+      </div>
+    `;
+    openModal(modalShell(`
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Workstream resume</div>
+          <div class="muted" style="font-size:12px; margin-top:4px;">${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</div>
+        </div>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="section-card" style="padding:14px; margin-bottom:12px;">
+          <div class="field-label">Goal</div>
+          <div>${escHtml(data.goal || '')}</div>
+          <div class="muted" style="font-size:13px; margin-top:8px;">${escHtml(data.summary || '')}</div>
+        </div>
+        <div class="compare-grid" style="margin-bottom:12px;">
+          <div class="section-card" style="padding:14px;"><div class="field-label">Latest entry</div><div class="mono">${escHtml(data.latest_entry_id || '')}</div></div>
+          <div class="section-card" style="padding:14px;"><div class="field-label">Focus entries</div><div class="mono">${escHtml((data.focus_entry_ids || []).join(', ') || 'none')}</div></div>
+        </div>
+        ${listBlock('Current state', data.current_state)}
+        ${listBlock('Open loops', data.open_loops)}
+        ${listBlock('Next steps', data.next_steps, true)}
+        <div class="section-card" style="padding:14px; margin-bottom:12px;">
+          <div class="field-label">Restore context</div>
+          <div class="mono">section=${escHtml(data.restore_context?.section || '')} query=${escHtml(data.restore_context?.query || '')} include_deleted=${data.restore_context?.include_deleted ? 'true' : 'false'}</div>
+        </div>
+        <div class="section-card" style="padding:14px; margin-bottom:12px;">
+          <div class="field-label">Compressed context</div>
+          <div class="pill-row">
+            <span class="tag-pill mono">essential:${escHtml((data.compressed_context?.essential || []).length)}</span>
+            <span class="tag-pill mono">optional:${escHtml((data.compressed_context?.optional || []).length)}</span>
+            <span class="tag-pill mono">archived:${escHtml((data.compressed_context?.archived || []).length)}</span>
+            <span class="tag-pill mono">risky:${escHtml((data.compressed_context?.risky || []).length)}</span>
+            <span class="tag-pill mono">obsolete:${escHtml((data.compressed_context?.obsolete || []).length)}</span>
+          </div>
+        </div>
+        <div class="section-card" style="padding:14px; margin-bottom:12px;">
+          <div class="field-label">What changed since the last anchor</div>
+          <div class="markdown-body">${renderMarkdown((data.what_changed || []).map((item) => `- ${item.summary || item.id}`).join('\n') || '_none_')}</div>
+        </div>
+        <div class="section-card" style="padding:14px;">
+          <div class="field-label">Related entries</div>
+          <div class="pill-row">${(data.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>'}</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="${baseButtonClasses('ghost')}" id="btn-resume-guided-restore">Guided restore</button>
+        <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Close</button>
+      </div>
+    `, ' modal-wide'));
+    document.getElementById('btn-resume-guided-restore').addEventListener('click', () => {
+      openGuidedRestoreModal(data, { workstreamId, sessionId: sessionId || data.session_id || '' });
+    });
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 function renderStats(statsData) {
@@ -687,50 +2600,49 @@ function renderEntryCard(entry) {
   const theme = sectionTheme(entry.section);
   const allTags = entry.tags || [];
   const visibleTags = allTags.slice(0, 3).map((t) =>
-    `<span class="rounded-full border px-2.5 py-1 text-[11px]" style="background:${theme.softBg};border-color:${theme.softBorder};color:${theme.color}">${escHtml(t)}</span>`
+    `<span class="tag-pill" style="background:${theme.softBg};border-color:${theme.softBorder};color:${theme.color}">${escHtml(t)}</span>`
   ).join('');
   const hiddenCount = allTags.length - 3;
   const overflowPill = hiddenCount > 0
-    ? `<span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-mute">+${hiddenCount}</span>`
+    ? `<span class="tag-pill" style="color:var(--mute)">+${hiddenCount}</span>`
     : '';
-  const tagsRow = allTags.length ? `<div class="flex flex-wrap gap-1.5">${visibleTags}${overflowPill}</div>` : '';
+  const tagsRow = `<div class="entry-card-tags">${visibleTags}${overflowPill}</div>`;
   const scoreBadge = entry.score != null
-    ? `<span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" style="background:rgba(255,255,255,0.65);border-color:${theme.softBorder};color:${theme.color}">${(entry.score * 100).toFixed(0)}%</span>`
+    ? `<span class="tag-pill" style="background:rgba(255,255,255,0.65);border-color:${theme.softBorder};color:${theme.color}">${(entry.score * 100).toFixed(0)}%</span>`
     : '';
   const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
   const displayTime = isEdited ? relTime(entry.updated_at) : relTime(entry.created_at);
   const timeTitle = isEdited ? `Created: ${entry.created_at}\nEdited: ${entry.updated_at}` : (entry.created_at || '');
   const accessBadge = (entry.access_count || 0) > 0
-    ? `<span class="whitespace-nowrap text-[11px] text-mute" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>`
+    ? `<span class="entry-card-access" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>`
     : '';
   const deletedBadge = entry.deleted_at
-    ? `<span class="rounded-full border border-[rgba(192,64,64,0.25)] bg-[rgba(192,64,64,0.1)] px-2 py-0.5 text-[11px] font-semibold text-danger">Deleted ${escHtml(relTime(entry.deleted_at))}</span>`
+    ? `<span class="tag-pill" style="border-color:rgba(192,64,64,0.25);background:rgba(192,64,64,0.1);color:var(--danger)">Deleted ${escHtml(relTime(entry.deleted_at))}</span>`
     : '';
 
   return `
-    <div class="group flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-panel transition hover:-translate-y-0.5 hover:shadow-hairlineStrong" data-id="${escHtml(entry.id)}" style="box-shadow:0 0 0 1px ${theme.headerBorder},0 2px 8px rgba(18,33,70,0.05);">
-      <div class="h-0.5 w-full opacity-0 transition group-hover:opacity-100" style="background:linear-gradient(90deg, ${rgba(theme.color, 0.85)} 0%, ${rgba(theme.color, 0.18)} 100%)"></div>
-      <div class="flex items-center gap-2 border-b px-3.5 py-2.5" style="background:${theme.headerBg};border-color:${theme.headerBorder}">
-        <div class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium" style="background:rgba(255,255,255,0.62);border-color:${theme.softBorder};color:#122146">
-          <span class="h-1.5 w-1.5 rounded-full" style="background:${theme.color}"></span>
+    <div class="entry-card" data-id="${escHtml(entry.id)}" style="box-shadow:0 0 0 1px ${theme.headerBorder},0 2px 8px rgba(18,33,70,0.05);">
+      <div class="entry-card-accent" style="background:linear-gradient(90deg, ${rgba(theme.color, 0.85)} 0%, ${rgba(theme.color, 0.18)} 100%)"></div>
+      <div class="entry-card-top" style="background:${theme.headerBg};border-color:${theme.headerBorder}">
+        <div class="entry-card-section" style="background:rgba(255,255,255,0.62);border-color:${theme.softBorder};color:#122146">
+          <span class="entry-card-section-dot" style="background:${theme.color}"></span>
           ${escHtml(entry.section)}
         </div>
-        <div class="ml-auto flex items-center gap-1.5">
+        <div class="entry-card-meta">
           ${deletedBadge}
           ${scoreBadge}
-          <span class="text-[11px] ${isEdited ? 'text-ink' : 'text-mute'}" title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</span>
+          <span class="entry-card-time" style="color:${isEdited ? 'var(--ink)' : 'var(--mute)'}" title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</span>
         </div>
       </div>
-      <div class="flex flex-1 flex-col gap-2.5 px-3.5 pb-0 pt-3.5">
-        <div class="relative max-h-[130px] overflow-hidden text-[13px] leading-6 text-ink">
-          <div>${renderMarkdown(entry.content)}</div>
-          <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-panel to-transparent"></div>
+      <div class="entry-card-main">
+        <div class="entry-card-content">
+          <div class="markdown-body">${renderMarkdown(entry.content)}</div>
         </div>
         ${tagsRow}
       </div>
-      <div class="mt-auto flex items-center gap-1.5 border-t border-[rgba(18,33,70,0.06)] px-3.5 pb-3 pt-2">
+      <div class="entry-card-footer">
         ${accessBadge}
-        <span class="ml-auto truncate font-mono text-[10px] text-mute/70">${escHtml(entry.id)}</span>
+        <span class="entry-card-id">${escHtml(entry.id)}</span>
       </div>
     </div>`;
 }
@@ -835,8 +2747,7 @@ async function doSearch(query) {
   document.getElementById('sort-select').classList.add('hidden');
   document.getElementById('section-title').textContent = 'Search results';
   document.getElementById('total-badge').textContent = '';
-  document.getElementById('search-results-bar').classList.remove('hidden');
-  document.getElementById('search-results-bar').classList.add('flex');
+  document.getElementById('search-results-bar').classList.add('active');
 
   try {
     const params = { q: query, top_k: 40 };
@@ -857,8 +2768,7 @@ function clearSearch(silent = false) {
   state.searchMode = false;
   state.searchQuery = '';
   document.getElementById('search-input').value = '';
-  document.getElementById('search-results-bar').classList.add('hidden');
-  document.getElementById('search-results-bar').classList.remove('flex');
+  document.getElementById('search-results-bar').classList.remove('active');
   document.getElementById('sort-select').classList.remove('hidden');
   if (!silent && state.config) loadEntries();
 }
@@ -877,7 +2787,7 @@ function closeModal() {
 
 function openModal(html) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `<div class="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(8,12,24,0.72)] p-3 backdrop-blur-md backdrop-saturate-150" id="modal-backdrop">${html}</div>`;
+  root.innerHTML = `<div class="modal-overlay" id="modal-backdrop">${html}</div>`;
   root.querySelector('#modal-backdrop').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeModal();
   });
@@ -897,7 +2807,8 @@ function buildSectionOptions(selected) {
 }
 
 function modalShell(inner, extraClasses = '') {
-  return `<div class="flex max-h-[90vh] w-[min(520px,94vw)] flex-col overflow-hidden rounded-[20px] bg-panel shadow-modal ${extraClasses}">${inner}</div>`;
+  const suffix = extraClasses ? ` ${String(extraClasses).trim()}` : '';
+  return `<div class="modal-panel${suffix}">${inner}</div>`;
 }
 
 function openNewEntryModal() {
@@ -928,6 +2839,16 @@ function openNewEntryModal() {
         </select>
         <div class="mt-1.5 text-[11px] text-mute">Prevents storing semantically duplicate content.</div>
       </div>
+      <div class="compare-grid" style="margin-top:14px;">
+        <div>
+          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Workstream ID</label>
+          <input type="text" class="${textInputClasses()}" id="f-workstream-id" placeholder="optional, e.g. ws_agent">
+        </div>
+        <div>
+          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Session ID</label>
+          <input type="text" class="${textInputClasses()}" id="f-session-id" placeholder="optional, e.g. sess_001">
+        </div>
+      </div>
     </div>
     <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
       <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
@@ -947,7 +2868,14 @@ function openNewEntryModal() {
     }
     const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
     try {
-      await api.writeEntry({ content, section, tags, semantic_scope: scope });
+      await api.writeEntry({
+        content,
+        section,
+        tags,
+        semantic_scope: scope,
+        workstream_id: document.getElementById('f-workstream-id').value.trim() || null,
+        session_id: document.getElementById('f-session-id').value.trim() || null,
+      });
       closeModal();
       toast('Entry saved.', 'success');
       await loadEntries();
@@ -976,6 +2904,16 @@ function openEditModal(entry) {
         <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Tags <span class="font-normal normal-case tracking-normal text-mute">(comma-separated)</span></label>
         <input type="text" class="${textInputClasses()}" id="f-tags" value="${escHtml((entry.tags || []).join(', '))}">
       </div>
+      <div class="compare-grid" style="margin-top:14px;">
+        <div>
+          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Workstream ID</label>
+          <input type="text" class="${textInputClasses()}" id="f-workstream-id" value="${escHtml(entry.workstream_id || '')}">
+        </div>
+        <div>
+          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Session ID</label>
+          <input type="text" class="${textInputClasses()}" id="f-session-id" value="${escHtml(entry.session_id || '')}">
+        </div>
+      </div>
     </div>
     <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
       <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
@@ -994,7 +2932,13 @@ function openEditModal(entry) {
     }
     const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
     try {
-      await api.editEntry(entry.id, { content, section, tags });
+      await api.editEntry(entry.id, {
+        content,
+        section,
+        tags,
+        workstream_id: document.getElementById('f-workstream-id').value.trim() || null,
+        session_id: document.getElementById('f-session-id').value.trim() || null,
+      });
       closeModal();
       toast('Entry updated.', 'success');
       if (state.searchMode) doSearch(state.searchQuery); else await loadEntries();
@@ -1317,20 +3261,20 @@ function openConsolidateModal() {
 
 function switchView(name) {
   state.view = name;
-  document.querySelectorAll('[id^="view-"]').forEach((view) => view.classList.add('hidden'));
-  document.getElementById(`view-${name}`).classList.remove('hidden');
+  document.querySelectorAll('.view').forEach((view) => view.classList.remove('active'));
+  document.getElementById(`view-${name}`).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach((tab) => {
     const active = tab.dataset.view === name;
-    tab.classList.toggle('bg-ink', active);
-    tab.classList.toggle('text-accent', active);
-    tab.classList.toggle('shadow-[0_1px_8px_rgba(18,33,70,0.18)]', active);
-    tab.classList.toggle('text-mute', !active);
-    tab.classList.toggle('hover:bg-white/80', !active);
-    tab.classList.toggle('hover:text-ink', !active);
+    tab.classList.toggle('active', active);
   });
+  document.getElementById('btn-new-label').textContent = name === 'handoffs' ? 'Generate Handoff' : name === 'workstreams' ? 'Open Workstream' : 'New Entry';
+  document.getElementById('header-search').style.display = name === 'memories' ? '' : 'none';
   if (name === 'stats') renderStatsView();
   else if (name === 'skills') renderSkillsView();
   else if (name === 'settings') renderSettingsPage();
+  else if (name === 'workstreams') loadWorkstreams();
+  else if (name === 'handoffs') loadHandoffs();
+  else if (name === 'review') loadReviewQueue();
 }
 
 async function renderStatsView() {
@@ -1407,7 +3351,7 @@ function renderSkillsCards(skills) {
     return '<div class="rounded-2xl bg-panel px-5 py-10 text-center text-sm text-mute shadow-hairline">No bundled skills found.</div>';
   }
 
-  return `<div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">${skills.map((skill) => `
+  return `<div class="skills-grid">${skills.map((skill) => `
     <div class="skill-card flex cursor-pointer flex-col gap-3 rounded-2xl bg-panel px-5 py-4 shadow-hairline transition hover:-translate-y-0.5 hover:shadow-hairlineStrong" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
       <div class="flex items-start justify-between gap-2">
         <div class="text-base font-bold text-ink">${escHtml(skill.name || skill.id)}</div>
@@ -1605,10 +3549,74 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-document.getElementById('btn-new').addEventListener('click', openNewEntryModal);
+document.getElementById('btn-new').addEventListener('click', () => {
+  if (state.view === 'workstreams') {
+    openNewWorkstreamModal();
+    return;
+  }
+  if (state.view === 'handoffs') {
+    openNewHandoffModal();
+    return;
+  }
+  if (state.view === 'review') {
+    switchView('handoffs');
+    openNewHandoffModal();
+    return;
+  }
+  openNewEntryModal();
+});
+document.getElementById('btn-new-workstream-inline').addEventListener('click', openNewWorkstreamModal);
+document.getElementById('btn-new-handoff-inline').addEventListener('click', openNewHandoffModal);
 document.getElementById('btn-consolidate').addEventListener('click', openConsolidateModal);
 document.getElementById('btn-load-more').addEventListener('click', () => loadEntries(true));
 document.getElementById('clear-search').addEventListener('click', clearSearch);
+document.getElementById('toggle-handoffs-include-deleted').addEventListener('change', async (e) => {
+  state.handoffsIncludeDeleted = e.target.checked;
+  await loadHandoffs();
+});
+document.getElementById('toggle-workstreams-include-deleted').addEventListener('change', async (e) => {
+  state.workstreamsIncludeDeleted = e.target.checked;
+  await loadWorkstreams();
+});
+document.getElementById('toggle-review-pending-only').addEventListener('change', async (e) => {
+  state.reviewPendingOnly = e.target.checked;
+  await loadReviewQueue();
+});
+document.getElementById('review-workstream-filter').addEventListener('change', async (e) => {
+  state.reviewFilterWorkstreamId = e.target.value || '';
+  state.reviewFilterSessionId = '';
+  await refreshReviewAvailableSessions();
+  await loadReviewQueue();
+});
+document.getElementById('review-session-filter').addEventListener('change', async (e) => {
+  state.reviewFilterSessionId = e.target.value || '';
+  await loadReviewQueue();
+});
+document.getElementById('review-actor-type-filter').addEventListener('change', async (e) => {
+  state.reviewFilterActorType = e.target.value || '';
+  await loadReviewQueue();
+});
+document.getElementById('review-entry-kind-filter').addEventListener('change', async (e) => {
+  state.reviewFilterEntryKind = e.target.value || '';
+  await loadReviewQueue();
+});
+document.getElementById('review-actor-id-filter').addEventListener('change', async (e) => {
+  state.reviewFilterActorId = e.target.value.trim() || '';
+  await loadReviewQueue();
+});
+document.getElementById('btn-review-clear-filters').addEventListener('click', async () => {
+  state.reviewFilterWorkstreamId = '';
+  state.reviewFilterSessionId = '';
+  state.reviewFilterActorType = '';
+  state.reviewFilterActorId = '';
+  state.reviewFilterEntryKind = '';
+  state.reviewAvailableSessions = [];
+  document.getElementById('review-actor-type-filter').value = '';
+  document.getElementById('review-entry-kind-filter').value = '';
+  document.getElementById('review-actor-id-filter').value = '';
+  updateReviewFilterControls();
+  await loadReviewQueue();
+});
 
 document.getElementById('sort-select').addEventListener('change', (e) => {
   const [sortBy, dir] = e.target.value.split('-');
@@ -1633,6 +3641,11 @@ document.querySelectorAll('.nav-tab').forEach((tab) => tab.addEventListener('cli
 async function boot() {
   await loadConfig();
   document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
+  document.getElementById('toggle-workstreams-include-deleted').checked = state.workstreamsIncludeDeleted;
+  document.getElementById('toggle-handoffs-include-deleted').checked = state.handoffsIncludeDeleted;
+  document.getElementById('toggle-review-pending-only').checked = state.reviewPendingOnly;
+  updateReviewFilterControls();
+  await loadReviewQueue();
   await loadEntries();
 }
 

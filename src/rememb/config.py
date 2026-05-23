@@ -51,6 +51,23 @@ DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS = 15
 ENTRY_BATCH_SIZE = 24
 ENTRY_LOAD_THRESHOLD = 6
 
+POSITIVE_INT_CONFIG_KEYS = frozenset({
+    "max_content_length",
+    "max_tag_length",
+    "max_tags_per_entry",
+    "max_entries",
+    "entry_batch_size",
+})
+
+NON_NEGATIVE_INT_CONFIG_KEYS = frozenset({
+    "semantic_model_idle_ttl_seconds",
+    "entry_load_threshold",
+})
+
+UNIT_INTERVAL_FLOAT_CONFIG_KEYS = frozenset({
+    "semantic_conflict_threshold",
+})
+
 DEFAULT_CONFIG: dict[str, Any] = {
 	"max_content_length": DEFAULT_MAX_CONTENT_LENGTH,
 	"max_tag_length": DEFAULT_MAX_TAG_LENGTH,

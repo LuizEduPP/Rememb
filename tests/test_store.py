@@ -828,6 +828,8 @@ def test_build_handoff_package_and_close_session_with_handoff(tmp_path):
     assert package["next_goal"] == "Ship review mode"
     assert package["handoff_schema"] == "agent-first-operational-v1"
     assert package["execution_history_count"] == 1
+    assert package["next_execution"]["goal"] == "Ship review mode"
+    assert package["next_execution"]["resume_mode"] == "goal_oriented"
     assert package["operational_handoff"]["goal"] == "Ship review mode"
     assert package["operational_handoff"]["restore_hint"] == package["restore_context"]
     assert package["human_handoff"]["deprecated"] is True
@@ -843,6 +845,7 @@ def test_build_handoff_package_and_close_session_with_handoff(tmp_path):
     assert payload["requested_audience"] == "human"
     assert payload["restore_hint"] == payload["restore_context"]
     assert payload["archived_context"] == ["old entry-first shortcut"]
+    assert payload["next_execution"]["goal"] == "Ship review mode"
 
 
 def test_review_queue_and_status_updates(tmp_path):
@@ -869,11 +872,16 @@ def test_review_queue_and_status_updates(tmp_path):
 
     assert queue[0]["entry_id"] == edited["id"]
     assert queue[0]["review_reasons"] == ["agent_generated", "versioned", "kind:decision", "risk_flags"]
+    assert queue[0]["agent_review"]["decision"] == "escalate_for_validation"
+    assert queue[0]["agent_review"]["risk_level"] == "critical"
+    assert queue[0]["provenance"]["current_version"] == 2
     assert "+++" in (queue[0]["diff"] or "")
     assert updated is not None
     assert updated["structured"]["review_status"] == "approved"
+    assert updated["structured"]["human_validation"]["status"] == "approved"
     assert pending_after == []
     assert all_items[0]["review_status"] == "approved"
+    assert all_items[0]["human_validation"]["status"] == "approved"
 
 
 def test_review_aggregations_and_operational_queue(tmp_path):
@@ -934,12 +942,15 @@ def test_review_aggregations_and_operational_queue(tmp_path):
     assert filtered_queue[0]["actor_id"] == "copilot"
     assert filtered_queue[0]["supersedes_entry_id"] == first_decision["id"]
     assert filtered_queue[0]["source_context_entry_ids"] == [first_decision["id"], anchor["id"]]
+    assert filtered_queue[0]["agent_review"]["risk_level"] == "critical"
     assert review_session is not None
     assert review_session["pending_review_count"] == 2
     assert review_session["active_decision_ids"] == [second_decision["id"]]
+    assert review_session["resume"]["next_execution"]["goal"] == "Ship review supervisor"
     assert review_workstream is not None
     assert review_workstream["operational_status"] == "awaiting_review"
     assert review_workstream["sessions"][0]["session_id"] == "sess_supervisor"
+    assert review_workstream["resume"]["next_execution"]["goal"] == "Ship review supervisor"
     assert queue[0]["workstream_id"] == "ws_supervisor"
     assert queue[0]["operational_status"] == "awaiting_review"
 

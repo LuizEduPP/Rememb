@@ -621,6 +621,18 @@ def _workstream_operational_status(entries: list[dict[str, Any]], pending_review
 
 
 def _session_compare_payload(session_id: str, entries: list[dict[str, Any]], resume: dict[str, Any] | None) -> dict[str, Any]:
+    actor_breakdown: dict[str, int] = {}
+    source_context_entry_ids: list[str] = []
+    related_entry_ids: list[str] = []
+    for entry in entries:
+        actor_key = str(entry.get("actor_type") or "unknown")
+        actor_breakdown[actor_key] = actor_breakdown.get(actor_key, 0) + 1
+        for source_context_entry_id in _causal_context_ids(entry):
+            if source_context_entry_id not in source_context_entry_ids:
+                source_context_entry_ids.append(source_context_entry_id)
+        for related_entry_id in entry.get("related_entry_ids") or []:
+            if related_entry_id not in related_entry_ids:
+                related_entry_ids.append(related_entry_id)
     return {
         "session_id": session_id,
         "execution_id": session_id,
@@ -634,6 +646,16 @@ def _session_compare_payload(session_id: str, entries: list[dict[str, Any]], res
         "focus_entry_ids": list((resume or {}).get("focus_entry_ids") or []),
         "compressed_context": dict((resume or {}).get("compressed_context") or {}),
         "what_changed": list((resume or {}).get("what_changed") or []),
+        "next_execution": dict((resume or {}).get("next_execution") or {}),
+        "provenance": {
+            "source_context_entry_ids": source_context_entry_ids,
+            "related_entry_ids": related_entry_ids,
+            "actor_breakdown": actor_breakdown,
+        },
+        "review_pipeline": {
+            "pending_count": sum(1 for entry in entries if _review_status_from_entry(entry) not in {"approved", "dismissed"} and _review_reasons(entry)),
+            "finalized_count": sum(1 for entry in entries if _review_status_from_entry(entry) in {"approved", "dismissed"}),
+        },
     }
 
 
@@ -649,6 +671,102 @@ def _compare_text_block(left: list[str], right: list[str], *, left_label: str, r
     )
 
 
+def _agent_review_payload(entry: dict[str, Any], structured: dict[str, Any], review_reasons: list[str]) -> dict[str, Any]:
+    risk_flags = _normalize_handoff_lines(structured.get("risk_flags"))
+    source_context_entry_ids = _causal_context_ids(entry)
+    current_version = int(_current_entry_version(entry) or 1)
+    entry_kind = str(entry.get("entry_kind") or "")
+
+    risk_level = "low"
+    if risk_flags or entry_kind in {"decision", "review"}:
+        risk_level = "medium"
+    if entry.get("supersedes_entry_id") or current_version > 1:
+        risk_level = "high"
+    if any("approval" in flag.lower() or "human" in flag.lower() for flag in risk_flags):
+        risk_level = "critical"
+
+    priority = "low"
+    if entry_kind in {"decision", "handoff", "review"} or source_context_entry_ids:
+        priority = "medium"
+    if risk_level in {"high", "critical"}:
+        priority = "high"
+
+    confidence = "medium"
+    if not risk_flags and source_context_entry_ids:
+        confidence = "high"
+    if risk_level in {"high", "critical"}:
+        confidence = "low"
+
+    decision = "auto_approve"
+    if str(structured.get("status") or "").strip().lower() == "superseded":
+        decision = "auto_dismiss"
+    elif risk_level in {"medium", "high", "critical"} or str(entry.get("actor_type") or "") == "agent":
+        decision = "escalate_for_validation"
+
+    return {
+        "decision": decision,
+        "risk_level": risk_level,
+        "confidence": confidence,
+        "priority": priority,
+        "reason": "; ".join(review_reasons or ["No explicit review reason captured."]),
+        "reasons": list(review_reasons or []),
+        "risk_flags": risk_flags,
+        "policy": {
+            "mode": "agent_supervision",
+            "requires_human_validation": decision == "escalate_for_validation",
+            "escalation_target": "human" if decision == "escalate_for_validation" else "agent",
+            "queue_bucket": f"{priority}:{risk_level}",
+        },
+    }
+
+
+def _provenance_payload(entry: dict[str, Any], current_version: int, previous_version: int | None) -> dict[str, Any]:
+    return {
+        "actor": {
+            "type": entry.get("actor_type") or "unknown",
+            "id": entry.get("actor_id") or "",
+        },
+        "source_context_entry_ids": _causal_context_ids(entry),
+        "related_entry_ids": list(entry.get("related_entry_ids") or []),
+        "supersedes_entry_id": entry.get("supersedes_entry_id"),
+        "parent_entry_id": entry.get("parent_entry_id"),
+        "current_version": current_version,
+        "previous_version": previous_version,
+        "versioned": previous_version is not None,
+        "captured_at": _entry_timestamp(entry),
+    }
+
+
+def _next_execution_payload(
+    *,
+    goal: str,
+    summary: str,
+    current_state: list[str],
+    open_loops: list[str],
+    next_steps: list[str],
+    compressed_context: dict[str, list[str]],
+    restore_context: dict[str, Any],
+    related_entry_ids: list[str],
+    focus_entry_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "goal": goal,
+        "summary": summary,
+        "resume_mode": "goal_oriented",
+        "essential_context": list(compressed_context.get("essential") or current_state),
+        "optional_context": list(compressed_context.get("optional") or []),
+        "archived_context": list(compressed_context.get("archived") or []),
+        "risky_context": list(compressed_context.get("risky") or []),
+        "obsolete_context": list(compressed_context.get("obsolete") or []),
+        "current_state": list(current_state),
+        "open_loops": list(open_loops),
+        "next_steps": list(next_steps),
+        "restore_context": dict(restore_context),
+        "related_entry_ids": list(related_entry_ids),
+        "focus_entry_ids": list(focus_entry_ids or []),
+    }
+
+
 def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
     current_version = int(_current_entry_version(entry) or 1)
     previous_version = current_version - 1 if current_version > 1 else None
@@ -657,6 +775,8 @@ def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
         diff_payload = diff_entry_versions(root, str(entry.get("id") or ""), previous_version, current_version)
         diff_text = diff_payload.get("diff") if isinstance(diff_payload, dict) else None
     structured = entry.get("structured") if isinstance(entry.get("structured"), dict) else {}
+    review_reasons = _review_reasons(entry)
+    agent_review = _agent_review_payload(entry, structured, review_reasons)
     return {
         "entry_id": entry.get("id"),
         "workstream_id": entry.get("workstream_id"),
@@ -669,7 +789,7 @@ def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
         "updated_at": _entry_timestamp(entry),
         "review_status": _review_status_from_entry(entry),
         "review_notes": _normalize_optional_text(structured.get("review_notes")) or "",
-        "review_reasons": _review_reasons(entry),
+        "review_reasons": review_reasons,
         "current_version": current_version,
         "previous_version": previous_version,
         "diff": diff_text,
@@ -677,6 +797,16 @@ def _review_item(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
         "related_entry_ids": list(entry.get("related_entry_ids") or []),
         "source_context_entry_ids": _causal_context_ids(entry),
         "supersedes_entry_id": entry.get("supersedes_entry_id"),
+        "agent_review": agent_review,
+        "human_validation": {
+            "status": _review_status_from_entry(entry),
+            "notes": _normalize_optional_text(structured.get("review_notes")) or "",
+            "reason": _normalize_optional_text(structured.get("review_reason")) or "",
+            "validation_notes": _normalize_optional_text(structured.get("validation_notes")) or "",
+            "reviewed_at": _normalize_optional_text(structured.get("reviewed_at")) or "",
+            "finalized": _review_status_from_entry(entry) in {"approved", "dismissed"},
+        },
+        "provenance": _provenance_payload(entry, current_version, previous_version),
     }
 
 
@@ -827,6 +957,11 @@ def resume_workstream(
         compressed_context["essential"] = list(handoff_payload.get("current_state") or state_payload.get("current_state") or [])
     anchor_entry = _workstream_anchor_entry(entries)
     changed_entries = _timeline_since_anchor(entries, anchor_entry)
+    goal = handoff_payload.get("goal") or state_payload.get("goal") or latest_entry.get("content", "")
+    summary = handoff_payload.get("summary") or state_payload.get("summary") or ""
+    current_state = handoff_payload.get("current_state") or state_payload.get("current_state") or []
+    open_loops = handoff_payload.get("open_loops") or state_payload.get("open_loops") or []
+    next_steps = handoff_payload.get("next_steps") or state_payload.get("next_steps") or []
 
     return {
         "workstream_id": state["workstream_id"],
@@ -837,14 +972,25 @@ def resume_workstream(
         "focus_entry_ids": focus_entry_ids,
         "latest_entry_id": latest_entry.get("id"),
         "latest_entry_kind": latest_entry.get("entry_kind"),
-        "goal": handoff_payload.get("goal") or state_payload.get("goal") or latest_entry.get("content", ""),
-        "summary": handoff_payload.get("summary") or state_payload.get("summary") or "",
-        "current_state": handoff_payload.get("current_state") or state_payload.get("current_state") or [],
-        "open_loops": handoff_payload.get("open_loops") or state_payload.get("open_loops") or [],
-        "next_steps": handoff_payload.get("next_steps") or state_payload.get("next_steps") or [],
+        "goal": goal,
+        "summary": summary,
+        "current_state": current_state,
+        "open_loops": open_loops,
+        "next_steps": next_steps,
         "restore_context": restore_context,
         "related_entry_ids": related_entry_ids,
         "compressed_context": compressed_context,
+        "next_execution": _next_execution_payload(
+            goal=goal,
+            summary=summary,
+            current_state=list(current_state),
+            open_loops=list(open_loops),
+            next_steps=list(next_steps),
+            compressed_context=compressed_context,
+            restore_context=restore_context,
+            related_entry_ids=related_entry_ids,
+            focus_entry_ids=focus_entry_ids,
+        ),
         "what_changed": changed_entries,
         "review_anchor_entry_id": anchor_entry.get("id") if anchor_entry else None,
         "active_decision_ids": [entry.get("id") for entry in entries if _decision_is_active(entry, entries)],
@@ -1187,6 +1333,22 @@ def write_structured_handoff(
             ],
         }
     )
+    structured["next_execution"] = _next_execution_payload(
+        goal=str(structured.get("goal") or ""),
+        summary=str(structured.get("summary") or ""),
+        current_state=list(structured.get("current_state") or []),
+        open_loops=list(structured.get("open_loops") or []),
+        next_steps=list(structured.get("next_steps") or []),
+        compressed_context={
+            "essential": list(structured.get("essential_context") or []),
+            "optional": list(structured.get("optional_context") or []),
+            "archived": list(structured.get("archived_context") or []),
+            "risky": list(structured.get("risk_flags") or []),
+            "obsolete": list(structured.get("obsolete_context") or []),
+        },
+        restore_context=normalized_restore_context,
+        related_entry_ids=_normalize_related_reference_ids(normalized_related_entries),
+    )
     return write_entry(
         root,
         payload["section"],
@@ -1250,6 +1412,7 @@ def read_structured_handoff(
         "restore_context": restore_context,
         "restore_hint": dict(restore_context),
         "related_entries": list(structured.get("related_entries") or []),
+        "next_execution": dict(structured.get("next_execution") or {}),
     }
 
 
@@ -1313,6 +1476,17 @@ def build_handoff_package(
         "restore_hint": dict(resume.get("restore_context") or {}),
         "risk_flags": list(compressed_context.get("risky") or []),
     }
+    shared["next_execution"] = _next_execution_payload(
+        goal=normalized_goal,
+        summary=str(resume.get("summary") or ""),
+        current_state=list(resume.get("current_state") or []),
+        open_loops=list(resume.get("open_loops") or []),
+        next_steps=list(resume.get("next_steps") or []),
+        compressed_context=compressed_context,
+        restore_context=dict(resume.get("restore_context") or {}),
+        related_entry_ids=list(resume.get("related_entry_ids") or []),
+        focus_entry_ids=list(resume.get("focus_entry_ids") or []),
+    )
     shared["agent_handoff"] = {
         "deprecated": True,
         "goal": normalized_goal,
@@ -1686,6 +1860,13 @@ def update_review_status(
     if source_context_entry_ids is not None:
         structured["source_context_entry_ids"] = _normalize_handoff_lines(source_context_entry_ids)
     structured["reviewed_at"] = _now()
+    structured["human_validation"] = {
+        "status": normalized_status,
+        "notes": structured["review_notes"],
+        "reason": structured["review_reason"],
+        "validation_notes": structured["validation_notes"],
+        "reviewed_at": structured["reviewed_at"],
+    }
     return edit_entry(
         root,
         entry_id,

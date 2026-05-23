@@ -456,7 +456,8 @@ def test_handle_tool_reads_handoff_package_and_review_queue(monkeypatch, tmp_pat
     assert "Operational handoff:" in handoff_package[0].text
     assert "What changed: Added review mode" in handoff_package[0].text
     assert "Review queue:" in review_queue[0].text
-    assert "abcd1234 status=pending kind=decision actor=agent:copilot reasons=agent_generated,versioned" in review_queue[0].text
+    assert "abcd1234 status=pending kind=decision actor=agent:copilot" in review_queue[0].text
+    assert "reasons=agent_generated,versioned" in review_queue[0].text
 
 
 def test_handle_tool_closes_session_with_handoff_and_updates_review(monkeypatch, tmp_path):

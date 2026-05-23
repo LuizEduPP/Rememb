@@ -669,8 +669,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text="No review items found.")]
         lines = ["Review queue:"]
         for item in items:
+            agent_review = item.get("agent_review") or {}
             lines.append(
-                f"- {item['entry_id']} status={item['review_status']} kind={item.get('entry_kind') or ''} actor={item.get('actor_type') or ''}:{item.get('actor_id') or ''} reasons={','.join(item.get('review_reasons') or [])}"
+                f"- {item['entry_id']} status={item['review_status']} kind={item.get('entry_kind') or ''} actor={item.get('actor_type') or ''}:{item.get('actor_id') or ''} risk={agent_review.get('risk_level') or ''} priority={agent_review.get('priority') or ''} confidence={agent_review.get('confidence') or ''} reasons={','.join(item.get('review_reasons') or [])}"
             )
         return [TextContent(type="text", text="\n".join(lines))]
 
@@ -697,6 +698,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Pending review: {payload.get('pending_review_count') or 0}",
             f"Entries: {payload.get('entry_count') or 0}",
         ]
+        next_execution = ((payload.get("resume") or {}).get("next_execution") or {})
+        if next_execution.get("goal"):
+            lines.append(f"Next execution goal: {next_execution['goal']}")
         if payload.get("active_decision_ids"):
             lines.append("Active decisions: " + ", ".join(payload["active_decision_ids"]))
         return [TextContent(type="text", text="\n".join(lines))]
@@ -719,6 +723,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Pending review: {payload.get('pending_review_count') or 0}",
             f"Execution history: {len(payload.get('sessions') or [])}",
         ]
+        next_execution = ((payload.get("resume") or {}).get("next_execution") or {})
+        if next_execution.get("goal"):
+            lines.append(f"Next execution goal: {next_execution['goal']}")
         return [TextContent(type="text", text="\n".join(lines))]
 
     async def rememb_workstream_queue():
@@ -1491,7 +1498,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_handoff_package",
-            description="Build a minimal anti-context-switch handoff package for the next session without writing a new entry.",
+            description="Build a minimal anti-context-switch package for the next execution without writing a new entry, including restore hints and compressed context tiers.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
                 "session_id": {"type": "string", "description": "Optional logical session identifier to scope the package"},
@@ -1631,7 +1638,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_review_queue",
-            description="List entries that require review with diff context when available.",
+            description="List entries in the agent-supervision queue with diff context, risk, confidence and priority when available.",
             properties={
                 "workstream_id": {"type": "string", "description": "Optional workstream scope"},
                 "session_id": {"type": "string", "description": "Optional session scope"},
@@ -1646,7 +1653,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_review_execution_get",
-            description="Aggregate review context for one execution anchor inside a workstream.",
+            description="Aggregate agent supervision context for one execution anchor inside a workstream, including the next-execution package.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
                 "execution_id": {"type": "string", "description": "Logical execution anchor identifier"},
@@ -1656,7 +1663,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_review_workstream_get",
-            description="Aggregate review context for a workstream across its sessions.",
+            description="Aggregate agent supervision context for a workstream across its sessions, including execution history and next-execution packaging.",
             properties={
                 "workstream_id": {"type": "string", "description": "Logical workstream identifier"},
                 "include_deleted": {"type": "boolean", "default": False, "description": "Include soft-deleted entries"},
@@ -1695,7 +1702,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_review_update",
-            description="Update the review status for a single entry.",
+            description="Record the human validation outcome for a single entry while preserving agent-review classification and provenance context.",
             properties={
                 "entry_id": {"type": "string", "description": "Entry ID (8 hex characters)"},
                 "review_status": {"type": "string", "enum": ["pending", "approved", "needs_revision", "dismissed"], "description": "Review decision"},

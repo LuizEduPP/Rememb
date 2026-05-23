@@ -36,6 +36,8 @@ def test_index_exposes_deleted_and_history_controls():
     assert "/api/workstreams/compare" in response.text
     assert "All workstreams" in response.text
     assert "All sessions" in response.text
+    assert "Agent supervision" in response.text
+    assert "Next execution package" in response.text
 
 
 def test_index_is_offline_ready_without_external_cdns():
@@ -328,11 +330,13 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
 
     assert handoff_package.status_code == 200
     assert handoff_package.json()["next_goal"] == "Approve review queue"
+    assert handoff_package.json()["next_execution"]["goal"] == "Approve review queue"
     assert handoff_package.json()["compressed_context"]["archived"] == ["old modal close"]
     assert close_and_handoff.status_code == 201
     assert close_and_handoff.json()["handoff_entry"]["entry_kind"] == "handoff"
     assert review_list.status_code == 200
     assert review_list.json()["items"][0]["review_status"] == "pending"
+    assert review_list.json()["items"][0]["agent_review"]["decision"] == "escalate_for_validation"
 
     review_update = client.post(
         f"/api/review/{review_list.json()['items'][0]['entry_id']}",
@@ -340,6 +344,7 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
     )
     assert review_update.status_code == 200
     assert review_update.json()["entry"]["structured"]["review_status"] == "approved"
+    assert review_update.json()["entry"]["structured"]["human_validation"]["status"] == "approved"
 
 
 def test_review_endpoint_filters_by_session(monkeypatch, tmp_path):

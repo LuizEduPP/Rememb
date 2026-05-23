@@ -1417,18 +1417,22 @@ function renderHandoffSummary(items) {
 function renderReviewSummary(items) {
   const pending = items.filter((item) => item.review_status === 'pending').length;
   const approved = items.filter((item) => item.review_status === 'approved').length;
+  const escalated = items.filter((item) => item.agent_review?.decision === 'escalate_for_validation').length;
+  const critical = items.filter((item) => item.agent_review?.risk_level === 'critical').length;
   const workstreams = new Set(items.map((item) => item.workstream_id).filter(Boolean));
   const queueAwaiting = (state.workstreamQueueItems || []).filter((item) => item.operational_status === 'awaiting_review').length;
   document.getElementById('review-summary').innerHTML = `
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Review queue</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Diff-first review for agent-generated changes, decisions and session close checkpoints. Review workstream queue and comparisons are exposed in this panel.</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Agent supervision queue for diffs, provenance, risk classification and next-execution packaging. Humans only validate outcomes exposed here.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${items.length} item${items.length === 1 ? '' : 's'}</span>
         <span class="count-pill">${pending} pending</span>
         <span class="count-pill">${approved} approved</span>
+        <span class="count-pill">${escalated} escalated</span>
+        <span class="count-pill">${critical} critical</span>
         <span class="count-pill">${workstreams.size} workstream${workstreams.size === 1 ? '' : 's'}</span>
         <span class="count-pill">${queueAwaiting} awaiting_review</span>
       </div>
@@ -1441,6 +1445,7 @@ function renderReviewOperationalSummary() {
   const workstream = state.reviewWorkstreamSummary;
   const session = state.reviewSessionSummary;
   const queueLead = (state.workstreamQueueItems || [])[0];
+  const nextExecution = session?.resume?.next_execution || workstream?.resume?.next_execution || null;
   root.innerHTML = `
     <div class="compare-grid">
       <div class="section-card" style="padding:14px;">
@@ -1449,9 +1454,9 @@ function renderReviewOperationalSummary() {
         <div class="muted" style="font-size:13px; margin-top:6px;">status=${escHtml(workstream?.operational_status || queueLead?.operational_status || 'mixed')} pending=${escHtml(workstream?.pending_review_count ?? 0)}</div>
       </div>
       <div class="section-card" style="padding:14px;">
-        <div class="field-label">Compare focus</div>
-        <div>${escHtml(session?.session_id || state.reviewFilterSessionId || 'All sessions')}</div>
-        <div class="muted" style="font-size:13px; margin-top:6px;">/api/review/workstreams/ · /api/workstreams/compare · /api/workstreams/queue</div>
+        <div class="field-label">Next execution package</div>
+        <div>${escHtml(nextExecution?.goal || session?.session_id || state.reviewFilterSessionId || 'All sessions')}</div>
+        <div class="muted" style="font-size:13px; margin-top:6px;">essential=${escHtml((nextExecution?.essential_context || []).length)} risky=${escHtml((nextExecution?.risky_context || []).length)} focus=${escHtml((nextExecution?.focus_entry_ids || []).length)}</div>
       </div>
     </div>`;
 }
@@ -1957,11 +1962,14 @@ async function loadHandoffs() {
 
 function renderReviewCard(item) {
   const selected = item.entry_id === state.selectedReviewId ? ' is-selected' : '';
+  const agentReview = item.agent_review || {};
   return `
     <article class="handoff-card${selected}" data-review-id="${escHtml(item.entry_id)}">
       <div class="card-header" style="background:rgba(247,149,51,0.08)">
         <span class="tag-pill mono">${escHtml(item.entry_kind || 'entry')}</span>
         <span class="tag-pill">${escHtml(item.review_status || 'pending')}</span>
+        <span class="tag-pill mono">risk:${escHtml(agentReview.risk_level || 'unknown')}</span>
+        <span class="tag-pill mono">priority:${escHtml(agentReview.priority || 'unknown')}</span>
         <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(item.updated_at || ''))}</span>
       </div>
       <div class="card-body">
@@ -1986,21 +1994,33 @@ function renderReviewDetail() {
   const diffSummary = summarizeDiff(item.diff || '');
   const sessionSummary = state.reviewSessionSummary;
   const workstreamSummary = state.reviewWorkstreamSummary;
+  const agentReview = item.agent_review || {};
+  const humanValidation = item.human_validation || {};
+  const provenance = item.provenance || {};
+  const nextExecution = sessionSummary?.resume?.next_execution || workstreamSummary?.resume?.next_execution || null;
   root.innerHTML = `
     <div class="panel" style="padding:18px;">
       <div class="section-header" style="margin-bottom:16px;">
         <div>
           <div class="page-title" style="font-size:22px;">Review ${escHtml(item.entry_id)}</div>
-          <div class="muted" style="font-size:13px; margin-top:4px;">Review Mode with diff context and operational scope.</div>
+          <div class="muted" style="font-size:13px; margin-top:4px;">Agent supervision with diff context, provenance and next-execution scope.</div>
         </div>
       </div>
       <div class="compare-grid" style="margin-bottom:12px;">
         <div class="section-card" style="padding:14px;"><div class="field-label">Status</div><div>${escHtml(item.review_status || 'pending')}</div></div>
         <div class="section-card" style="padding:14px;"><div class="field-label">Scope</div><div class="mono">${escHtml(item.workstream_id || 'global')}${item.session_id ? ` · ${escHtml(item.session_id)}` : ''}</div></div>
       </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Agent supervision</div><div>${escHtml(agentReview.decision || 'n/a')}</div><div class="muted" style="font-size:13px; margin-top:6px;">risk=${escHtml(agentReview.risk_level || 'unknown')} priority=${escHtml(agentReview.priority || 'unknown')} confidence=${escHtml(agentReview.confidence || 'unknown')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Human validation</div><div>${escHtml(humanValidation.status || 'pending')}</div><div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(humanValidation.notes || humanValidation.reason || 'No validation notes yet.')}</div></div>
+      </div>
       <div class="section-card" style="padding:14px; margin-bottom:12px;">
         <div class="field-label">Why this needs review</div>
         <div class="pill-row">${(item.review_reasons || []).map((reason) => `<span class="tag-pill mono">${escHtml(reason)}</span>`).join('') || '<span class="muted">No explicit reasons.</span>'}</div>
+      </div>
+      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+        <div class="field-label">Agent rationale</div>
+        <div>${escHtml(agentReview.reason || 'No rationale recorded.')}</div>
       </div>
       <div class="section-card" style="padding:14px; margin-bottom:12px;">
         <div class="field-label">Summary</div>
@@ -2014,6 +2034,11 @@ function renderReviewDetail() {
         <div class="section-card" style="padding:14px;"><div class="field-label">Supersedes</div><div class="mono">${escHtml(item.supersedes_entry_id || '—')}</div></div>
         <div class="section-card" style="padding:14px;"><div class="field-label">Session pending review</div><div>${escHtml(sessionSummary?.pending_review_count ?? '—')}</div></div>
       </div>
+      <div class="compare-grid" style="margin-bottom:12px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Related entries</div><div class="mono">${escHtml((provenance.related_entry_ids || []).join(', ') || 'none')}</div></div>
+        <div class="section-card" style="padding:14px;"><div class="field-label">Version trail</div><div class="mono">v${escHtml(provenance.current_version || item.current_version || 1)}${provenance.previous_version ? ` ← v${escHtml(provenance.previous_version)}` : ''}</div></div>
+      </div>
+      ${nextExecution ? `<div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">Next execution package</div><div>${escHtml(nextExecution.goal || '')}</div><div class="muted" style="font-size:13px; margin-top:6px;">essential=${escHtml((nextExecution.essential_context || []).length)} optional=${escHtml((nextExecution.optional_context || []).length)} risky=${escHtml((nextExecution.risky_context || []).length)}</div><div class="pill-row" style="margin-top:10px;">${(nextExecution.focus_entry_ids || []).map((entryId) => `<span class="tag-pill mono">${escHtml(entryId)}</span>`).join('') || '<span class="muted">No focus entries.</span>'}</div></div>` : ''}
       <div class="compare-grid" style="margin-bottom:12px;">
         <div class="section-card" style="padding:14px;"><div class="field-label">Changed blocks</div><div>${escHtml(diffSummary.changed)}</div></div>
         <div class="section-card" style="padding:14px;"><div class="field-label">Added lines</div><div>${escHtml(diffSummary.added)}</div></div>
@@ -2227,6 +2252,11 @@ async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
             <span class="tag-pill mono">risky:${escHtml((data.compressed_context?.risky || []).length)}</span>
             <span class="tag-pill mono">obsolete:${escHtml((data.compressed_context?.obsolete || []).length)}</span>
           </div>
+        </div>
+        <div class="section-card" style="padding:14px; margin-bottom:12px;">
+          <div class="field-label">Next execution package</div>
+          <div>${escHtml(data.next_execution?.goal || data.goal || '')}</div>
+          <div class="muted" style="font-size:13px; margin-top:8px;">resume_mode=${escHtml(data.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((data.next_execution?.essential_context || []).length)} risky=${escHtml((data.next_execution?.risky_context || []).length)}</div>
         </div>
         <div class="section-card" style="padding:14px; margin-bottom:12px;">
           <div class="field-label">What changed since the last anchor</div>

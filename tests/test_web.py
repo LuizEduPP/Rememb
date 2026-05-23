@@ -17,13 +17,9 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Show deleted" in response.text
     assert "Workstreams" in response.text
     assert "Handoffs" in response.text
-    assert "Generate handoff" in response.text
-    assert "Restore context" in response.text
     assert "Version history" in response.text
     assert "Timeline" in response.text
     assert "Side-by-side diff" in response.text
-    assert "Use as from" in response.text
-    assert "Use as to" in response.text
     assert "current vs previous" in response.text
     assert "/api/entries/" in response.text
     assert "/api/handoffs" in response.text
@@ -31,7 +27,7 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Workstream state" in response.text
     assert "Workstream resume" in response.text
     assert "Workstream timeline" in response.text
-    assert "Persistent workstream detail" in response.text
+    assert "workstream detail" in response.text
     assert "Review" in response.text
     assert "/api/review" in response.text
     assert "/api/review/workstreams/" in response.text
@@ -40,7 +36,6 @@ def test_index_exposes_deleted_and_history_controls():
     assert "/api/workstreams/compare" in response.text
     assert "All workstreams" in response.text
     assert "All sessions" in response.text
-    assert "Guided restore" in response.text
 
 
 def test_index_is_offline_ready_without_external_cdns():

@@ -527,7 +527,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
     <nav class="nav-tabs">
       <button class="nav-tab active" data-view="dashboard">Dashboard</button>
       <button class="nav-tab" data-view="workstreams">Workstreams</button>
-      <button class="nav-tab" data-view="memories">Memory Admin</button>
+      <button class="nav-tab" data-view="memories">Memory Ledger</button>
       <button class="nav-tab" data-view="review">Review</button>
       <button class="nav-tab" data-view="stats">Stats</button>
       <button class="nav-tab" data-view="settings">Settings</button>
@@ -541,12 +541,6 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
       <kbd>/</kbd>
     </div>
 
-    <div class="header-actions">
-      <button class="app-button primary" id="btn-new">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"></path></svg>
-        <span id="btn-new-label">Open Workstream</span>
-      </button>
-    </div>
   </header>
 
   <div id="view-dashboard" class="view view-scroll active">
@@ -554,9 +548,8 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
       <div class="section-header">
         <div>
           <h2 class="page-title">Dashboard</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Human supervision for agent operations: current work, pending review, recent handoffs and memory health.</div>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Agent-driven operations: current work, pending validation, handoff history and memory health.</div>
         </div>
-        <button class="app-button primary" id="btn-dashboard-open-workstream">Open workstream</button>
       </div>
 
       <div class="stats-grid" style="margin-bottom: 20px;">
@@ -586,8 +579,8 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
         <div class="section-card">
           <div class="section-header" style="margin-bottom: 14px; padding-bottom: 12px;">
             <div>
-              <div class="section-title">Work needing attention</div>
-              <div class="muted" style="font-size:13px; margin-top:4px;">Open a workstream when you want the full operational picture.</div>
+              <div class="section-title">Operational threads</div>
+              <div class="muted" style="font-size:13px; margin-top:4px;">Inspect the workstream record when you need the full operational picture.</div>
             </div>
           </div>
           <div id="dashboard-workstreams-list" class="space-y-3"></div>
@@ -595,8 +588,8 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
         <div class="section-card">
           <div class="section-header" style="margin-bottom: 14px; padding-bottom: 12px;">
             <div>
-              <div class="section-title">Needs human input</div>
-              <div class="muted" style="font-size:13px; margin-top:4px;">Review items and memory maintenance stay visible here.</div>
+              <div class="section-title">Pending validation</div>
+              <div class="muted" style="font-size:13px; margin-top:4px;">Validation backlog and memory maintenance stay visible here.</div>
             </div>
           </div>
           <div id="dashboard-attention-list" class="space-y-3"></div>
@@ -658,7 +651,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
 
       <main id="main-content" class="content-main">
         <div class="section-header">
-          <h2 id="section-title" class="view-title">Memory Admin</h2>
+          <h2 id="section-title" class="view-title">Memory Ledger</h2>
           <span id="total-badge" class="count-pill"></span>
           <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
             <input type="checkbox" id="toggle-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
@@ -691,7 +684,6 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
           <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
           <span>Show deleted</span>
         </label>
-        <button class="app-button primary" id="btn-new-workstream-inline">Open workstream</button>
       </div>
       <div id="workstream-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
       <div class="workstream-layout">
@@ -712,7 +704,6 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
           <input type="checkbox" id="toggle-handoffs-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
           <span>Show deleted</span>
         </label>
-        <button class="app-button ghost" id="btn-new-handoff-inline">Generate handoff</button>
       </div>
       <div id="handoff-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
       <div id="handoff-grid" class="handoff-grid"></div>
@@ -1527,88 +1518,6 @@ async function applyReviewFilters(workstreamId = '', sessionId = '') {
   await loadReviewQueue();
 }
 
-async function applyRestoreContext(restoreContext = {}, options = {}) {
-  const normalizedSection = restoreContext.section || options.section || null;
-  const normalizedQuery = restoreContext.query || options.query || '';
-  state.includeDeleted = Boolean(restoreContext.include_deleted);
-  document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
-  if (state.view !== 'memories') {
-    switchView('memories');
-  }
-  clearSearch(true);
-  state.section = normalizedSection;
-  renderSections();
-  await loadEntries();
-  if (normalizedQuery) {
-    document.getElementById('search-input').value = normalizedQuery;
-    await doSearch(normalizedQuery);
-  }
-  closeModal();
-  toast('Restore context applied.', 'success');
-}
-
-function openGuidedRestoreModal(payload, options = {}) {
-  const restoreContext = payload.restore_context || {};
-  const workstreamId = options.workstreamId || payload.workstream_id || '';
-  const sessionId = options.sessionId || payload.session_id || '';
-  const relatedEntries = (payload.related_entries || payload.related_entry_ids || []).map((item) => {
-    if (typeof item === 'string') return item;
-    return item.raw || item.entry_id || '';
-  }).filter(Boolean);
-  openModal(modalShell(`
-    <div class="modal-header">
-      <div>
-        <div class="modal-title">Guided restore</div>
-        <div class="muted" style="font-size:12px; margin-top:4px;">Apply the restore context and jump to the right surface.</div>
-      </div>
-      <button class="modal-close">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
-        <div class="field-label">Goal</div>
-        <div>${escHtml(payload.next_goal || payload.goal || payload.current_goal || '')}</div>
-        <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(payload.summary || '')}</div>
-      </div>
-      <div class="compare-grid" style="margin-bottom:12px;">
-        <div class="section-card" style="padding:14px;"><div class="field-label">Restore section</div><div>${escHtml(restoreContext.section || '')}</div></div>
-        <div class="section-card" style="padding:14px;"><div class="field-label">Restore query</div><div class="mono">${escHtml(restoreContext.query || '')}</div></div>
-      </div>
-      <div class="compare-grid" style="margin-bottom:12px;">
-        <div class="section-card" style="padding:14px;"><div class="field-label">Workstream</div><div class="mono">${escHtml(workstreamId || '—')}</div></div>
-        <div class="section-card" style="padding:14px;"><div class="field-label">Session</div><div class="mono">${escHtml(sessionId || '—')}</div></div>
-      </div>
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
-        <div class="field-label">Next steps</div>
-        <div class="markdown-body">${renderMarkdown((payload.next_steps || []).map((item, index) => `${index + 1}. ${item}`).join('\n') || '_none_')}</div>
-      </div>
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
-        <div class="field-label">Essential context</div>
-        <div class="markdown-body">${renderMarkdown((payload.essential_context || payload.current_state || payload.compressed_context?.essential || []).map((item) => `- ${item}`).join('\n') || '_none_')}</div>
-      </div>
-      <div class="section-card" style="padding:14px;">
-        <div class="field-label">Related entries</div>
-        <div class="pill-row">${relatedEntries.map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>'}</div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      ${workstreamId ? `<button class="${baseButtonClasses('ghost')}" id="btn-guided-open-workstream">Open workstream</button>` : ''}
-      ${workstreamId ? `<button class="${baseButtonClasses('ghost')}" id="btn-guided-review-session">Review session</button>` : ''}
-      <button class="${baseButtonClasses('primary')}" id="btn-guided-apply">Apply restore</button>
-    </div>
-  `, ' modal-wide'));
-  document.getElementById('btn-guided-apply').addEventListener('click', async () => {
-    await applyRestoreContext(restoreContext);
-  });
-  document.getElementById('btn-guided-open-workstream')?.addEventListener('click', async () => {
-    closeModal();
-    await openWorkstreamDetailModal(workstreamId);
-  });
-  document.getElementById('btn-guided-review-session')?.addEventListener('click', async () => {
-    closeModal();
-    await applyReviewFilters(workstreamId, sessionId);
-  });
-}
-
 function renderWorkstreamSummary(items) {
   const total = items.length;
   const sessions = items.reduce((sum, item) => sum + (item.session_count || 0), 0);
@@ -1617,7 +1526,7 @@ function renderWorkstreamSummary(items) {
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Operational map</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Primary operational threads for agent continuity, memory history and human supervision.</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Primary operational threads for agent continuity, memory history and validation state.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
@@ -1705,7 +1614,7 @@ async function renderDashboardView() {
         title: item.goal || item.workstream_id,
         body: item.summary || 'No summary available yet.',
         meta: item.workstream_id,
-        action: { name: 'open-workstream', value: item.workstream_id, label: 'Open workstream', variant: 'primary' },
+        action: null,
       })),
       'No workstreams yet. Agents will start creating continuity here once work begins.'
     );
@@ -1716,7 +1625,7 @@ async function renderDashboardView() {
         title: item.summary || item.entry_id,
         body: `${item.workstream_id || 'no workstream'} · ${item.review_status || 'pending'} · ${(item.review_reasons || []).join(', ') || 'no explicit reason'}`,
         meta: item.entry_kind || 'entry',
-        action: { name: 'open-review', value: item.entry_id, label: 'Open review', variant: 'primary' },
+        action: { name: 'open-review', value: item.entry_id, label: 'Inspect review', variant: 'primary' },
       })));
     }
     if (attentionItems.length < 4) {
@@ -1724,7 +1633,7 @@ async function renderDashboardView() {
         title: 'Memory maintenance',
         body: 'Inspect, edit or consolidate persisted memory when the agent has accumulated noise, stale facts or wrong assumptions.',
         meta: 'memory',
-        action: { name: 'open-memory-admin', value: '', label: 'Open Memory Admin', variant: 'ghost' },
+        action: { name: 'open-memory-admin', value: '', label: 'Inspect Memory Ledger', variant: 'ghost' },
       });
     }
     if (handoffs.length && attentionItems.length < 5) {
@@ -1732,10 +1641,10 @@ async function renderDashboardView() {
         title: 'Latest handoff package',
         body: previewText(handoffs[0].content.replace(/\s+/g, ' '), 140),
         meta: handoffs[0].workstream_id || 'handoff',
-        action: { name: 'open-handoffs', value: '', label: 'Inspect handoffs', variant: 'ghost' },
+        action: { name: 'open-handoffs', value: '', label: 'Inspect handoff log', variant: 'ghost' },
       });
     }
-    renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate human action. Review, memory hygiene and settings updates will surface here.');
+    renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate validation backlog. Review, memory hygiene and settings updates will surface here.');
   } catch (e) {
     renderDashboardList('dashboard-workstreams-list', [], `Failed to load dashboard: ${e.message}`);
     renderDashboardList('dashboard-attention-list', [], 'Dashboard could not aggregate current state.');
@@ -1763,7 +1672,6 @@ function renderWorkstreamCard(item) {
       <div class="card-actions">
         <button class="${baseButtonClasses('ghost', true)}" data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
         <button class="${baseButtonClasses('ghost', true)}" data-workstream-state-card="${escHtml(item.workstream_id)}">State</button>
-        <button class="${baseButtonClasses('primary', true)}" data-workstream-resume-card="${escHtml(item.workstream_id)}">Resume</button>
       </div>
     </article>`;
 }
@@ -1848,14 +1756,14 @@ function renderWorkstreamDetail() {
               <div class="field-label">${escHtml(previewText(item.summary || item.entry_id, 58))}</div>
               <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
               <div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;">
-                <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Open review</button>
+                <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
               </div>
             </div>
           `).join('')}
         </div>
       ` : '<div class="muted" style="font-size:13px;">No pending review items for this workstream.</div>'}
       <div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;">
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Open review queue</button>
+        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Inspect review queue</button>
       </div>
     </div>
   `;
@@ -1871,7 +1779,7 @@ function renderWorkstreamDetail() {
       <div class="section-header" style="margin-bottom:16px;">
         <div>
           <div class="page-title" style="font-size:22px;">${escHtml(workstreamId)}</div>
-          <div class="muted" style="font-size:13px; margin-top:4px;">Supervise one operational thread: memory, review, handoff and next actions in the same context.</div>
+          <div class="muted" style="font-size:13px; margin-top:4px;">Inspect one operational thread: memory, review, handoff and next actions in the same context.</div>
         </div>
       </div>
       <div class="section-card" style="padding:14px; margin-bottom:12px;">
@@ -1907,23 +1815,11 @@ function renderWorkstreamDetail() {
       ${handoffGoal}
       <div class="card-actions" style="padding:0; border-top:0; justify-content:flex-start;">
         <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-state">State</button>
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-resume">Resume</button>
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-start">Start session</button>
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-update">Update state</button>
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-freeze">Freeze workstream</button>
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-close">Close session</button>
-        <button class="${baseButtonClasses('primary', true)}" id="btn-persisted-workstream-handoff">Write handoff</button>
       </div>
     </div>
   `;
 
   document.getElementById('btn-persisted-workstream-state').addEventListener('click', async () => await openWorkstreamStateModal(workstreamId, null));
-  document.getElementById('btn-persisted-workstream-resume').addEventListener('click', async () => await openWorkstreamResumeModal(workstreamId, null));
-  document.getElementById('btn-persisted-workstream-start').addEventListener('click', () => openSessionStartModal(workstreamId));
-  document.getElementById('btn-persisted-workstream-update').addEventListener('click', () => openWorkstreamStateUpdateModal(workstreamId, resumeData));
-  document.getElementById('btn-persisted-workstream-freeze').addEventListener('click', () => openSessionCloseModal(workstreamId, { status: 'frozen', title: 'Freeze workstream', submitLabel: 'Freeze workstream' }));
-  document.getElementById('btn-persisted-workstream-close').addEventListener('click', () => openSessionCloseModal(workstreamId));
-  document.getElementById('btn-persisted-workstream-handoff').addEventListener('click', () => openStructuredHandoffModal(workstreamId, resumeData));
   document.getElementById('btn-persisted-workstream-review')?.addEventListener('click', async () => {
     await applyReviewFilters(workstreamId, '');
   });
@@ -1977,11 +1873,6 @@ function renderWorkstreams(items) {
       await openWorkstreamStateModal(button.dataset.workstreamStateCard, null);
     });
   });
-  grid.querySelectorAll('[data-workstream-resume-card]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await openWorkstreamResumeModal(button.dataset.workstreamResumeCard, null);
-    });
-  });
 }
 
 async function loadWorkstreams() {
@@ -2012,7 +1903,6 @@ function renderHandoffCard(entry) {
   ].filter(Boolean).join('');
   const workstreamActions = entry.workstream_id ? `
         <button class="${baseButtonClasses('ghost', true)}" data-workstream-state="${escHtml(entry.id)}">State</button>
-        <button class="${baseButtonClasses('ghost', true)}" data-workstream-resume="${escHtml(entry.id)}">Resume</button>
   ` : '';
   return `
     <article class="handoff-card" data-handoff-id="${escHtml(entry.id)}">
@@ -2029,7 +1919,6 @@ function renderHandoffCard(entry) {
       <div class="card-actions">
         <button class="${baseButtonClasses('ghost', true)}" data-handoff-open="${escHtml(entry.id)}">Open</button>
         ${workstreamActions}
-        <button class="${baseButtonClasses('primary', true)}" data-handoff-context="${escHtml(entry.id)}">Restore context</button>
       </div>
     </article>`;
 }
@@ -2048,21 +1937,10 @@ function renderHandoffs(items) {
       if (entry) openHandoffViewModal(entry);
     });
   });
-  grid.querySelectorAll('[data-handoff-context]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await openHandoffRestoreContext(button.dataset.handoffContext);
-    });
-  });
   grid.querySelectorAll('[data-workstream-state]').forEach((button) => {
     button.addEventListener('click', async () => {
       const entry = state.handoffs.find((item) => item.id === button.dataset.workstreamState);
       if (entry?.workstream_id) await openWorkstreamStateModal(entry.workstream_id, entry.session_id || null);
-    });
-  });
-  grid.querySelectorAll('[data-workstream-resume]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const entry = state.handoffs.find((item) => item.id === button.dataset.workstreamResume);
-      if (entry?.workstream_id) await openWorkstreamResumeModal(entry.workstream_id, entry.session_id || null);
     });
   });
 }
@@ -2151,83 +2029,9 @@ function renderReviewDetail() {
       </div>
       ${workstreamSummary ? `<div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">Workstream supervision</div><div class="muted" style="font-size:13px; margin-bottom:8px;">status=${escHtml(workstreamSummary.operational_status || '')} sessions=${escHtml((workstreamSummary.sessions || []).length)}</div><div class="pill-row">${(workstreamSummary.source_context_entry_ids || []).map((entryId) => `<span class="tag-pill mono">${escHtml(entryId)}</span>`).join('') || '<span class="muted">No source context IDs.</span>'}</div></div>` : ''}
       <div class="card-actions" style="padding:0; border-top:0; justify-content:flex-start; flex-wrap:wrap;">
-        <button class="${baseButtonClasses('ghost', true)}" data-review-status="approved">Approve</button>
-        <button class="${baseButtonClasses('ghost', true)}" data-review-status="needs_revision">Needs revision</button>
-        <button class="${baseButtonClasses('ghost', true)}" data-review-status="dismissed">Dismiss</button>
-        ${item.workstream_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-focus-session">Focus session</button>` : ''}
-        ${item.workstream_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-open-resume">Resume</button>` : ''}
-        ${item.workstream_id && item.session_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-compare-session">Compare sessions</button>` : ''}
-        ${item.workstream_id ? `<button class="${baseButtonClasses('ghost', true)}" id="btn-review-compare-workstream">Compare workstreams</button>` : ''}
-        ${item.workstream_id ? `<button class="${baseButtonClasses('primary', true)}" id="btn-review-handoff-package">Build handoff package</button>` : ''}
+        <div class="muted" style="font-size:12px; line-height:1.6;">Review decisions and recovery packages are recorded by agents and exposed here for inspection only.</div>
       </div>
     </div>`;
-  root.querySelectorAll('[data-review-status]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      try {
-        await api.reviewUpdate(item.entry_id, { review_status: button.dataset.reviewStatus, review_notes: 'Updated from Review Mode.' });
-        toast('Review updated.', 'success');
-        await loadReviewQueue();
-      } catch (e) {
-        toast('Error: ' + e.message, 'error');
-      }
-    });
-  });
-  document.getElementById('btn-review-focus-session')?.addEventListener('click', async () => {
-    await applyReviewFilters(item.workstream_id || '', item.session_id || '');
-  });
-  document.getElementById('btn-review-open-resume')?.addEventListener('click', async () => {
-    await openWorkstreamResumeModal(item.workstream_id, item.session_id || null);
-  });
-  document.getElementById('btn-review-compare-session')?.addEventListener('click', async () => {
-    if (!item.workstream_id || !item.session_id) return;
-    const baseSessionId = state.reviewWorkstreamSummary?.sessions?.find((entry) => entry.session_id && entry.session_id !== item.session_id)?.session_id;
-    if (!baseSessionId) {
-      toast('No second session available for comparison.', 'error');
-      return;
-    }
-    try {
-      const payload = await api.compareExecutions(item.workstream_id, { base_execution_id: baseSessionId, target_execution_id: item.session_id });
-      openModal(modalShell(`
-        <div class="modal-header"><span class="modal-title">Compare execution anchors</span><button class="modal-close">×</button></div>
-        <div class="modal-body">
-          <div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">/api/workstreams/${escHtml(item.workstream_id)}/compare/executions</div><div class="mono">base=${escHtml(baseSessionId)} target=${escHtml(item.session_id)}</div></div>
-          <div class="compare-grid"><div class="section-card" style="padding:14px;"><div class="field-label">New open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.new_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div><div class="section-card" style="padding:14px;"><div class="field-label">Resolved open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.resolved_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div></div>
-        </div>
-      `, ' modal-wide'));
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-  document.getElementById('btn-review-compare-workstream')?.addEventListener('click', async () => {
-    const other = (state.workstreamQueueItems || []).find((entry) => entry.workstream_id && entry.workstream_id !== item.workstream_id);
-    if (!other) {
-      toast('No second workstream available for comparison.', 'error');
-      return;
-    }
-    try {
-      const payload = await api.compareWorkstreams({ left_workstream_id: item.workstream_id, right_workstream_id: other.workstream_id });
-      openModal(modalShell(`
-        <div class="modal-header"><span class="modal-title">Compare workstreams</span><button class="modal-close">×</button></div>
-        <div class="modal-body">
-          <div class="section-card" style="padding:14px; margin-bottom:12px;"><div class="field-label">/api/workstreams/compare</div><div class="mono">left=${escHtml(item.workstream_id)} right=${escHtml(other.workstream_id)}</div></div>
-          <div class="compare-grid"><div class="section-card" style="padding:14px;"><div class="field-label">Left-only open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.left_only_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div><div class="section-card" style="padding:14px;"><div class="field-label">Right-only open loops</div><div class="markdown-body">${renderMarkdown((payload.delta?.right_only_open_loops || []).map((line) => `- ${line}`).join('\n') || '_none_')}</div></div></div>
-        </div>
-      `, ' modal-wide'));
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-  const handoffButton = document.getElementById('btn-review-handoff-package');
-  if (handoffButton) {
-    handoffButton.addEventListener('click', async () => {
-      try {
-        const payload = await api.handoffPackage(item.workstream_id, { session_id: item.session_id || '' });
-        openGuidedRestoreModal(payload, { workstreamId: item.workstream_id, sessionId: item.session_id || '' });
-      } catch (e) {
-        toast('Error: ' + e.message, 'error');
-      }
-    });
-  }
 }
 
 function renderReviewQueue(items) {
@@ -2281,162 +2085,7 @@ async function loadReviewQueue() {
   }
 }
 
-function collectCommaSeparated(id) {
-  const raw = document.getElementById(id).value.trim();
-  return raw ? raw.split(',').map((item) => item.trim()).filter(Boolean) : [];
-}
 
-function openNewHandoffModal() {
-  const defaultSection = state.section || 'actions';
-  openModal(modalShell(`
-    <div class="modal-header">
-      <span class="modal-title">Generate handoff</span>
-      <button class="modal-close">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="margin-bottom:14px;">
-        <label class="field-label">Goal</label>
-        <input class="${textInputClasses()}" id="handoff-goal" placeholder="Ship review mode for agent output">
-      </div>
-      <div style="margin-bottom:14px;">
-        <label class="field-label">Summary</label>
-        <textarea class="${textInputClasses(true)}" id="handoff-summary-input" placeholder="Compact summary of the current state."></textarea>
-      </div>
-      <div class="compare-grid" style="margin-bottom:14px;">
-        <div>
-          <label class="field-label">Current state</label>
-          <textarea class="${textInputClasses(true)}" id="handoff-current-state" placeholder="One bullet per line"></textarea>
-        </div>
-        <div>
-          <label class="field-label">Open loops</label>
-          <textarea class="${textInputClasses(true)}" id="handoff-open-loops" placeholder="One bullet per line"></textarea>
-        </div>
-      </div>
-      <div class="compare-grid" style="margin-bottom:14px;">
-        <div>
-          <label class="field-label">Next steps</label>
-          <textarea class="${textInputClasses(true)}" id="handoff-next-steps" placeholder="One step per line"></textarea>
-        </div>
-        <div>
-          <label class="field-label">Related entries</label>
-          <textarea class="${textInputClasses(true)}" id="handoff-related-entries" placeholder="abcd1234 or deadbeef@v2"></textarea>
-        </div>
-      </div>
-      <div class="compare-grid">
-        <div>
-          <label class="field-label">Restore section</label>
-          <select class="${textInputClasses()}" id="handoff-restore-section">${buildSectionOptions(defaultSection)}</select>
-        </div>
-        <div>
-          <label class="field-label">Restore query</label>
-          <input class="${textInputClasses()}" id="handoff-restore-query" placeholder="optional focused query">
-        </div>
-      </div>
-      <div class="compare-grid" style="margin-top:14px;">
-        <div>
-          <label class="field-label">Workstream ID</label>
-          <input class="${textInputClasses()}" id="handoff-workstream-id" placeholder="ws_agent">
-        </div>
-        <div>
-          <label class="field-label">Session ID</label>
-          <input class="${textInputClasses()}" id="handoff-session-id" placeholder="sess_001">
-        </div>
-      </div>
-      <div style="margin-top:14px;">
-        <label class="field-label">Extra tags</label>
-        <input class="${textInputClasses()}" id="handoff-tags" placeholder="resume, review, priority">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('primary')}" id="btn-save-handoff">Save handoff</button>
-    </div>
-  `));
-
-  document.getElementById('handoff-goal').focus();
-  document.getElementById('btn-save-handoff').addEventListener('click', async () => {
-    const goal = document.getElementById('handoff-goal').value.trim();
-    if (!goal) {
-      toast('Goal is required.', 'error');
-      return;
-    }
-    const toLines = (id) => document.getElementById(id).value.split('\n').map((item) => item.trim()).filter(Boolean);
-    try {
-      await api.writeHandoff({
-        goal,
-        summary: document.getElementById('handoff-summary-input').value.trim() || null,
-        current_state: toLines('handoff-current-state'),
-        open_loops: toLines('handoff-open-loops'),
-        next_steps: toLines('handoff-next-steps'),
-        related_entries: toLines('handoff-related-entries'),
-        restore_section: document.getElementById('handoff-restore-section').value,
-        restore_query: document.getElementById('handoff-restore-query').value.trim() || null,
-        workstream_id: document.getElementById('handoff-workstream-id').value.trim() || null,
-        session_id: document.getElementById('handoff-session-id').value.trim() || null,
-        tags: collectCommaSeparated('handoff-tags'),
-      });
-      closeModal();
-      toast('Handoff saved.', 'success');
-      if (state.view !== 'workstreams') switchView('workstreams');
-      await loadHandoffs();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
-
-function textLinesFromId(id) {
-  return document.getElementById(id).value.split('\n').map((item) => item.trim()).filter(Boolean);
-}
-
-function openNewWorkstreamModal() {
-  openModal(modalShell(`
-    <div class="modal-header">
-      <span class="modal-title">Open workstream</span>
-      <button class="modal-close">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="margin-bottom:14px;">
-        <label class="field-label">Goal</label>
-        <input class="${textInputClasses()}" id="workstream-goal" placeholder="Ship workstream-first UI">
-      </div>
-      <div style="margin-bottom:14px;">
-        <label class="field-label">Workstream ID</label>
-        <input class="${textInputClasses()}" id="workstream-id" placeholder="optional, e.g. ws_agent">
-      </div>
-      <div>
-        <label class="field-label">Summary</label>
-        <textarea class="${textInputClasses(true)}" id="workstream-summary-input" placeholder="Compact statement of purpose or current scope."></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('primary')}" id="btn-save-workstream">Open workstream</button>
-    </div>
-  `));
-  document.getElementById('workstream-goal').focus();
-  document.getElementById('btn-save-workstream').addEventListener('click', async () => {
-    const goal = document.getElementById('workstream-goal').value.trim();
-    if (!goal) {
-      toast('Goal is required.', 'error');
-      return;
-    }
-    try {
-      await api.openWorkstream({
-        goal,
-        workstream_id: document.getElementById('workstream-id').value.trim() || null,
-        summary: document.getElementById('workstream-summary-input').value.trim() || null,
-      });
-      state.selectedWorkstreamId = document.getElementById('workstream-id').value.trim() || null;
-      closeModal();
-      toast('Workstream opened.', 'success');
-      if (state.view !== 'workstreams') switchView('workstreams');
-      await loadWorkstreams();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
 
 async function openWorkstreamDetailModal(workstreamId) {
   if (state.view !== 'workstreams') {
@@ -2446,191 +2095,9 @@ async function openWorkstreamDetailModal(workstreamId) {
   document.getElementById('workstream-detail-root')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function openSessionStartModal(workstreamId) {
-  openModal(modalShell(`
-    <div class="modal-header"><span class="modal-title">Start session</span><button class="modal-close">×</button></div>
-    <div class="modal-body">
-      <div style="margin-bottom:14px;"><label class="field-label">Goal</label><input class="${textInputClasses()}" id="session-start-goal" placeholder="optional"></div>
-      <div style="margin-bottom:14px;"><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="session-start-id" placeholder="optional"></div>
-      <div><label class="field-label">Summary</label><textarea class="${textInputClasses(true)}" id="session-start-summary" placeholder="optional"></textarea></div>
-    </div>
-    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-session-start-save">Start</button></div>
-  `));
-  document.getElementById('btn-session-start-save').addEventListener('click', async () => {
-    try {
-      await api.startExecution(workstreamId, {
-        goal: document.getElementById('session-start-goal').value.trim() || null,
-        session_id: document.getElementById('session-start-id').value.trim() || null,
-        summary: document.getElementById('session-start-summary').value.trim() || null,
-      });
-      state.selectedWorkstreamId = workstreamId;
-      closeModal();
-      toast('Session started.', 'success');
-      await loadWorkstreams();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
 
-function openSessionCloseModal(workstreamId, options = {}) {
-  const modeTitle = options.title || 'Close session';
-  const submitLabel = options.submitLabel || 'Close session';
-  const presetStatus = options.status || 'paused';
-  openModal(modalShell(`
-    <div class="modal-header"><span class="modal-title">${escHtml(modeTitle)}</span><button class="modal-close">×</button></div>
-    <div class="modal-body">
-      <div style="margin-bottom:14px;"><label class="field-label">Outcome</label><textarea class="${textInputClasses(true)}" id="session-close-outcome" placeholder="What was achieved in this session?"></textarea></div>
-      <div class="compare-grid">
-        <div><label class="field-label">Status</label><input class="${textInputClasses()}" id="session-close-status" value="${escHtml(presetStatus)}"></div>
-        <div><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="session-close-id" placeholder="optional"></div>
-      </div>
-      <div class="compare-grid" style="margin-top:14px;">
-        <div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="session-close-open-loops" placeholder="One per line"></textarea></div>
-        <div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="session-close-next-steps" placeholder="One per line"></textarea></div>
-      </div>
-      <div style="margin-top:14px;"><label class="field-label">Next goal</label><input class="${textInputClasses()}" id="session-close-next-goal" placeholder="optional: generate operational handoff for the next agent session"></div>
-      <div style="margin-top:14px;">
-        <div class="section-card" style="padding:14px;"><div class="field-label">Operational handoff preview</div><div id="session-close-agent-preview" class="muted" style="font-size:13px;">Provide a next goal to preview the operational handoff.</div></div>
-      </div>
-      <div class="muted" style="font-size:12px; margin-top:12px;">If you provide a next goal, rememb will generate a stable operational handoff automatically and open a guided restore flow. This package is for the next agent session, not an alternative human handoff. Use status=frozen to make the workstream explicitly resumable later.</div>
-    </div>
-    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-session-close-save">${escHtml(submitLabel)}</button></div>
-  `));
-  const refreshHandoffPreview = async () => {
-    const nextGoal = document.getElementById('session-close-next-goal').value.trim();
-    const agentRoot = document.getElementById('session-close-agent-preview');
-    if (!nextGoal) {
-      agentRoot.textContent = 'Provide a next goal to preview the operational handoff.';
-      return;
-    }
-    try {
-      const payload = await api.handoffPackage(workstreamId, { next_goal: nextGoal, session_id: document.getElementById('session-close-id').value.trim() || '' });
-      const operational = payload.operational_handoff || payload.agent_handoff || {};
-      agentRoot.innerHTML = renderMarkdown(
-        `**Goal:** ${operational.goal || ''}\n\n`
-        + `**Current state**\n- ${((operational.current_state || []).join('\n- ')) || 'No current state.'}\n\n`
-        + `**Essential context**\n- ${((operational.essential_context || []).join('\n- ')) || 'No essential context.'}\n\n`
-        + `**Open loops**\n- ${((operational.open_loops || []).join('\n- ')) || 'No open loops.'}\n\n`
-        + `**Next steps**\n- ${((operational.next_steps || []).join('\n- ')) || 'No next steps.'}`
-      );
-    } catch (e) {
-      agentRoot.textContent = 'Failed to preview the operational handoff.';
-    }
-  };
-  document.getElementById('session-close-next-goal').addEventListener('input', refreshHandoffPreview);
-  document.getElementById('session-close-id').addEventListener('input', refreshHandoffPreview);
-  document.getElementById('btn-session-close-save').addEventListener('click', async () => {
-    const outcome = document.getElementById('session-close-outcome').value.trim();
-    if (!outcome) {
-      toast('Outcome is required.', 'error');
-      return;
-    }
-    try {
-      const payload = {
-        outcome,
-        status: document.getElementById('session-close-status').value.trim() || 'paused',
-        session_id: document.getElementById('session-close-id').value.trim() || null,
-        open_loops: textLinesFromId('session-close-open-loops'),
-        next_steps: textLinesFromId('session-close-next-steps'),
-        next_goal: document.getElementById('session-close-next-goal').value.trim() || null,
-      };
-      if (payload.next_goal) {
-        const result = await api.closeExecutionAndHandoff(workstreamId, payload);
-        closeModal();
-        toast('Session closed and handoff saved.', 'success');
-        await loadWorkstreams();
-        if (state.view === 'handoffs') await loadHandoffs();
-        if (state.view === 'review') await loadReviewQueue();
-        openGuidedRestoreModal(result.handoff_package || {}, {
-          workstreamId,
-          sessionId: result.review_entry?.session_id || payload.session_id || '',
-        });
-        return;
-      } else {
-        await api.closeExecution(workstreamId, payload);
-      }
-      state.selectedWorkstreamId = workstreamId;
-      closeModal();
-      toast(payload.next_goal ? 'Session closed and handoff saved.' : 'Session closed.', 'success');
-      await loadWorkstreams();
-      if (state.view === 'handoffs') await loadHandoffs();
-      if (state.view === 'review') await loadReviewQueue();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
 
-function openWorkstreamStateUpdateModal(workstreamId, resumeData = {}) {
-  openModal(modalShell(`
-    <div class="modal-header"><span class="modal-title">Update workstream state</span><button class="modal-close">×</button></div>
-    <div class="modal-body">
-      <div style="margin-bottom:14px;"><label class="field-label">Goal</label><input class="${textInputClasses()}" id="ws-state-goal" value="${escHtml(resumeData.goal || '')}"></div>
-      <div style="margin-bottom:14px;"><label class="field-label">Summary</label><textarea class="${textInputClasses(true)}" id="ws-state-summary">${escHtml(resumeData.summary || '')}</textarea></div>
-      <div class="compare-grid" style="margin-bottom:14px;"><div><label class="field-label">Current state</label><textarea class="${textInputClasses(true)}" id="ws-state-current">${escHtml((resumeData.current_state || []).join('\n'))}</textarea></div><div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="ws-state-open-loops">${escHtml((resumeData.open_loops || []).join('\n'))}</textarea></div></div>
-      <div class="compare-grid"><div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="ws-state-next-steps">${escHtml((resumeData.next_steps || []).join('\n'))}</textarea></div><div><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="ws-state-session-id" value="${escHtml(resumeData.session_id || '')}"></div></div>
-    </div>
-    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-ws-state-save">Save state</button></div>
-  `));
-  document.getElementById('btn-ws-state-save').addEventListener('click', async () => {
-    try {
-      await api.updateWorkstreamState(workstreamId, {
-        goal: document.getElementById('ws-state-goal').value.trim() || null,
-        summary: document.getElementById('ws-state-summary').value.trim() || null,
-        current_state: textLinesFromId('ws-state-current'),
-        open_loops: textLinesFromId('ws-state-open-loops'),
-        next_steps: textLinesFromId('ws-state-next-steps'),
-        session_id: document.getElementById('ws-state-session-id').value.trim() || null,
-      });
-      state.selectedWorkstreamId = workstreamId;
-      closeModal();
-      toast('Workstream state updated.', 'success');
-      await loadWorkstreams();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
 
-function openStructuredHandoffModal(workstreamId, resumeData = {}) {
-  openModal(modalShell(`
-    <div class="modal-header"><span class="modal-title">Write structured handoff</span><button class="modal-close">×</button></div>
-    <div class="modal-body">
-      <div style="margin-bottom:14px;"><label class="field-label">Goal</label><input class="${textInputClasses()}" id="ws-handoff-goal" value="${escHtml(resumeData.goal || '')}"></div>
-      <div style="margin-bottom:14px;"><label class="field-label">Summary</label><textarea class="${textInputClasses(true)}" id="ws-handoff-summary">${escHtml(resumeData.summary || '')}</textarea></div>
-      <div class="compare-grid" style="margin-bottom:14px;"><div><label class="field-label">Current state</label><textarea class="${textInputClasses(true)}" id="ws-handoff-current">${escHtml((resumeData.current_state || []).join('\n'))}</textarea></div><div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="ws-handoff-open-loops">${escHtml((resumeData.open_loops || []).join('\n'))}</textarea></div></div>
-      <div class="compare-grid" style="margin-bottom:14px;"><div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="ws-handoff-next-steps">${escHtml((resumeData.next_steps || []).join('\n'))}</textarea></div><div><label class="field-label">Session ID</label><input class="${textInputClasses()}" id="ws-handoff-session-id" value="${escHtml(resumeData.session_id || '')}"></div></div>
-      <div><label class="field-label">Related entries</label><input class="${textInputClasses()}" id="ws-handoff-related" value="${escHtml((resumeData.related_entry_ids || []).join(', '))}"></div>
-    </div>
-    <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-ws-handoff-save">Save handoff</button></div>
-  `));
-  document.getElementById('btn-ws-handoff-save').addEventListener('click', async () => {
-    const goal = document.getElementById('ws-handoff-goal').value.trim();
-    if (!goal) {
-      toast('Goal is required.', 'error');
-      return;
-    }
-    try {
-      await api.writeStructuredHandoff(workstreamId, {
-        goal,
-        summary: document.getElementById('ws-handoff-summary').value.trim() || null,
-        current_state: textLinesFromId('ws-handoff-current'),
-        open_loops: textLinesFromId('ws-handoff-open-loops'),
-        next_steps: textLinesFromId('ws-handoff-next-steps'),
-        session_id: document.getElementById('ws-handoff-session-id').value.trim() || null,
-        related_entries: collectCommaSeparated('ws-handoff-related'),
-      });
-      state.selectedWorkstreamId = workstreamId;
-      closeModal();
-      toast('Structured handoff saved.', 'success');
-      await loadWorkstreams();
-      if (state.view === 'handoffs') await loadHandoffs();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
 
 function openHandoffViewModal(entry) {
   openModal(modalShell(`
@@ -2653,7 +2120,6 @@ function openHandoffViewModal(entry) {
     <div class="modal-footer">
       ${entry.workstream_id ? `<button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-state">Workstream state</button>` : ''}
       ${entry.workstream_id ? `<button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-resume">Workstream resume</button>` : ''}
-      <button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-context">Restore context</button>
       <button class="${baseButtonClasses('primary')}" id="btn-handoff-history">History</button>
     </div>
   `, ' modal-wide'));
@@ -2665,26 +2131,10 @@ function openHandoffViewModal(entry) {
       await openWorkstreamResumeModal(entry.workstream_id, entry.session_id || null);
     });
   }
-  document.getElementById('btn-handoff-open-context').addEventListener('click', async () => {
-    await openHandoffRestoreContext(entry.id);
-  });
   document.getElementById('btn-handoff-history').addEventListener('click', () => {
     closeModal();
     openVersionsModal(entry);
   });
-}
-
-async function openHandoffRestoreContext(entryId) {
-  try {
-    const parsed = await api.handoffRestoreContext(entryId, { include_deleted: 'true' });
-    const handoffEntry = state.handoffs.find((item) => item.id === entryId);
-    openGuidedRestoreModal(parsed, {
-      workstreamId: handoffEntry?.workstream_id || '',
-      sessionId: handoffEntry?.session_id || '',
-    });
-  } catch (e) {
-    toast('Error: ' + e.message, 'error');
-  }
 }
 
 async function openWorkstreamStateModal(workstreamId, sessionId = null) {
@@ -2788,13 +2238,9 @@ async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="${baseButtonClasses('ghost')}" id="btn-resume-guided-restore">Guided restore</button>
         <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Close</button>
       </div>
     `, ' modal-wide'));
-    document.getElementById('btn-resume-guided-restore').addEventListener('click', () => {
-      openGuidedRestoreModal(data, { workstreamId, sessionId: sessionId || data.session_id || '' });
-    });
   } catch (e) {
     toast('Error: ' + e.message, 'error');
   }
@@ -2937,7 +2383,7 @@ async function loadEntries(append = false) {
     state.total = total;
     state.hasMore = data.has_more ?? false;
 
-    document.getElementById('section-title').textContent = state.section || 'Memory Admin';
+    document.getElementById('section-title').textContent = state.section || 'Memory Ledger';
     document.getElementById('total-badge').textContent = total ? `${total} entries` : '';
 
     renderCards(items, append);
@@ -3030,143 +2476,6 @@ function modalShell(inner, extraClasses = '') {
   return `<div class="modal-panel${suffix}">${inner}</div>`;
 }
 
-function openNewEntryModal() {
-  const defaultSection = state.section || (state.config?.sections?.[0] ?? 'context');
-  openModal(modalShell(`
-    <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
-      <span class="text-[15px] font-semibold">New Entry</span>
-      <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
-    </div>
-    <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Section</label>
-        <select class="${textInputClasses()}" id="f-section">${buildSectionOptions(defaultSection)}</select>
-      </div>
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Content</label>
-        <textarea class="${textInputClasses(true)}" id="f-content" placeholder="Write a short memory (1–3 sentences)…"></textarea>
-      </div>
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Tags <span class="font-normal normal-case tracking-normal text-mute">(comma-separated)</span></label>
-        <input type="text" class="${textInputClasses()}" id="f-tags" placeholder="tag1, tag2">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Duplicate guard</label>
-        <select class="${textInputClasses()}" id="f-scope">
-          <option value="global">Global (default)</option>
-          <option value="section">Section only</option>
-        </select>
-        <div class="mt-1.5 text-[11px] text-mute">Prevents storing semantically duplicate content.</div>
-      </div>
-      <div class="compare-grid" style="margin-top:14px;">
-        <div>
-          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Workstream ID</label>
-          <input type="text" class="${textInputClasses()}" id="f-workstream-id" placeholder="optional, e.g. ws_agent">
-        </div>
-        <div>
-          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Session ID</label>
-          <input type="text" class="${textInputClasses()}" id="f-session-id" placeholder="optional, e.g. sess_001">
-        </div>
-      </div>
-    </div>
-    <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
-      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('primary')}" id="btn-save-entry">Save</button>
-    </div>
-  `));
-
-  document.getElementById('f-content').focus();
-  document.getElementById('btn-save-entry').addEventListener('click', async () => {
-    const content = document.getElementById('f-content').value.trim();
-    const section = document.getElementById('f-section').value;
-    const tagsRaw = document.getElementById('f-tags').value;
-    const scope = document.getElementById('f-scope').value;
-    if (!content) {
-      toast('Content is required.', 'error');
-      return;
-    }
-    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
-    try {
-      await api.writeEntry({
-        content,
-        section,
-        tags,
-        semantic_scope: scope,
-        workstream_id: document.getElementById('f-workstream-id').value.trim() || null,
-        session_id: document.getElementById('f-session-id').value.trim() || null,
-      });
-      closeModal();
-      toast('Entry saved.', 'success');
-      await loadEntries();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
-
-function openEditModal(entry) {
-  openModal(modalShell(`
-    <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
-      <span class="text-[15px] font-semibold">Edit Entry</span>
-      <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
-    </div>
-    <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Section</label>
-        <select class="${textInputClasses()}" id="f-section">${buildSectionOptions(entry.section)}</select>
-      </div>
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Content</label>
-        <textarea class="${textInputClasses(true)}" id="f-content">${escHtml(entry.content)}</textarea>
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Tags <span class="font-normal normal-case tracking-normal text-mute">(comma-separated)</span></label>
-        <input type="text" class="${textInputClasses()}" id="f-tags" value="${escHtml((entry.tags || []).join(', '))}">
-      </div>
-      <div class="compare-grid" style="margin-top:14px;">
-        <div>
-          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Workstream ID</label>
-          <input type="text" class="${textInputClasses()}" id="f-workstream-id" value="${escHtml(entry.workstream_id || '')}">
-        </div>
-        <div>
-          <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Session ID</label>
-          <input type="text" class="${textInputClasses()}" id="f-session-id" value="${escHtml(entry.session_id || '')}">
-        </div>
-      </div>
-    </div>
-    <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
-      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('primary')}" id="btn-save-edit">Save changes</button>
-    </div>
-  `));
-
-  document.getElementById('f-content').focus();
-  document.getElementById('btn-save-edit').addEventListener('click', async () => {
-    const content = document.getElementById('f-content').value.trim();
-    const section = document.getElementById('f-section').value;
-    const tagsRaw = document.getElementById('f-tags').value;
-    if (!content) {
-      toast('Content is required.', 'error');
-      return;
-    }
-    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
-    try {
-      await api.editEntry(entry.id, {
-        content,
-        section,
-        tags,
-        workstream_id: document.getElementById('f-workstream-id').value.trim() || null,
-        session_id: document.getElementById('f-session-id').value.trim() || null,
-      });
-      closeModal();
-      toast('Entry updated.', 'success');
-      if (state.searchMode) doSearch(state.searchQuery); else await loadEntries();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
-
 function openViewModal(entry) {
   const theme = sectionTheme(entry.section);
   const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
@@ -3175,7 +2484,7 @@ function openViewModal(entry) {
   const scoreBadge = entry.score != null ? `<span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" style="background:rgba(255,255,255,0.65);border-color:${theme.softBorder};color:${theme.color}">${(entry.score * 100).toFixed(0)}%</span>` : '';
   const accessBadge = (entry.access_count || 0) > 0 ? `<span class="whitespace-nowrap text-[11px] text-mute" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>` : '';
   const deletedNotice = entry.deleted_at
-    ? `<div class="mb-4 rounded-xl border border-[rgba(192,64,64,0.22)] bg-[rgba(192,64,64,0.08)] px-3 py-2 text-sm text-danger">Deleted ${escHtml(relTime(entry.deleted_at))}. You can restore the entry or restore a previous revision.</div>`
+    ? `<div class="mb-4 rounded-xl border border-[rgba(192,64,64,0.22)] bg-[rgba(192,64,64,0.08)] px-3 py-2 text-sm text-danger">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available for inspection.</div>`
     : '';
 
   openModal(modalShell(`
@@ -3202,54 +2511,9 @@ function openViewModal(entry) {
     </div>
     <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
       <button class="${baseButtonClasses('ghost')}" id="btn-view-history">History</button>
-      ${entry.deleted_at
-        ? `<button class="${baseButtonClasses('primary')}" id="btn-view-restore">Restore</button>`
-        : `<button class="${baseButtonClasses('danger')}" id="btn-view-delete">Delete</button><button class="${baseButtonClasses('primary')}" id="btn-view-edit">Edit</button>`}
     </div>
   `, 'w-[min(700px,96vw)]'));
   document.getElementById('btn-view-history').addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
-  document.getElementById('btn-view-edit')?.addEventListener('click', () => { closeModal(); openEditModal(entry); });
-  document.getElementById('btn-view-delete')?.addEventListener('click', () => { closeModal(); openDeleteModal(entry); });
-  document.getElementById('btn-view-restore')?.addEventListener('click', async () => {
-    try {
-      await api.restoreDeletedEntry(entry.id);
-      closeModal();
-      toast('Entry restored.', 'success');
-      if (state.searchMode) await doSearch(state.searchQuery); else await loadEntries();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
-}
-
-function openDeleteModal(entry) {
-  const preview = entry.content.length > 80 ? entry.content.slice(0, 80) + '…' : entry.content;
-  openModal(modalShell(`
-    <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
-      <span class="text-[15px] font-semibold">Soft-delete entry?</span>
-      <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
-    </div>
-    <div class="px-6 py-5 text-sm leading-6 text-mute">
-      <p>This will hide the entry from the default Web and MCP views.</p>
-      <p class="mt-2 italic text-ink">&quot;${escHtml(preview)}&quot;</p>
-      <p class="mt-2">You can restore it later from History or by enabling deleted entries.</p>
-    </div>
-    <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
-      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('danger')}" id="btn-confirm-delete">Soft delete</button>
-    </div>
-  `, 'w-[min(400px,94vw)]'));
-
-  document.getElementById('btn-confirm-delete').addEventListener('click', async () => {
-    try {
-      await api.deleteEntry(entry.id);
-      closeModal();
-      toast('Entry moved to deleted state.', 'success');
-      if (state.searchMode) await doSearch(state.searchQuery); else await loadEntries();
-    } catch (e) {
-      toast('Error: ' + e.message, 'error');
-    }
-  });
 }
 
 async function openDiffModal(entry, fromVersion, toVersion) {
@@ -3274,7 +2538,7 @@ async function openDiffModal(entry, fromVersion, toVersion) {
           <pre class="my-0 overflow-x-auto rounded-xl bg-[#0f1624] px-4 py-3 text-[12px] text-[#b8cfe8] shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_4px_12px_rgba(0,0,0,0.18)]">${escHtml(diffText)}</pre>
         </div>
       </div>
-    `, 'w-[min(900px,98vw)]'));
+    `, 'w-[min(860px,98vw)]'));
   } catch (e) {
     toast('Error: ' + e.message, 'error');
   }
@@ -3298,40 +2562,21 @@ async function openVersionsModal(entry) {
       <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div class="mb-4 rounded-xl border border-line bg-panelSoft px-3 py-3">
           <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Compare revisions</div>
-          <div class="mb-3 text-xs text-mute">Timeline opens focused on current vs previous for quick comparison. Use the timeline chips below to change the pair.</div>
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end">
-            <div><label class="mb-1 block text-[11px] text-mute">From</label><select class="${textInputClasses()}" id="diff-from-version"></select></div>
-            <div><label class="mb-1 block text-[11px] text-mute">To</label><select class="${textInputClasses()}" id="diff-to-version"></select></div>
-            <button class="${baseButtonClasses('ghost')}" id="btn-run-version-diff">Compare selected</button>
-          </div>
+          <div class="text-xs text-mute">Timeline stays focused on current vs previous for quick inspection. Older revisions can still be diffed against the current state directly from the timeline.</div>
         </div>
         <div class="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Timeline</div>
         <div class="space-y-4" id="timeline-root"></div>
       </div>
     `, 'w-[min(860px,98vw)]'));
 
-    const fromSelect = document.getElementById('diff-from-version');
-    const toSelect = document.getElementById('diff-to-version');
     const timelineRoot = document.getElementById('timeline-root');
-    let selectedFrom = previousVersion ?? currentVersion;
-    let selectedTo = currentVersion;
-
-    function revisionOptionLabel(revision) {
-      return `v${revision.version}${revision.deleted_at ? ' [deleted]' : ''}`;
-    }
-
-    function renderVersionOptions(selectedVersion) {
-      return versions.map((revision) => `
-        <option value="${revision.version}" ${revision.version === selectedVersion ? 'selected' : ''}>${escHtml(revisionOptionLabel(revision))}</option>
-      `).join('');
-    }
 
     function renderTimeline() {
       timelineRoot.innerHTML = versions.slice().reverse().map((revision, index) => {
         const isCurrent = revision.version === currentVersion;
         const isLast = index === versions.length - 1;
-        const isSelectedFrom = revision.version === selectedFrom;
-        const isSelectedTo = revision.version === selectedTo;
+        const isSelectedFrom = revision.version === previousVersion && previousVersion !== currentVersion;
+        const isSelectedTo = revision.version === currentVersion;
         const theme = sectionTheme(revision.section || entry.section);
         const preview = previewText(revision.content, 120);
         const activeBorder = isSelectedFrom || isSelectedTo ? `border-color:${theme.color}; box-shadow:0 0 0 1px ${theme.color}, 0 8px 24px ${theme.glow};` : '';
@@ -3360,61 +2605,18 @@ async function openVersionsModal(entry) {
                 </div>
               </div>
               <div class="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3">
-                <button class="${baseButtonClasses(isSelectedFrom ? 'danger' : 'ghost', true)}" data-select-role="from" data-select-version="${revision.version}">Use as from</button>
-                <button class="${baseButtonClasses(isSelectedTo ? 'primary' : 'ghost', true)}" data-select-role="to" data-select-version="${revision.version}">Use as to</button>
-                ${!isCurrent ? `<button class="${baseButtonClasses('ghost', true)}" data-diff-version="${revision.version}">Diff to current</button><button class="${baseButtonClasses('primary', true)}" data-restore-version="${revision.version}">Restore version</button>` : ''}
+                ${!isCurrent ? `<button class="${baseButtonClasses('ghost', true)}" data-diff-version="${revision.version}">Diff to current</button>` : ''}
               </div>
             </div>
           </div>`;
       }).join('');
 
-      timelineRoot.querySelectorAll('[data-select-role]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const version = Number(button.dataset.selectVersion);
-          if (button.dataset.selectRole === 'from') {
-            selectedFrom = version;
-          } else {
-            selectedTo = version;
-          }
-          syncSelection();
-        });
-      });
       timelineRoot.querySelectorAll('[data-diff-version]').forEach((button) => {
         button.addEventListener('click', () => openDiffModal(entry, button.dataset.diffVersion, currentVersion));
       });
-      timelineRoot.querySelectorAll('[data-restore-version]').forEach((button) => {
-        button.addEventListener('click', async () => {
-          try {
-            await api.restoreEntryVersion(entry.id, button.dataset.restoreVersion);
-            closeModal();
-            toast(`Restored v${button.dataset.restoreVersion}.`, 'success');
-            if (state.searchMode) await doSearch(state.searchQuery); else await loadEntries();
-          } catch (e) {
-            toast('Error: ' + e.message, 'error');
-          }
-        });
-      });
     }
 
-    function syncSelection() {
-      fromSelect.innerHTML = renderVersionOptions(selectedFrom);
-      toSelect.innerHTML = renderVersionOptions(selectedTo);
-      renderTimeline();
-    }
-
-    fromSelect.addEventListener('change', () => {
-      selectedFrom = Number(fromSelect.value);
-      syncSelection();
-    });
-    toSelect.addEventListener('change', () => {
-      selectedTo = Number(toSelect.value);
-      syncSelection();
-    });
-
-    syncSelection();
-    document.getElementById('btn-run-version-diff').addEventListener('click', () => {
-      openDiffModal(entry, selectedFrom, selectedTo);
-    });
+    renderTimeline();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
   }
@@ -3486,7 +2688,6 @@ function switchView(name) {
     const active = tab.dataset.view === name;
     tab.classList.toggle('active', active);
   });
-  document.getElementById('btn-new-label').textContent = name === 'handoffs' ? 'Generate Handoff' : name === 'workstreams' || name === 'dashboard' ? 'Open Workstream' : 'New Entry';
   document.getElementById('header-search').style.display = name === 'memories' ? '' : 'none';
   if (name === 'dashboard') renderDashboardView();
   else if (name === 'stats') renderStatsView();
@@ -3769,29 +2970,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-document.getElementById('btn-new').addEventListener('click', () => {
-  if (state.view === 'dashboard') {
-    openNewWorkstreamModal();
-    return;
-  }
-  if (state.view === 'workstreams') {
-    openNewWorkstreamModal();
-    return;
-  }
-  if (state.view === 'handoffs') {
-    openNewHandoffModal();
-    return;
-  }
-  if (state.view === 'review') {
-    switchView('workstreams');
-    openNewHandoffModal();
-    return;
-  }
-  openNewEntryModal();
-});
-document.getElementById('btn-dashboard-open-workstream').addEventListener('click', openNewWorkstreamModal);
-document.getElementById('btn-new-workstream-inline').addEventListener('click', openNewWorkstreamModal);
-document.getElementById('btn-new-handoff-inline').addEventListener('click', openNewHandoffModal);
+
 document.getElementById('btn-consolidate').addEventListener('click', openConsolidateModal);
 document.getElementById('btn-load-more').addEventListener('click', () => loadEntries(true));
 document.getElementById('clear-search').addEventListener('click', clearSearch);

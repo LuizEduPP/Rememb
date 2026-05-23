@@ -39,8 +39,11 @@ def test_index_exposes_deleted_and_history_controls():
     assert "All sessions" in response.text
     assert "Agent supervision" in response.text
     assert "Next execution package" in response.text
-    assert "Supervision Surface" in response.text
-    assert "Administrative Surface" in response.text
+    assert "Agent Flow" in response.text
+    assert "Runtime Controls" in response.text
+    assert "Overview" in response.text
+    assert "Threads" in response.text
+    assert "Skills" in response.text
 
 
 def test_index_is_offline_ready_without_external_cdns():

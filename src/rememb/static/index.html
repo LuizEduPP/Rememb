@@ -4,544 +4,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>rememb</title>
-<style>
-:root {
-  --shell: #FBFDF9;
-  --panel: #FFFFFF;
-  --panel-soft: #EEF2F8;
-  --line: #C6D0E0;
-  --line-strong: #96AACB;
-  --ink: #122146;
-  --mute: #6A7B8A;
-  --accent: #04D8E7;
-  --accent-soft: rgba(4, 216, 231, 0.12);
-  --danger: #c04040;
-  --danger-strong: #e05050;
-  --success: #30b870;
-  --shadow-hairline: 0 0 0 1px rgba(198,208,224,0.95), 0 2px 8px rgba(18,33,70,0.05);
-  --shadow-hairline-strong: 0 0 0 1px rgba(150,170,203,0.95), 0 8px 28px rgba(18,33,70,0.09);
-  --shadow-chrome: 0 1px 24px rgba(18,33,70,0.06), 0 0 0 1px rgba(4,216,231,0.04);
-  --shadow-modal: 0 0 0 1px rgba(18,33,70,0.10), 0 24px 48px rgba(18,33,70,0.20), 0 8px 16px rgba(18,33,70,0.10);
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Aptos Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "SF Mono", "Cascadia Code", "Fira Code", monospace;
-}
-
-* { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
-body {
-  background: linear-gradient(180deg, #f9fcf7 0%, #edf4fb 100%);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
-button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
-a { color: inherit; text-decoration: none; }
-
-/* Minimal utility bridge after removing Tailwind. Keep only what the SPA still uses. */
-.block { display: block; }
-.inline-block { display: inline-block; }
-.inline-flex { display: inline-flex; }
-.flex { display: flex; }
-.grid { display: grid; }
-.hidden { display: none !important; }
-.flex-1 { flex: 1 1 0%; }
-.flex-col { flex-direction: column; }
-.flex-wrap { flex-wrap: wrap; }
-.items-center { align-items: center; }
-.items-start { align-items: flex-start; }
-.items-baseline { align-items: baseline; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.justify-end { justify-content: flex-end; }
-.gap-1 { gap: 4px; }
-.gap-1\.5 { gap: 6px; }
-.gap-2 { gap: 8px; }
-.gap-2\.5 { gap: 10px; }
-.gap-3 { gap: 12px; }
-.gap-4 { gap: 16px; }
-.ml-auto { margin-left: auto; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-.mt-1 { margin-top: 4px; }
-.mt-1\.5 { margin-top: 6px; }
-.mt-2 { margin-top: 8px; }
-.mt-3 { margin-top: 12px; }
-.mt-5 { margin-top: 20px; }
-.mb-1 { margin-bottom: 4px; }
-.mb-1\.5 { margin-bottom: 6px; }
-.mb-2 { margin-bottom: 8px; }
-.mb-3 { margin-bottom: 12px; }
-.mb-4 { margin-bottom: 16px; }
-.mb-5 { margin-bottom: 20px; }
-.mb-7 { margin-bottom: 28px; }
-.px-2 { padding-left: 8px; padding-right: 8px; }
-.px-3 { padding-left: 12px; padding-right: 12px; }
-.px-4 { padding-left: 16px; padding-right: 16px; }
-.px-5 { padding-left: 20px; padding-right: 20px; }
-.px-6 { padding-left: 24px; padding-right: 24px; }
-.py-1 { padding-top: 4px; padding-bottom: 4px; }
-.py-1\.5 { padding-top: 6px; padding-bottom: 6px; }
-.py-2 { padding-top: 8px; padding-bottom: 8px; }
-.py-2\.5 { padding-top: 10px; padding-bottom: 10px; }
-.py-3 { padding-top: 12px; padding-bottom: 12px; }
-.py-4 { padding-top: 16px; padding-bottom: 16px; }
-.py-5 { padding-top: 20px; padding-bottom: 20px; }
-.py-7 { padding-top: 28px; padding-bottom: 28px; }
-.pb-0 { padding-bottom: 0; }
-.pb-2 { padding-bottom: 8px; }
-.pb-3 { padding-bottom: 12px; }
-.pb-5 { padding-bottom: 20px; }
-.pt-2 { padding-top: 8px; }
-.pt-3 { padding-top: 12px; }
-.pt-3\.5 { padding-top: 14px; }
-.rounded { border-radius: 6px; }
-.rounded-xl { border-radius: 14px; }
-.rounded-2xl { border-radius: 18px; }
-.rounded-full { border-radius: 999px; }
-.border { border: 1px solid var(--line); }
-.border-b { border-bottom: 1px solid var(--line); }
-.border-t { border-top: 1px solid var(--line); }
-.border-dashed { border-style: dashed; }
-.bg-panel { background: var(--panel); }
-.bg-panelSoft { background: var(--panel-soft); }
-.bg-panelSoft\/80 { background: rgba(238,242,248,0.8); }
-.bg-line { background: var(--line); }
-.bg-\[rgba\(255\,196\,0\,0\.08\)\] { background: rgba(255,196,0,0.08); }
-.bg-\[rgba\(48\,184\,112\,0\.10\)\] { background: rgba(48,184,112,0.10); }
-.bg-\[rgba\(192\,64\,64\,0\.10\)\] { background: rgba(192,64,64,0.10); }
-.bg-\[rgba\(192\,64\,64\,0\.08\)\] { background: rgba(192,64,64,0.08); }
-.bg-\[rgba\(192\,64\,64\,0\.1\)\] { background: rgba(192,64,64,0.1); }
-.bg-\[rgba\(4\,216\,231\,0\.12\)\] { background: rgba(4,216,231,0.12); }
-.bg-\[\#0f1624\] { background: #0f1624; }
-.text-center { text-align: center; }
-.text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-base { font-size: 16px; }
-.text-4xl { font-size: 36px; line-height: 1; }
-.text-ink { color: var(--ink); }
-.text-mute { color: var(--mute); }
-.font-medium { font-weight: 500; }
-.font-semibold { font-weight: 600; }
-.font-bold { font-weight: 700; }
-.font-mono { font-family: var(--font-mono); }
-.italic { font-style: italic; }
-.uppercase { text-transform: uppercase; }
-.w-full { width: 100%; }
-.max-w-\[1040px\] { max-width: 1040px; }
-.max-w-\[700px\] { max-width: 700px; }
-.h-px { height: 1px; }
-.h-3\.5, .w-3\.5 { width: 14px; height: 14px; }
-.h-\[30px\] { height: 30px; }
-.w-auto { width: auto; }
-.pointer-events-none { pointer-events: none; }
-.shadow-\[inset_0_1px_0_rgba\(255\,255\,255\,0\.5\)\] { box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); }
-.shadow-\[0_0_0_1px_rgba\(255\,255\,255\,0\.06\)\,0_4px_12px_rgba\(0\,0\,0\,0\.18\)\] { box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.18); }
-.underline-offset-4 { text-underline-offset: 4px; }
-.hover\:underline:hover { text-decoration: underline; }
-.tracking-\[0\.12em\] { letter-spacing: 0.12em; }
-.text-\[10px\] { font-size: 10px; }
-
-#app { display: flex; height: 100vh; flex-direction: column; overflow: hidden; }
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  display: flex;
-  min-height: 72px;
-  align-items: center;
-  gap: 14px;
-  border-bottom: 1px solid rgba(198,208,224,0.55);
-  background: rgba(251,253,249,0.9);
-  padding: 14px 20px;
-  backdrop-filter: blur(16px) saturate(1.4);
-  box-shadow: var(--shadow-chrome);
-}
-.brand-link, .brand-meta, .nav-tabs, .header-actions, .stats-grid, .dashboard-grid, .handoff-actions, .form-row, .compare-grid, .settings-grid, .settings-actions, .inline-actions {
-  display: flex;
-}
-.brand-link { align-items: center; gap: 12px; min-width: 0; white-space: nowrap; }
-.brand-logo {
-  display: block;
-  width: auto;
-  height: 30px;
-  max-width: 108px;
-  object-fit: contain;
-}
-.brand-meta { align-items: center; gap: 8px; line-height: 1; }
-.brand-name, .view-title, .page-title, .modal-title, .section-title, .card-title {
-  font-family: var(--font-display);
-  font-weight: 700;
-}
-.brand-name { font-size: 15px; letter-spacing: 0.02em; }
-.version-badge, .badge, .tag-pill, .score-pill, .section-pill {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-}
-.version-badge {
-  border: 1px solid rgba(4,216,231,0.18);
-  background: var(--accent-soft);
-  padding: 2px 6px;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent);
-}
-.divider { width: 1px; height: 20px; background: var(--line); }
-.nav-tabs {
-  align-items: center;
-  gap: 2px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel-soft);
-  padding: 4px;
-}
-.nav-surface-label {
-  padding: 0 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mute);
-}
-.nav-tab {
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  padding: 8px 14px;
-  color: var(--mute);
-  font-size: 14px;
-  font-weight: 600;
-}
-.nav-tab.active { background: var(--ink); color: var(--accent); box-shadow: 0 1px 8px rgba(18,33,70,0.18); }
-.nav-tab:hover { background: rgba(255,255,255,0.86); color: var(--ink); }
-.header-search { position: relative; margin-left: 8px; flex: 1; max-width: 460px; }
-.header-search input {
-  width: 100%; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink);
-  padding: 10px 42px 10px 34px; outline: none;
-}
-.header-search input:focus, .field-control:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(4,216,231,0.12);
-}
-.header-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--mute); }
-.header-search kbd {
-  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-  border: 1px solid var(--line); border-radius: 6px; background: var(--panel-soft); padding: 2px 6px;
-  font-family: var(--font-mono); font-size: 10px; color: var(--mute);
-}
-.header-actions { margin-left: auto; align-items: center; gap: 10px; }
-.app-button, .modal-button, .inline-button {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  border-radius: 12px; padding: 10px 16px; font-size: 14px; font-weight: 700; transition: 0.18s ease;
-}
-.app-button.primary, .modal-button.primary, .inline-button.primary { background: var(--ink); color: var(--accent); border: 0; }
-.app-button.primary:hover, .modal-button.primary:hover, .inline-button.primary:hover { transform: translateY(-1px); background: #1A2E60; }
-.app-button.ghost, .modal-button.ghost, .inline-button.ghost { background: var(--panel); color: var(--mute); border: 1px solid var(--line); }
-.app-button.ghost:hover, .modal-button.ghost:hover, .inline-button.ghost:hover { background: var(--panel-soft); color: var(--ink); border-color: var(--line-strong); }
-.app-button.danger, .modal-button.danger, .inline-button.danger { background: var(--danger); color: #fff; border: 0; }
-.app-button.danger:hover, .modal-button.danger:hover, .inline-button.danger:hover { transform: translateY(-1px); background: var(--danger-strong); }
-.small-button { padding: 8px 12px; border-radius: 10px; font-size: 13px; }
-
-.view { display: none; min-height: 0; flex: 1; overflow: hidden; }
-.view.active { display: flex; }
-.view-scroll { overflow-y: auto; }
-.view-column { flex-direction: column; }
-.content-shell { display: flex; min-height: 0; flex: 1; overflow: hidden; }
-.sidebar {
-  width: 246px; flex-shrink: 0; display: none; flex-direction: column; overflow: hidden;
-  border-right: 1px solid #dde6f0; background: linear-gradient(180deg, #f4f8fc 0%, #eef4fb 100%);
-}
-.sidebar-body { min-height: 0; flex: 1; overflow-y: auto; padding: 12px 0 8px; }
-.sidebar-footer { margin-top: auto; }
-.content-main { min-height: 0; flex: 1; overflow-y: auto; padding: 24px 26px 28px; }
-.search-results-bar {
-  display: none; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); background: var(--shell); padding: 8px 20px; color: var(--mute);
-}
-.search-results-bar.active { display: flex; }
-.section-header, .panel-header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 20px; }
-.panel { border-radius: 20px; background: var(--panel); box-shadow: var(--shadow-hairline); }
-.panel-soft { border-radius: 16px; background: var(--panel-soft); }
-.stats-mini { margin: 0 8px 8px; padding: 10px; border: 1px solid var(--line); background: rgba(18,33,70,0.04); border-radius: 14px; }
-.stats-mini-row { display: flex; align-items: center; justify-content: space-between; padding: 4px; color: var(--mute); font-size: 11px; }
-.stats-mini-row .value { color: var(--ink); font-family: var(--font-mono); }
-.section-list { padding-bottom: 8px; }
-.section-button {
-  width: calc(100% - 16px); margin: 2px 8px; display: flex; align-items: center; gap: 10px; text-align: left;
-  padding: 10px 12px; border: 0; border-left: 2px solid transparent; border-radius: 14px; background: transparent; color: var(--mute);
-}
-.section-button:hover { background: rgba(18,33,70,0.06); }
-.section-button.active { color: var(--ink); font-weight: 700; box-shadow: 0 1px 6px rgba(18,33,70,0.08); }
-.count-pill { margin-left: auto; border: 1px solid var(--line); border-radius: 999px; background: rgba(18,33,70,0.06); padding: 2px 8px; font-size: 10px; font-family: var(--font-mono); }
-
-.cards-grid, .skills-grid, .handoff-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
-.workstream-layout { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
-.workstream-detail-panel { position: relative; }
-.entry-card, .handoff-card, .skill-card {
-  overflow: hidden; border-radius: 18px; background: var(--panel); box-shadow: var(--shadow-hairline); transition: 0.18s ease;
-}
-.entry-card:hover, .handoff-card:hover, .skill-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hairline-strong); }
-.handoff-card.is-selected { box-shadow: 0 0 0 2px rgba(4,216,231,0.28), var(--shadow-hairline-strong); }
-.entry-card { display: flex; flex-direction: column; cursor: pointer; }
-.entry-card-accent {
-  height: 3px;
-  width: 100%;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-.entry-card:hover .entry-card-accent { opacity: 1; }
-.entry-card-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid rgba(18,33,70,0.08);
-  padding: 11px 14px;
-}
-.entry-card-section {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.entry-card-section-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-.entry-card-meta {
-  margin-left: auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.entry-card-time {
-  font-size: 11px;
-  white-space: nowrap;
-}
-.entry-card-main {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 14px 0;
-}
-.entry-card-content {
-  position: relative;
-  overflow: hidden;
-  min-height: 172px;
-  max-height: 172px;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.72;
-}
-.entry-card-content::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 48px;
-  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, var(--panel) 92%);
-  pointer-events: none;
-}
-.entry-card-content .markdown-body,
-.entry-card-content .markdown-body p:last-child { margin-bottom: 0; }
-.entry-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 32px;
-  align-content: flex-start;
-}
-.entry-card-footer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid rgba(18,33,70,0.06);
-  padding: 12px 14px;
-}
-.entry-card-id {
-  margin-left: auto;
-  color: rgba(106,123,138,0.82);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-.entry-card-access {
-  color: var(--mute);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.card-header { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(18,33,70,0.08); padding: 10px 14px; }
-.card-body { padding: 14px; }
-.card-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid rgba(18,33,70,0.06); padding: 10px 14px; }
-.card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; border-top: 1px solid rgba(18,33,70,0.06); padding: 12px 14px; }
-.markdown-body { font-size: 13.5px; line-height: 1.7; }
-.markdown-body h1 { font-family: var(--font-display); font-size: 20px; margin: 0 0 10px; }
-.markdown-body h2 { font-family: var(--font-display); font-size: 16px; margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
-.markdown-body h3, .markdown-body h4 { margin: 16px 0 6px; color: var(--mute); }
-.markdown-body p { margin: 0 0 10px; }
-.markdown-body ul, .markdown-body ol { margin: 0 0 10px 20px; }
-.markdown-body blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--accent-soft); color: var(--mute); }
-.markdown-body pre { overflow-x: auto; border-radius: 14px; background: #0f1624; padding: 14px; color: #b8cfe8; }
-.markdown-body code { font-family: var(--font-mono); }
-.markdown-body :not(pre) > code { border: 1px solid var(--line); border-radius: 8px; background: rgba(18,33,70,0.07); padding: 2px 6px; color: var(--ink); }
-.empty-state, .loading-state { border-radius: 18px; background: var(--panel); padding: 40px 24px; text-align: center; color: var(--mute); box-shadow: var(--shadow-hairline); }
-.modal-overlay {
-  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
-  padding: 12px; background: rgba(8,12,24,0.72); backdrop-filter: blur(12px) saturate(1.4);
-}
-.modal-panel {
-  display: flex; max-height: 90vh; width: min(520px, 94vw); flex-direction: column; overflow: hidden;
-  border-radius: 20px; background: var(--panel); box-shadow: var(--shadow-modal);
-}
-.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(18,33,70,0.07); padding: 20px 24px; }
-.modal-body { min-height: 0; flex: 1; overflow-y: auto; padding: 20px 24px; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid rgba(18,33,70,0.06); padding: 14px 24px 20px; }
-.modal-close {
-  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--panel-soft); color: var(--mute);
-}
-.field-label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
-.field-control {
-  width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--shell); color: var(--ink);
-  padding: 10px 12px; outline: none;
-}
-textarea.field-control { min-height: 110px; resize: vertical; line-height: 1.6; }
-.muted { color: var(--mute); }
-.mono { font-family: var(--font-mono); }
-.pill-row, .meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.tag-pill { border: 1px solid var(--line); padding: 4px 10px; font-size: 11px; }
-.version-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.timeline-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.timeline-item {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(18,33,70,0.03);
-  padding: 12px;
-}
-.timeline-time {
-  color: var(--mute);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.5;
-}
-.timeline-body { min-width: 0; }
-.timeline-title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-.timeline-summary {
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.6;
-}
-.diff-grid { display: grid; grid-template-columns: 1fr 1fr; }
-.diff-header { background: var(--panel-soft); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mute); }
-.diff-header > div, .diff-row > div { padding: 8px 12px; }
-.diff-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
-.diff-row:last-child { border-bottom: 0; }
-.diff-row > div:first-child, .diff-header > div:first-child { border-right: 1px solid var(--line); }
-.section-card { border-radius: 18px; background: var(--panel); padding: 20px; box-shadow: var(--shadow-hairline); }
-.stats-grid { gap: 12px; flex-wrap: wrap; }
-.stats-grid > .section-card { flex: 1 1 220px; }
-.dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.table-wrap { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 8px; text-align: left; }
-thead { background: var(--shell); color: var(--mute); font-size: 11px; }
-.toast {
-  display: flex; min-width: 240px; max-width: 340px; align-items: center; gap: 8px;
-  border: 1px solid rgba(255,255,255,0.1); border-left-width: 3px; border-radius: 14px;
-  background: var(--ink); padding: 12px 16px; color: #D4E3FF; box-shadow: 0 8px 24px rgba(18,33,70,0.22);
-}
-
-#clear-search {
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-weight: 600;
-}
-
-#view-stats > div,
-#view-skills > div,
-#view-settings > div {
-  width: min(100%, 1040px);
-  margin: 0 auto;
-}
-
-#view-settings > div { max-width: 700px; }
-
-#cards-grid > div,
-#handoff-grid > div,
-#skills-root > div {
-  min-width: 0;
-}
-
-@media (min-width: 900px) {
-  .sidebar { display: flex; }
-  .cards-grid, .handoff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .compare-grid, .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .workstream-layout { grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr); }
-  .workstream-detail-panel { position: sticky; top: 24px; }
-}
-
-@media (min-width: 1280px) {
-  .cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .skills-grid, .handoff-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-
-@media (max-width: 880px) {
-  .header-search { display: none; }
-  .app-header { flex-wrap: wrap; }
-  .divider { display: none; }
-  .nav-tabs { order: 3; width: 100%; overflow-x: auto; }
-  .header-actions { margin-left: 0; }
-  .content-main { padding: 18px 16px 20px; }
-}
-</style>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div id="app" class="flex h-screen flex-col overflow-hidden">
   <header class="app-header">
     <a class="brand-link" href="/">
       <img src="/static/logo.png" alt="rememb" class="brand-logo">
-      <div class="brand-meta">
-        <span class="brand-name">rememb</span>
-        <span class="version-badge" id="logo-version"></span>
+      <div class="brand-stack">
+        <div class="brand-meta">
+          <span class="brand-name">rememb</span>
+          <span class="version-badge" id="logo-version"></span>
+        </div>
+        <span class="brand-caption">Local-first agent runtime for threads, review and continuity</span>
       </div>
     </a>
 
     <div class="divider"></div>
 
     <nav class="nav-tabs">
-      <span class="nav-surface-label">Supervision Surface</span>
-      <button class="nav-tab active" data-view="dashboard">Dashboard</button>
-      <button class="nav-tab" data-view="workstreams">Workstreams</button>
-      <button class="nav-tab" data-view="handoffs">Handoffs</button>
-      <button class="nav-tab" data-view="review">Review</button>
-      <span class="nav-surface-label">Administrative Surface</span>
-      <button class="nav-tab" data-view="memories">Memory Ledger</button>
-      <button class="nav-tab" data-view="stats">Stats</button>
-      <button class="nav-tab" data-view="settings">Settings</button>
+      <div class="nav-group nav-group--primary">
+        <span class="nav-group-title">Agent Flow</span>
+        <button class="nav-tab active" data-view="dashboard">Overview</button>
+        <button class="nav-tab" data-view="workstreams">Threads</button>
+      </div>
+      <div class="nav-group nav-group--utility">
+        <span class="nav-group-title">Runtime Controls</span>
+        <button class="nav-tab utility" data-view="memories">Memory</button>
+        <button class="nav-tab utility" data-view="stats">Stats</button>
+        <button class="nav-tab utility" data-view="settings">Settings</button>
+        <button class="nav-tab utility" data-view="skills">Skills</button>
+      </div>
     </nav>
 
     <div class="header-search" id="header-search">
@@ -555,55 +48,92 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
   </header>
 
   <div id="view-dashboard" class="view view-scroll active">
-    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
-      <div class="section-header">
-        <div>
-          <h2 class="page-title">Dashboard</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Agent-driven operations: current work, pending validation, handoff history and memory health.</div>
-        </div>
-      </div>
-
-      <div class="stats-grid" style="margin-bottom: 20px;">
-        <div class="section-card">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Active workstreams</span>
-          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-workstreams-count">—</div>
-          <span class="mt-1 block text-[11px] text-mute" id="dashboard-workstreams-caption">loading</span>
-        </div>
-        <div class="section-card">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Pending review</span>
-          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-review-count">—</div>
-          <span class="mt-1 block text-[11px] text-mute" id="dashboard-review-caption">loading</span>
-        </div>
-        <div class="section-card">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Recent handoffs</span>
-          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-handoffs-count">—</div>
-          <span class="mt-1 block text-[11px] text-mute" id="dashboard-handoffs-caption">loading</span>
-        </div>
-        <div class="section-card">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Memory entries</span>
-          <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-memory-count">—</div>
-          <span class="mt-1 block text-[11px] text-mute" id="dashboard-memory-caption">loading</span>
-        </div>
-      </div>
-
-      <div class="dashboard-grid">
-        <div class="section-card">
-          <div class="section-header" style="margin-bottom: 14px; padding-bottom: 12px;">
-            <div>
-              <div class="section-title">Operational threads</div>
-              <div class="muted" style="font-size:13px; margin-top:4px;">Inspect the workstream record when you need the full operational picture.</div>
+    <div class="content-main content-main--fluid">
+      <div class="dashboard-stack">
+        <section class="hero-panel">
+          <div class="hero-meta">
+            <div class="hero-copy">
+              <span class="hero-eyebrow">Agent Flow</span>
+              <h2 class="hero-title">One continuous flow for active threads, escalations and handoff state.</h2>
+              <div class="hero-text">Start from the live thread, inspect review pressure where it happened, and only drop into runtime controls when you need memory maintenance or configuration.</div>
             </div>
           </div>
-          <div id="dashboard-workstreams-list" class="space-y-3"></div>
-        </div>
-        <div class="section-card">
-          <div class="section-header" style="margin-bottom: 14px; padding-bottom: 12px;">
-            <div>
-              <div class="section-title">Pending validation</div>
-              <div class="muted" style="font-size:13px; margin-top:4px;">Validation backlog and memory maintenance stay visible here.</div>
-            </div>
+          <div class="hero-actions">
+            <button class="flow-card" data-shortcut-view="workstreams">
+              <div>
+                <div class="flow-card-label">Threads</div>
+                <div class="flow-card-title">Inspect the active operational thread</div>
+              </div>
+              <div>
+                <div class="flow-card-copy">Open the thread list, pick the right workstream and see current state, next execution and timeline in one detail panel.</div>
+                <div class="flow-card-link">Open threads</div>
+              </div>
+            </button>
+            <button class="flow-card" data-shortcut-view="workstreams" data-shortcut-panel="review">
+              <div>
+                <div class="flow-card-label">Review</div>
+                <div class="flow-card-title">Resolve escalations without leaving the flow</div>
+              </div>
+              <div>
+                <div class="flow-card-copy">Use the review queue to inspect risk, provenance, diff context and next execution packaging before confirming the outcome.</div>
+                <div class="flow-card-link">Open thread review</div>
+              </div>
+            </button>
+            <button class="flow-card" data-shortcut-view="workstreams" data-shortcut-panel="handoffs">
+              <div>
+                <div class="flow-card-label">Continuity</div>
+                <div class="flow-card-title">Resume from the right handoff package</div>
+              </div>
+              <div>
+                <div class="flow-card-copy">Browse recent continuity packages, restore the right context tier and keep anti-context-switch decisions visible.</div>
+                <div class="flow-card-link">Open thread handoffs</div>
+              </div>
+            </button>
           </div>
-          <div id="dashboard-attention-list" class="space-y-3"></div>
+        </section>
+
+        <div class="stats-grid stats-grid--tight">
+          <div class="section-card">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Active workstreams</span>
+            <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-workstreams-count">—</div>
+            <span class="mt-1 block text-[11px] text-mute" id="dashboard-workstreams-caption">loading</span>
+          </div>
+          <div class="section-card">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Pending review</span>
+            <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-review-count">—</div>
+            <span class="mt-1 block text-[11px] text-mute" id="dashboard-review-caption">loading</span>
+          </div>
+          <div class="section-card">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Recent handoffs</span>
+            <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-handoffs-count">—</div>
+            <span class="mt-1 block text-[11px] text-mute" id="dashboard-handoffs-caption">loading</span>
+          </div>
+          <div class="section-card">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-mute">Memory entries</span>
+            <div class="mt-1 font-mono text-[32px] font-bold leading-none text-ink" id="dashboard-memory-count">—</div>
+            <span class="mt-1 block text-[11px] text-mute" id="dashboard-memory-caption">loading</span>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="section-card">
+            <div class="section-header section-header--compact">
+              <div>
+                <div class="section-title">Live threads</div>
+                <div class="page-subtitle">Inspect the current operational record when you need the full thread picture.</div>
+              </div>
+            </div>
+            <div id="dashboard-workstreams-list" class="space-y-3"></div>
+          </div>
+          <div class="section-card">
+            <div class="section-header section-header--compact">
+              <div>
+                <div class="section-title">Action queue</div>
+                <div class="page-subtitle">Escalations, continuity packages and runtime follow-up stay in one operating surface.</div>
+              </div>
+            </div>
+            <div id="dashboard-attention-list" class="space-y-3"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -685,18 +215,23 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
   </div>
 
   <div id="view-workstreams" class="view view-scroll">
-    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+    <div class="content-main content-main--fluid">
       <div class="section-header">
         <div>
           <h2 class="page-title">Workstreams</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operate parallel agent work without losing context, focus or control.</div>
+          <div class="page-subtitle">Operate parallel agent work without losing context, focus or control. Review and handoff stay attached to the selected thread.</div>
         </div>
         <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
           <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
           <span>Show deleted</span>
         </label>
       </div>
-      <div id="workstream-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
+      <div class="thread-surface-bar" id="workstream-surface-bar">
+        <button class="thread-surface-tab active" data-workstream-surface="overview">Thread overview</button>
+        <button class="thread-surface-tab" data-workstream-surface="review">In-thread review</button>
+        <button class="thread-surface-tab" data-workstream-surface="handoffs">In-thread handoffs</button>
+      </div>
+      <div id="workstream-summary" class="panel summary-panel"></div>
       <div class="workstream-layout">
         <div id="workstream-grid" class="handoff-grid"></div>
         <div id="workstream-detail-root" class="workstream-detail-panel"></div>
@@ -705,43 +240,43 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
   </div>
 
   <div id="view-handoffs" class="view view-scroll">
-    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+    <div class="content-main content-main--fluid">
       <div class="section-header">
         <div>
           <h2 class="page-title">Handoffs</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operational handoffs that carry the minimum context needed to resume the next agent session cleanly.</div>
+          <div class="page-subtitle">Operational handoffs that carry the minimum context needed to resume the next execution cleanly.</div>
         </div>
         <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
           <input type="checkbox" id="toggle-handoffs-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
           <span>Show deleted</span>
         </label>
       </div>
-      <div id="handoff-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
+      <div id="handoff-summary" class="panel summary-panel"></div>
       <div id="handoff-grid" class="handoff-grid"></div>
     </div>
   </div>
 
   <div id="view-review" class="view view-scroll">
-    <div class="content-main" style="max-width: 1180px; margin: 0 auto; width: 100%;">
+    <div class="content-main content-main--fluid">
       <div class="section-header">
         <div>
           <h2 class="page-title">Review</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Global review queue for agent output that still needs human validation across workstreams.</div>
+          <div class="page-subtitle">Global review queue for agent output that still needs final validation across workstreams.</div>
         </div>
-        <div class="pill-row" style="margin-left:auto; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-          <select id="review-workstream-filter" class="field-control" style="width:auto; min-width:180px; border-radius:10px; padding:8px 10px; font-size:12px;">
+        <div class="pill-row toolbar-row">
+          <select id="review-workstream-filter" class="field-control filter-control filter-control--lg">
             <option value="">All workstreams</option>
           </select>
-          <select id="review-session-filter" class="field-control" style="width:auto; min-width:160px; border-radius:10px; padding:8px 10px; font-size:12px;">
+          <select id="review-session-filter" class="field-control filter-control filter-control--md">
             <option value="">All execution history</option>
           </select>
-          <select id="review-actor-type-filter" class="field-control" style="width:auto; min-width:130px; border-radius:10px; padding:8px 10px; font-size:12px;">
+          <select id="review-actor-type-filter" class="field-control filter-control filter-control--sm">
             <option value="">All actors</option>
             <option value="agent">agent</option>
             <option value="human">human</option>
             <option value="system">system</option>
           </select>
-          <select id="review-entry-kind-filter" class="field-control" style="width:auto; min-width:140px; border-radius:10px; padding:8px 10px; font-size:12px;">
+          <select id="review-entry-kind-filter" class="field-control filter-control filter-control--kind">
             <option value="">All kinds</option>
             <option value="memory">memory</option>
             <option value="decision">decision</option>
@@ -750,7 +285,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
             <option value="artifact">artifact</option>
             <option value="review">review</option>
           </select>
-          <input id="review-actor-id-filter" class="field-control" style="width:auto; min-width:150px; border-radius:10px; padding:8px 10px; font-size:12px;" placeholder="actor id">
+          <input id="review-actor-id-filter" class="field-control filter-control filter-control--actor" placeholder="actor id">
           <button class="app-button ghost" id="btn-review-clear-filters">Clear filters</button>
         </div>
         <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
@@ -758,8 +293,8 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
           <span>Pending only</span>
         </label>
       </div>
-      <div id="review-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;"></div>
-      <div id="review-operational-summary" class="panel" style="padding: 16px 18px; margin-bottom: 16px;">Review workstream queue via /api/workstreams/queue, /api/review/workstreams/ and /api/workstreams/compare.</div>
+      <div id="review-summary" class="panel summary-panel"></div>
+      <div id="review-operational-summary" class="panel summary-panel">Review workstream queue via /api/workstreams/queue, /api/review/workstreams/ and /api/workstreams/compare.</div>
       <div class="workstream-layout">
         <div id="review-grid" class="handoff-grid"></div>
         <div id="review-detail-root" class="workstream-detail-panel"></div>
@@ -768,7 +303,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
   </div>
 
   <div id="view-stats" class="view view-scroll">
-    <div class="mx-auto max-w-[1040px] px-6 py-7">
+    <div class="px-6 py-7">
       <div class="mb-7 flex items-baseline justify-between gap-3">
         <h2 class="page-title">Stats</h2>
         <span class="text-xs text-mute" id="dash-updated"></span>
@@ -811,7 +346,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
   </div>
 
   <div id="view-skills" class="view view-scroll">
-    <div class="mx-auto max-w-[1040px] px-6 py-7">
+    <div class="px-6 py-7">
       <div class="mb-7 flex items-baseline justify-between gap-3">
         <div>
           <h2 class="page-title">Skills</h2>
@@ -826,7 +361,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
   </div>
 
   <div id="view-settings" class="view view-scroll">
-    <div class="mx-auto max-w-[700px] px-6 py-7">
+    <div class="px-6 py-7">
       <h2 class="page-title" style="margin-bottom: 28px;">Settings</h2>
       <div id="settings-form-root">
         <div class="rounded-2xl bg-panel px-5 py-10 text-center text-sm text-mute shadow-hairline">Loading…</div>
@@ -841,6 +376,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
 <script>
 const state = {
   view: 'dashboard',
+  workstreamSurfaceFocus: 'overview',
   section: null,
   config: null,
   entries: [],
@@ -1416,7 +952,7 @@ function renderHandoffSummary(items) {
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Session continuity</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Operational continuity packages with goal, restore context and the minimum state needed for the next agent.</div>
+        <div class="page-subtitle">Operational continuity packages with goal, restore context and the minimum state needed for the next agent.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} handoff${total === 1 ? '' : 's'}</span>
@@ -1438,7 +974,7 @@ function renderReviewSummary(items) {
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Review queue</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Agent supervision queue for diffs, provenance, risk classification and next-execution packaging. Humans only validate outcomes exposed here.</div>
+        <div class="page-subtitle">Agent supervision queue for diffs, provenance, risk classification and next-execution packaging. Validation stays attached to the same operational thread.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${items.length} item${items.length === 1 ? '' : 's'}</span>
@@ -1461,15 +997,15 @@ function renderReviewOperationalSummary() {
   const nextExecution = session?.resume?.next_execution || workstream?.resume?.next_execution || null;
   root.innerHTML = `
     <div class="compare-grid">
-      <div class="section-card" style="padding:14px;">
+      <div class="section-card detail-card detail-card--tight">
         <div class="field-label">Review workstream queue</div>
         <div>${escHtml(workstream?.workstream_id || queueLead?.workstream_id || state.reviewFilterWorkstreamId || 'All workstreams')}</div>
-        <div class="muted" style="font-size:13px; margin-top:6px;">status=${escHtml(workstream?.operational_status || queueLead?.operational_status || 'mixed')} pending=${escHtml(workstream?.pending_review_count ?? 0)}</div>
+        <div class="detail-note">status=${escHtml(workstream?.operational_status || queueLead?.operational_status || 'mixed')} pending=${escHtml(workstream?.pending_review_count ?? 0)}</div>
       </div>
-      <div class="section-card" style="padding:14px;">
+      <div class="section-card detail-card detail-card--tight">
         <div class="field-label">Next execution package</div>
         <div>${escHtml(nextExecution?.goal || session?.session_id || state.reviewFilterSessionId || 'All sessions')}</div>
-        <div class="muted" style="font-size:13px; margin-top:6px;">essential=${escHtml((nextExecution?.essential_context || []).length)} risky=${escHtml((nextExecution?.risky_context || []).length)} focus=${escHtml((nextExecution?.focus_entry_ids || []).length)}</div>
+        <div class="detail-note">essential=${escHtml((nextExecution?.essential_context || []).length)} risky=${escHtml((nextExecution?.risky_context || []).length)} focus=${escHtml((nextExecution?.focus_entry_ids || []).length)}</div>
       </div>
     </div>`;
 }
@@ -1528,11 +1064,15 @@ async function applyReviewFilters(workstreamId = '', sessionId = '') {
     state.selectedWorkstreamId = state.reviewFilterWorkstreamId;
   }
   await refreshReviewAvailableSessions();
-  if (state.view !== 'review') {
-    switchView('review');
-    await loadReviewQueue();
+  if (state.reviewFilterWorkstreamId) {
+    switchView('workstreams');
+    if (state.selectedWorkstreamId) {
+      await selectWorkstream(state.selectedWorkstreamId);
+    }
+    await setWorkstreamSurfaceFocus('review', { scroll: true, ensureSelected: true });
     return;
   }
+  if (state.view !== 'review') switchView('review');
   await loadReviewQueue();
 }
 
@@ -1546,7 +1086,7 @@ function renderWorkstreamSummary(items) {
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Operational map</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Primary operational threads for agent continuity, next-execution packaging and validation state.</div>
+        <div class="page-subtitle">Primary operational threads for agent continuity, next-execution packaging and validation state.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
@@ -1562,19 +1102,19 @@ function renderDashboardList(rootId, items, emptyMessage) {
   const root = document.getElementById(rootId);
   if (!root) return;
   if (!items.length) {
-    root.innerHTML = `<div class="muted" style="font-size:13px; line-height:1.6;">${escHtml(emptyMessage)}</div>`;
+    root.innerHTML = `<div class="muted empty-copy">${escHtml(emptyMessage)}</div>`;
     return;
   }
   root.innerHTML = items.map((item) => `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+    <div class="section-card detail-card detail-card--stacked">
       <div class="flex items-start gap-3">
         <div class="flex-1">
           <div class="field-label">${escHtml(item.title || '')}</div>
-          <div class="muted" style="font-size:13px; line-height:1.6; margin-top:6px;">${escHtml(item.body || '')}</div>
+          <div class="detail-copy">${escHtml(item.body || '')}</div>
         </div>
         ${item.meta ? `<span class="tag-pill mono">${escHtml(item.meta)}</span>` : ''}
       </div>
-      ${item.action ? `<div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;"><button class="${baseButtonClasses(item.action.variant || 'ghost', true)}" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}">${escHtml(item.action.label)}</button></div>` : ''}
+      ${item.action ? `<div class="card-actions card-actions--flush card-actions--start"><button class="${baseButtonClasses(item.action.variant || 'ghost', true)}" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-workstream="${escHtml(item.action.workstreamId || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></div>` : ''}
     </div>
   `).join('');
   root.querySelectorAll('[data-dashboard-action]').forEach((button) => {
@@ -1587,19 +1127,31 @@ function renderDashboardList(rootId, items, emptyMessage) {
         return;
       }
       if (action === 'open-review') {
-        switchView('review');
-        if (value) {
-          state.selectedReviewId = value;
-          renderReviewDetail();
+        switchView('workstreams');
+        const workstreamId = button.dataset.dashboardWorkstream || value || state.workstreams[0]?.workstream_id || '';
+        const entryId = button.dataset.dashboardEntryId || '';
+        if (workstreamId) {
+          await selectWorkstream(workstreamId);
         }
+        state.selectedReviewId = entryId || state.selectedReviewId;
+        await setWorkstreamSurfaceFocus('review', { scroll: true, ensureSelected: true });
         return;
       }
       if (action === 'open-memory-admin') {
         switchView('memories');
         return;
       }
+      if (action === 'open-runtime-controls') {
+        switchView(value || 'settings');
+        return;
+      }
       if (action === 'open-handoffs') {
-        switchView('handoffs');
+        switchView('workstreams');
+        const workstreamId = button.dataset.dashboardWorkstream || value || state.workstreams[0]?.workstream_id || '';
+        if (workstreamId) {
+          await selectWorkstream(workstreamId);
+        }
+        await setWorkstreamSurfaceFocus('handoffs', { scroll: true, ensureSelected: true });
       }
     });
   });
@@ -1627,7 +1179,7 @@ async function renderDashboardView() {
     document.getElementById('dashboard-workstreams-count').textContent = String(workstreams.length);
     document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent execution history` : 'no active workstreams';
     document.getElementById('dashboard-review-count').textContent = String(reviewItems.length);
-    document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items escalated to human validation' : 'nothing escalated right now';
+    document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items escalated for final validation' : 'nothing escalated right now';
     document.getElementById('dashboard-handoffs-count').textContent = String(handoffs.length);
     document.getElementById('dashboard-handoffs-caption').textContent = handoffs[0]?.updated_at ? `latest ${relTime(handoffs[0].updated_at)}` : 'no handoff history yet';
     document.getElementById('dashboard-memory-count').textContent = String(statsData.total_entries ?? 0);
@@ -1657,15 +1209,15 @@ async function renderDashboardView() {
         title: item.summary || item.entry_id,
         body: `${item.workstream_id || 'no workstream'} · ${item.review_status || 'pending'} · ${(item.review_reasons || []).join(', ') || 'no explicit reason'}`,
         meta: item.entry_kind || 'entry',
-        action: { name: 'open-review', value: item.entry_id, label: 'Inspect review', variant: 'primary' },
+        action: { name: 'open-review', value: item.workstream_id || '', workstreamId: item.workstream_id || '', entryId: item.entry_id, label: 'Inspect review', variant: 'primary' },
       })));
     }
     if (attentionItems.length < 4) {
       attentionItems.push({
-        title: 'Administrative surface',
-        body: 'Memory ledger, stats and settings stay separate from the supervision flow so humans configure policy instead of operating the agent loop.',
-        meta: 'admin',
-        action: { name: 'open-memory-admin', value: '', label: 'Inspect Memory Ledger', variant: 'ghost' },
+        title: 'Runtime controls',
+        body: 'Memory, stats, settings and skills stay available as controls for the agent runtime without becoming a separate workflow.',
+        meta: 'controls',
+        action: { name: 'open-runtime-controls', value: 'settings', label: 'Open runtime controls', variant: 'ghost' },
       });
     }
     if (handoffs.length && attentionItems.length < 5) {
@@ -1673,7 +1225,7 @@ async function renderDashboardView() {
         title: 'Latest handoff package',
         body: previewText(handoffs[0].content.replace(/\s+/g, ' '), 140),
         meta: handoffs[0].workstream_id || 'handoff',
-        action: { name: 'open-handoffs', value: '', label: 'Inspect handoff log', variant: 'ghost' },
+        action: { name: 'open-handoffs', value: handoffs[0].workstream_id || '', workstreamId: handoffs[0].workstream_id || '', label: 'Inspect handoff log', variant: 'ghost' },
       });
     }
     renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate validation backlog. Escalations and admin-only follow-up will surface here.');
@@ -1694,8 +1246,8 @@ function renderWorkstreamCard(item) {
         <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(item.updated_at || ''))}</span>
       </div>
       <div class="card-body">
-        <div class="card-title" style="font-size:16px; margin-bottom:8px;">${escHtml(previewText(item.goal || 'Untitled workstream', 72))}</div>
-        <div class="muted" style="font-size:13px; line-height:1.7; margin-bottom:10px;">${escHtml(previewText(item.summary || 'No summary available.', 160))}</div>
+        <div class="card-title card-title--compact">${escHtml(previewText(item.goal || 'Untitled workstream', 72))}</div>
+        <div class="detail-copy detail-copy--spaced">${escHtml(previewText(item.summary || 'No summary available.', 160))}</div>
         <div class="pill-row">
           <span class="tag-pill mono">entries:${escHtml(item.entry_count || 0)}</span>
           <span class="tag-pill mono">history:${escHtml(item.session_count || 0)}</span>
@@ -1713,7 +1265,7 @@ function renderWorkstreamCard(item) {
 
 function renderResumeListSection(title, items, ordered = false) {
   return `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+    <div class="section-card detail-card">
       <div class="field-label">${escHtml(title)}</div>
       <div class="markdown-body">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
     </div>
@@ -1737,7 +1289,7 @@ function renderWorkstreamTimeline(items) {
               <span class="tag-pill">${escHtml(item.section || '')}</span>
             </div>
             <div class="timeline-summary">${escHtml(item.summary || 'No summary available.')}</div>
-            ${item.related_entry_ids && item.related_entry_ids.length ? `<div class="pill-row" style="margin-top:8px;">${item.related_entry_ids.map((relatedId) => `<span class="tag-pill mono">${escHtml(relatedId)}</span>`).join('')}</div>` : ''}
+            ${item.related_entry_ids && item.related_entry_ids.length ? `<div class="pill-row timeline-related-pills">${item.related_entry_ids.map((relatedId) => `<span class="tag-pill mono">${escHtml(relatedId)}</span>`).join('')}</div>` : ''}
           </div>
         </div>
       `).join('')}
@@ -1765,121 +1317,161 @@ function renderWorkstreamDetail() {
     return;
   }
 
-  const { workstreamId, stateData, resumeData, handoffData, reviewItems = [], reviewSummary = null } = state.workstreamDetail;
+  const { workstreamId, stateData, resumeData, handoffData, handoffItems = [], reviewItems = [], reviewSummary = null } = state.workstreamDetail;
   const switchData = state.workstreamDetail.switchData || null;
   const timeline = renderWorkstreamTimeline(stateData.timeline || []);
   const relatedEntries = (resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>';
   const handoffGoal = handoffData?.goal ? `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+    <div class="section-card detail-card">
       <div class="field-label">Latest structured handoff</div>
       <div>${escHtml(handoffData.goal)}</div>
-      <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(handoffData.summary || '')}</div>
+      <div class="detail-note">${escHtml(handoffData.summary || '')}</div>
     </div>
   ` : '';
   const reviewPanel = `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
-      <div class="flex items-start gap-3" style="justify-content:space-between; margin-bottom:10px;">
+    <section id="workstream-section-review" class="section-card detail-card surface-section ${state.workstreamSurfaceFocus === 'review' ? 'surface-section--active' : ''}">
+      <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
         <div>
           <div class="field-label">Review in this workstream</div>
-          <div class="muted" style="font-size:13px; margin-top:6px;">Human validation stays attached to the operational thread instead of floating as a separate workflow.</div>
+          <div class="detail-note">Validation stays attached to the operational thread instead of floating as a separate workflow.</div>
         </div>
         <span class="tag-pill mono">pending:${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</span>
       </div>
       ${reviewItems.length ? `
-        <div class="version-grid" style="margin-bottom:12px;">
+        <div class="version-grid detail-stack-gap">
           ${reviewItems.slice(0, 4).map((item) => `
-            <div class="section-card" style="padding:12px;">
+            <div class="section-card detail-card detail-card--compact">
               <div class="field-label">${escHtml(previewText(item.summary || item.entry_id, 58))}</div>
-              <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
-              <div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;">
+              <div class="detail-note">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
+              <div class="card-actions card-actions--flush card-actions--start">
                 <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
               </div>
             </div>
           `).join('')}
         </div>
-      ` : '<div class="muted" style="font-size:13px;">No pending review items for this workstream.</div>'}
-      <div class="card-actions" style="padding:12px 0 0; border-top:0; justify-content:flex-start;">
+      ` : '<div class="muted empty-copy">No pending review items for this workstream.</div>'}
+      <div class="card-actions card-actions--flush card-actions--start">
         <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Inspect review queue</button>
       </div>
-    </div>
+    </section>
+  `;
+  const handoffPanel = `
+    <section id="workstream-section-handoffs" class="section-card detail-card surface-section ${state.workstreamSurfaceFocus === 'handoffs' ? 'surface-section--active' : ''}">
+      <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
+        <div>
+          <div class="field-label">Handoffs in this workstream</div>
+          <div class="detail-note">Continuity packages stay inside the same thread so restore state and next execution stay visible together.</div>
+        </div>
+        <span class="tag-pill mono">count:${escHtml(handoffItems.length)}</span>
+      </div>
+      ${handoffItems.length ? `
+        <div class="version-grid detail-stack-gap">
+          ${handoffItems.slice(0, 4).map((entry) => `
+            <div class="section-card detail-card detail-card--compact">
+              <div class="field-label">${escHtml(previewText(entry.content.split('\n').find((line) => line.trim() && !line.startsWith('#')) || entry.id, 58))}</div>
+              <div class="detail-note">${escHtml(relTime(entry.updated_at || entry.created_at || ''))} · ${escHtml(entry.session_id || 'no execution id')}</div>
+              <div class="detail-copy">${escHtml(previewText(entry.content.replace(/\s+/g, ' '), 140))}</div>
+              <div class="card-actions card-actions--flush card-actions--start">
+                <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
+                <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<div class="muted empty-copy">No handoffs recorded for this workstream yet.</div>'}
+    </section>
   `;
   const historySummary = `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+    <div class="section-card detail-card">
       <div class="field-label">Execution history</div>
-      <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
+      <div class="detail-note">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
     </div>
   `;
   const nextExecutionPanel = `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+    <section id="workstream-section-overview" class="section-card detail-card surface-section ${state.workstreamSurfaceFocus === 'overview' ? 'surface-section--active' : ''}">
       <div class="field-label">Next execution package</div>
       <div>${escHtml(resumeData.next_execution?.goal || resumeData.goal || '')}</div>
-      <div class="muted" style="font-size:13px; margin-top:6px;">resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</div>
-    </div>
+      <div class="detail-note">resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</div>
+    </section>
   `;
   const switchPanel = switchData ? `
-    <div class="section-card" style="padding:14px; margin-bottom:12px;">
+    <div class="section-card detail-card">
       <div class="field-label">Anti-context-switch package</div>
       <div>${escHtml(switchData.current_workstream_id)} -> ${escHtml(switchData.target_workstream_id)}</div>
-      <div class="muted" style="font-size:13px; margin-top:6px;">needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</div>
-      <div class="pill-row" style="margin-top:10px;">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">Target already fits the current context.</span>'}</div>
+      <div class="detail-note">needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</div>
+      <div class="pill-row detail-pills">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">Target already fits the current context.</span>'}</div>
     </div>
   ` : '';
 
   root.innerHTML = `
-    <div class="panel" style="padding:18px;">
-      <div class="section-header" style="margin-bottom:16px;">
+    <div class="panel thread-detail-shell">
+      <div class="section-header section-header--tight">
         <div>
-          <div class="page-title" style="font-size:22px;">${escHtml(workstreamId)}</div>
-          <div class="muted" style="font-size:13px; margin-top:4px;">Inspect one operational thread: memory, review, handoff and next actions in the same context.</div>
+          <div class="page-title thread-detail-title">${escHtml(workstreamId)}</div>
+          <div class="page-subtitle">Inspect one operational thread: memory, review, handoff and next actions in the same context.</div>
         </div>
       </div>
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="section-card detail-card">
         <div class="field-label">Goal</div>
         <div>${escHtml(resumeData.goal || '')}</div>
-        <div class="muted" style="font-size:13px; margin-top:6px;">${escHtml(resumeData.summary || '')}</div>
+        <div class="detail-note">${escHtml(resumeData.summary || '')}</div>
       </div>
-      <div class="compare-grid" style="margin-bottom:12px;">
-        <div class="section-card" style="padding:14px;"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
-        <div class="section-card" style="padding:14px;"><div class="field-label">Review pending</div><div>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</div></div>
+      <div class="compare-grid detail-grid">
+        <div class="section-card detail-card detail-card--tight"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
+        <div class="section-card detail-card detail-card--tight"><div class="field-label">Review pending</div><div>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</div></div>
       </div>
       ${nextExecutionPanel}
       ${switchPanel}
-      <div class="compare-grid" style="margin-bottom:12px;">
-        <div class="section-card" style="padding:14px;"><div class="field-label">Latest entry</div><div class="mono">${escHtml(resumeData.latest_entry_id || '')}</div></div>
-        <div class="section-card" style="padding:14px;"><div class="field-label">Focus entries</div><div class="mono">${escHtml((resumeData.focus_entry_ids || []).join(', ') || 'none')}</div></div>
+      <div class="compare-grid detail-grid">
+        <div class="section-card detail-card detail-card--tight"><div class="field-label">Latest entry</div><div class="mono">${escHtml(resumeData.latest_entry_id || '')}</div></div>
+        <div class="section-card detail-card detail-card--tight"><div class="field-label">Focus entries</div><div class="mono">${escHtml((resumeData.focus_entry_ids || []).join(', ') || 'none')}</div></div>
       </div>
       ${renderResumeListSection('Current state', resumeData.current_state)}
       ${renderResumeListSection('Open loops', resumeData.open_loops)}
       ${renderResumeListSection('Next steps', resumeData.next_steps, true)}
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="section-card detail-card">
         <div class="field-label">Restore context</div>
         <div class="mono">section=${escHtml(resumeData.restore_context?.section || '')} query=${escHtml(resumeData.restore_context?.query || '')} include_deleted=${resumeData.restore_context?.include_deleted ? 'true' : 'false'}</div>
       </div>
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      <div class="section-card detail-card">
         <div class="field-label">Related entries</div>
         <div class="pill-row">${relatedEntries}</div>
       </div>
       ${historySummary}
       ${reviewPanel}
-      <div class="section-card" style="padding:14px; margin-bottom:12px;">
+      ${handoffPanel}
+      <div class="section-card detail-card">
         <div class="field-label">Workstream timeline</div>
         ${timeline}
       </div>
       ${handoffGoal}
-      <div class="card-actions" style="padding:0; border-top:0; justify-content:flex-start;">
+      <div class="card-actions card-actions--flush card-actions--start">
         <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-state">State</button>
       </div>
     </div>
   `;
 
+  renderWorkstreamSurfaceTabs();
   document.getElementById('btn-persisted-workstream-state').addEventListener('click', async () => await openWorkstreamStateModal(workstreamId, null));
   document.getElementById('btn-persisted-workstream-review')?.addEventListener('click', async () => {
-    await applyReviewFilters(workstreamId, '');
+    await setWorkstreamSurfaceFocus('review', { ensureSelected: true, scroll: true });
   });
   root.querySelectorAll('[data-workstream-review-open]').forEach((button) => {
     button.addEventListener('click', async () => {
       state.selectedReviewId = button.dataset.workstreamReviewOpen;
-      await applyReviewFilters(workstreamId, '');
+      await setWorkstreamSurfaceFocus('review', { ensureSelected: true, scroll: true });
+    });
+  });
+  root.querySelectorAll('[data-workstream-handoff-open]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const entry = handoffItems.find((item) => item.id === button.dataset.workstreamHandoffOpen);
+      if (entry) openHandoffViewModal(entry);
+    });
+  });
+  root.querySelectorAll('[data-workstream-handoff-state]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const entry = handoffItems.find((item) => item.id === button.dataset.workstreamHandoffState);
+      if (entry?.workstream_id) await openWorkstreamStateModal(entry.workstream_id, entry.session_id || null);
     });
   });
 }
@@ -1890,22 +1482,25 @@ async function selectWorkstream(workstreamId) {
   renderWorkstreams(state.workstreams);
   renderWorkstreamDetail();
   try {
-    const [stateData, resumeData, reviewData, reviewSummary] = await Promise.all([
+    const [stateData, resumeData, reviewData, reviewSummary, handoffListData] = await Promise.all([
       api.workstreamState(workstreamId, { include_deleted: 'false' }),
       api.workstreamResume(workstreamId, { include_deleted: 'false' }),
       api.reviewQueue({ workstream_id: workstreamId, pending_only: 'true', limit: '6' }).catch(() => ({ items: [] })),
       api.reviewWorkstream(workstreamId).catch(() => null),
+      api.handoffs({ include_deleted: String(state.handoffsIncludeDeleted), limit: '50' }).catch(() => ({ items: [] })),
     ]);
     const handoffData = stateData.latest_handoff ? await api.readStructuredHandoff(workstreamId, { include_deleted: 'true' }).catch(() => null) : null;
     const alternateWorkstream = (state.workstreams || []).find((item) => item.workstream_id !== workstreamId)?.workstream_id || null;
     const switchData = alternateWorkstream
       ? await api.workstreamSwitchPackage({ current_workstream_id: workstreamId, target_workstream_id: alternateWorkstream }).catch(() => null)
       : null;
-    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData, reviewItems: reviewData.items || [], reviewSummary, switchData };
+    const handoffItems = (handoffListData.items || []).filter((item) => item.workstream_id === workstreamId);
+    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData, handoffItems, reviewItems: reviewData.items || [], reviewSummary, switchData };
   } catch (e) {
     state.workstreamDetail = { workstreamId, error: e.message };
   }
   renderWorkstreamDetail();
+  scrollWorkstreamSurfaceSection(false);
   updateReviewFilterControls();
 }
 
@@ -1930,6 +1525,31 @@ function renderWorkstreams(items) {
       await openWorkstreamStateModal(button.dataset.workstreamStateCard, null);
     });
   });
+}
+
+function renderWorkstreamSurfaceTabs() {
+  document.querySelectorAll('[data-workstream-surface]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.workstreamSurface === state.workstreamSurfaceFocus);
+  });
+}
+
+function scrollWorkstreamSurfaceSection(smooth = true) {
+  const activeSection = document.getElementById(`workstream-section-${state.workstreamSurfaceFocus}`);
+  if (activeSection) {
+    activeSection.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+  }
+}
+
+async function setWorkstreamSurfaceFocus(focus, options = {}) {
+  state.workstreamSurfaceFocus = focus || 'overview';
+  renderWorkstreamSurfaceTabs();
+  const ensureSelected = options.ensureSelected !== false;
+  if (ensureSelected && !state.selectedWorkstreamId && state.workstreams[0]?.workstream_id) {
+    await selectWorkstream(state.workstreams[0].workstream_id);
+  } else {
+    renderWorkstreamDetail();
+  }
+  if (options.scroll !== false) scrollWorkstreamSurfaceSection(true);
 }
 
 async function loadWorkstreams() {
@@ -1969,9 +1589,9 @@ function renderHandoffCard(entry) {
         <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(entry.updated_at || entry.created_at))}</span>
       </div>
       <div class="card-body">
-        <div class="card-title" style="font-size:16px; margin-bottom:8px;">${escHtml(previewText(entry.content.split('\n').find((line) => line.trim() && !line.startsWith('#')) || 'Untitled handoff', 64))}</div>
-        <div class="pill-row" style="margin-bottom:10px;">${workstreamBadges || '<span class="muted" style="font-size:12px;">No workstream linked</span>'}</div>
-        <div class="muted" style="font-size:13px; line-height:1.7;">${escHtml(previewText(entry.content.replace(/\s+/g, ' '), 180))}</div>
+        <div class="card-title card-title--compact">${escHtml(previewText(entry.content.split('\n').find((line) => line.trim() && !line.startsWith('#')) || 'Untitled handoff', 64))}</div>
+        <div class="pill-row detail-pills">${workstreamBadges || '<span class="muted muted-small">No workstream linked</span>'}</div>
+        <div class="detail-copy">${escHtml(previewText(entry.content.replace(/\s+/g, ' '), 180))}</div>
       </div>
       <div class="card-actions">
         <button class="${baseButtonClasses('ghost', true)}" data-handoff-open="${escHtml(entry.id)}">Open</button>
@@ -2025,9 +1645,9 @@ function renderReviewCard(item) {
         <span class="ml-auto muted" style="font-size:11px;">${escHtml(relTime(item.updated_at || ''))}</span>
       </div>
       <div class="card-body">
-        <div class="card-title" style="font-size:16px; margin-bottom:8px;">${escHtml(previewText(item.summary || item.entry_id, 80))}</div>
-        <div class="pill-row" style="margin-bottom:10px;">${(item.review_reasons || []).map((reason) => `<span class="tag-pill mono">${escHtml(reason)}</span>`).join('') || '<span class="muted" style="font-size:12px;">No explicit reason</span>'}</div>
-        <div class="muted" style="font-size:13px; line-height:1.7;">${escHtml(item.workstream_id || 'No workstream linked')}</div>
+        <div class="card-title card-title--compact">${escHtml(previewText(item.summary || item.entry_id, 80))}</div>
+        <div class="pill-row detail-pills">${(item.review_reasons || []).map((reason) => `<span class="tag-pill mono">${escHtml(reason)}</span>`).join('') || '<span class="muted muted-small">No explicit reason</span>'}</div>
+        <div class="detail-copy">${escHtml(item.workstream_id || 'No workstream linked')}</div>
       </div>
       <div class="card-actions">
         <button class="${baseButtonClasses('ghost', true)}" data-review-open="${escHtml(item.entry_id)}">Inspect</button>
@@ -2763,6 +2383,10 @@ function openConsolidateModal() {
 }
 
 function switchView(name) {
+  if (name === 'review' || name === 'handoffs') {
+    state.workstreamSurfaceFocus = name === 'review' ? 'review' : 'handoffs';
+    name = 'workstreams';
+  }
   state.view = name;
   document.querySelectorAll('.view').forEach((view) => view.classList.remove('active'));
   document.getElementById(`view-${name}`).classList.add('active');
@@ -3123,6 +2747,19 @@ document.getElementById('toggle-include-deleted').addEventListener('change', asy
 });
 
 document.querySelectorAll('.nav-tab').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
+document.querySelectorAll('[data-shortcut-view]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    switchView(button.dataset.shortcutView);
+    if (button.dataset.shortcutPanel) {
+      await setWorkstreamSurfaceFocus(button.dataset.shortcutPanel, { ensureSelected: true, scroll: true });
+    }
+  });
+});
+document.querySelectorAll('[data-workstream-surface]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    await setWorkstreamSurfaceFocus(button.dataset.workstreamSurface, { ensureSelected: true, scroll: true });
+  });
+});
 
 async function boot() {
   await loadConfig();

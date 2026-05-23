@@ -4,14 +4,14 @@
 [![Rememb MCP server](https://glama.ai/mcp/servers/LuizEduPP/Rememb/badges/score.svg)](https://glama.ai/mcp/servers/LuizEduPP/Rememb)
 [![MCP Badge](https://lobehub.com/badge/mcp/luizedupp-rememb)](https://lobehub.com/mcp/luizedupp-rememb)
 
-AI agents forget everything between sessions. `rememb` gives them persistent memory — local, portable, and works with any agent.
+Operate AI agents without losing context, focus, or control. `rememb` gives you local-first operational continuity: workstreams, handoffs, review, restore and audit trail across sessions.
 
 ![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
 ---
 
 ## The problem
 
-Every dev using AI professionally hits this wall:
+Every team or solo developer operating agents professionally hits this wall:
 
 ```
 Session 1: "We're using PostgreSQL, auth at src/auth/, prefer async patterns."
@@ -19,8 +19,8 @@ Session 2: Agent starts from zero. You explain everything again.
 Session 3: Same thing.
 ```
 
-Existing solutions (Mem0, Zep, Letta) require servers, API keys, and cloud accounts.  
-You just want the agent to **remember your project**.
+Existing solutions (Mem0, Zep, Letta) often center on hosted memory layers, API keys, or opaque context pipelines.  
+What you actually need is to **resume the next agent session with the minimum correct context and a trail you can inspect**.
 
 ---
 
@@ -53,7 +53,7 @@ Zero friction. No CLI commands. Native IDE integration.
 
 **2. Restart your IDE.**
 
-The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
+The agent now automatically restores operational context at session start, writes durable state when something changes, and searches only when broader recall is actually needed.
 
 If you want the new workstream-first flow to be followed consistently, add a strict rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is not to add generic workflow rules; the point is to make the agent route session memory behavior through rememb every time.
 
@@ -101,7 +101,7 @@ rememb fetch-model        # Download the local embedding model for semantic sear
   config.json    ← limits, sections, web UI behavior, semantic model settings
 ```
 
-A JSON file in your project. Your agent reads it at the start of every session.
+A local JSON-backed store in your project. Your agent can resume workstreams, inspect prior decisions, and hand off the next session without depending on a cloud memory service.
 
 ```
 User: "We're using PostgreSQL, auth at src/auth/, async patterns"

@@ -508,6 +508,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Next goal: {payload.get('next_goal') or ''}",
             f"Focus entries: {', '.join(payload.get('focus_entry_ids', [])) or 'none'}",
         ]
+        operational_handoff = payload.get("operational_handoff") or payload.get("agent_handoff") or {}
+        if operational_handoff:
+            lines.append(
+                "Operational handoff: "
+                f"essential={len(operational_handoff.get('essential_context', []))} "
+                f"open_loops={len(operational_handoff.get('open_loops', []))} "
+                f"next_steps={len(operational_handoff.get('next_steps', []))}"
+            )
         if payload.get("what_changed"):
             lines.append("What changed: " + " | ".join(item.get("summary") or "" for item in payload["what_changed"]))
         return [TextContent(type="text", text="\n".join(lines))]
@@ -851,11 +859,22 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Handoff entry: {payload['entry_id']}",
             f"Workstream: {payload.get('workstream_id') or ''}",
             f"Session: {payload.get('session_id') or ''}",
+            f"Schema: {payload.get('handoff_schema') or 'agent-first-operational-v1'}",
             f"Goal: {payload.get('goal') or ''}",
             f"Summary: {payload.get('summary') or ''}",
         ]
+        if payload.get("essential_context"):
+            lines.append("Essential context: " + " | ".join(payload["essential_context"]))
         if payload.get("next_steps"):
             lines.append("Next steps: " + " | ".join(payload["next_steps"]))
+        restore_hint = payload.get("restore_hint") or payload.get("restore_context") or {}
+        if restore_hint:
+            lines.append(
+                "Restore hint: "
+                f"section={restore_hint.get('section', '')} "
+                f"query={restore_hint.get('query', '')} "
+                f"include_deleted={restore_hint.get('include_deleted', False)}"
+            )
         if payload.get("related_entries"):
             related = []
             for item in payload["related_entries"]:

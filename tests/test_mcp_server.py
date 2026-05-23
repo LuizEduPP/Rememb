@@ -421,6 +421,11 @@ def test_handle_tool_reads_handoff_package_and_review_queue(monkeypatch, tmp_pat
             "current_goal": "Current goal",
             "next_goal": next_goal or "Next goal",
             "focus_entry_ids": ["aaaa1111"],
+            "operational_handoff": {
+                "essential_context": ["keep workflow short"],
+                "open_loops": ["ship review mode"],
+                "next_steps": ["wire queue"],
+            },
             "what_changed": [{"summary": "Added review mode"}],
         },
     )
@@ -448,6 +453,7 @@ def test_handle_tool_reads_handoff_package_and_review_queue(monkeypatch, tmp_pat
     )
 
     assert "Next goal: Ship review mode" in handoff_package[0].text
+    assert "Operational handoff:" in handoff_package[0].text
     assert "What changed: Added review mode" in handoff_package[0].text
     assert "Review queue:" in review_queue[0].text
     assert "abcd1234 status=pending kind=decision actor=agent:copilot reasons=agent_generated,versioned" in review_queue[0].text

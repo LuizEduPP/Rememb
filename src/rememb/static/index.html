@@ -630,7 +630,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
       <div class="section-header">
         <div>
           <h2 class="page-title">Workstreams</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operational work units with state, session lifecycle and structured handoff flows.</div>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operate parallel agents and sessions without losing context, focus or control.</div>
         </div>
         <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
           <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
@@ -651,7 +651,7 @@ thead { background: var(--shell); color: var(--mute); font-size: 11px; }
       <div class="section-header">
         <div>
           <h2 class="page-title">Handoffs</h2>
-          <div class="muted" style="font-size: 13px; margin-top: 4px;">Goal-oriented session handoffs with restore context, related entries and next steps.</div>
+          <div class="muted" style="font-size: 13px; margin-top: 4px;">Operational handoffs that carry the minimum context needed to resume the next agent session cleanly.</div>
         </div>
         <label class="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
           <input type="checkbox" id="toggle-handoffs-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
@@ -1342,7 +1342,7 @@ function renderHandoffSummary(items) {
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Session continuity</div>
-        <div class="muted" style="font-size:13px; margin-top:4px;">Goal-based handoffs for the next session, with restore context and related entries.</div>
+        <div class="muted" style="font-size:13px; margin-top:4px;">Operational continuity packages with goal, restore context and the minimum state needed for the next agent.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} handoff${total === 1 ? '' : 's'}</span>
@@ -2268,34 +2268,33 @@ function openSessionCloseModal(workstreamId, options = {}) {
         <div><label class="field-label">Open loops</label><textarea class="${textInputClasses(true)}" id="session-close-open-loops" placeholder="One per line"></textarea></div>
         <div><label class="field-label">Next steps</label><textarea class="${textInputClasses(true)}" id="session-close-next-steps" placeholder="One per line"></textarea></div>
       </div>
-      <div class="compare-grid" style="margin-top:14px;">
-        <div><label class="field-label">Next goal</label><input class="${textInputClasses()}" id="session-close-next-goal" placeholder="optional: write anti-context-switch handoff"></div>
-        <div><label class="field-label">Handoff audience</label><select class="${textInputClasses()}" id="session-close-audience"><option value="agent">agent</option><option value="human">human</option></select></div>
+      <div style="margin-top:14px;"><label class="field-label">Next goal</label><input class="${textInputClasses()}" id="session-close-next-goal" placeholder="optional: generate operational handoff for the next agent session"></div>
+      <div style="margin-top:14px;">
+        <div class="section-card" style="padding:14px;"><div class="field-label">Operational handoff preview</div><div id="session-close-agent-preview" class="muted" style="font-size:13px;">Provide a next goal to preview the operational handoff.</div></div>
       </div>
-      <div class="compare-grid" style="margin-top:14px;">
-        <div class="section-card" style="padding:14px;"><div class="field-label">Agent handoff preview</div><div id="session-close-agent-preview" class="muted" style="font-size:13px;">Provide a next goal to preview the agent handoff.</div></div>
-        <div class="section-card" style="padding:14px;"><div class="field-label">Human handoff preview</div><div id="session-close-human-preview" class="muted" style="font-size:13px;">Provide a next goal to preview the human handoff.</div></div>
-      </div>
-      <div class="muted" style="font-size:12px; margin-top:12px;">If you provide a next goal, rememb will generate the follow-up handoff automatically and open a guided restore flow. Use status=frozen to make the workstream explicitly resumable later.</div>
+      <div class="muted" style="font-size:12px; margin-top:12px;">If you provide a next goal, rememb will generate a stable operational handoff automatically and open a guided restore flow. This package is for the next agent session, not an alternative human handoff. Use status=frozen to make the workstream explicitly resumable later.</div>
     </div>
     <div class="modal-footer"><button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button><button class="${baseButtonClasses('primary')}" id="btn-session-close-save">${escHtml(submitLabel)}</button></div>
   `));
   const refreshHandoffPreview = async () => {
     const nextGoal = document.getElementById('session-close-next-goal').value.trim();
     const agentRoot = document.getElementById('session-close-agent-preview');
-    const humanRoot = document.getElementById('session-close-human-preview');
     if (!nextGoal) {
-      agentRoot.textContent = 'Provide a next goal to preview the agent handoff.';
-      humanRoot.textContent = 'Provide a next goal to preview the human handoff.';
+      agentRoot.textContent = 'Provide a next goal to preview the operational handoff.';
       return;
     }
     try {
       const payload = await api.handoffPackage(workstreamId, { next_goal: nextGoal, session_id: document.getElementById('session-close-id').value.trim() || '' });
-      agentRoot.innerHTML = renderMarkdown(`**Goal:** ${payload.agent_handoff?.goal || ''}\n\n- ${((payload.agent_handoff?.essential_context || []).join('\n- ')) || 'No essential context.'}`);
-      humanRoot.innerHTML = renderMarkdown(`**Goal:** ${payload.human_handoff?.goal || ''}\n\n- ${((payload.human_handoff?.what_changed || []).map((item) => item.summary || item).join('\n- ')) || 'No change summary.'}`);
+      const operational = payload.operational_handoff || payload.agent_handoff || {};
+      agentRoot.innerHTML = renderMarkdown(
+        `**Goal:** ${operational.goal || ''}\n\n`
+        + `**Current state**\n- ${((operational.current_state || []).join('\n- ')) || 'No current state.'}\n\n`
+        + `**Essential context**\n- ${((operational.essential_context || []).join('\n- ')) || 'No essential context.'}\n\n`
+        + `**Open loops**\n- ${((operational.open_loops || []).join('\n- ')) || 'No open loops.'}\n\n`
+        + `**Next steps**\n- ${((operational.next_steps || []).join('\n- ')) || 'No next steps.'}`
+      );
     } catch (e) {
-      agentRoot.textContent = 'Failed to preview agent handoff.';
-      humanRoot.textContent = 'Failed to preview human handoff.';
+      agentRoot.textContent = 'Failed to preview the operational handoff.';
     }
   };
   document.getElementById('session-close-next-goal').addEventListener('input', refreshHandoffPreview);
@@ -2316,7 +2315,6 @@ function openSessionCloseModal(workstreamId, options = {}) {
         next_goal: document.getElementById('session-close-next-goal').value.trim() || null,
       };
       if (payload.next_goal) {
-        payload.audience = document.getElementById('session-close-audience').value;
         const result = await api.closeSessionAndHandoff(workstreamId, payload);
         closeModal();
         toast('Session closed and handoff saved.', 'success');

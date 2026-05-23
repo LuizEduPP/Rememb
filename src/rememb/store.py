@@ -1161,6 +1161,7 @@ def write_structured_handoff(
         tags=tags,
     )
     structured = dict(payload.get("structured") or {})
+    normalized_restore_context = payload.get("restore_context") or structured.get("restore_context") or {}
     structured.update(
         {
             "summary": _normalize_optional_text(summary) or structured.get("summary") or "",
@@ -1171,7 +1172,9 @@ def write_structured_handoff(
             "risk_flags": _normalize_handoff_lines(risk_flags),
             "obsolete_context": _normalize_handoff_lines(obsolete_context),
             "audience": _normalize_optional_text(audience) or "agent",
-            "restore_context": payload.get("restore_context") or structured.get("restore_context") or {},
+            "handoff_schema": "agent-first-operational-v1",
+            "restore_context": normalized_restore_context,
+            "restore_hint": dict(normalized_restore_context),
             "related_entries": [
                 _parse_handoff_reference(item)
                 for item in normalized_related_entries
@@ -1224,6 +1227,7 @@ def read_structured_handoff(
         "entry_id": entry.get("id"),
         "workstream_id": entry.get("workstream_id"),
         "session_id": entry.get("session_id"),
+        "handoff_schema": structured.get("handoff_schema") or "agent-first-operational-v1",
         "goal": structured.get("goal") or "",
         "summary": structured.get("summary") or "",
         "current_state": list(structured.get("current_state") or []),
@@ -1237,6 +1241,7 @@ def read_structured_handoff(
         "obsolete_context": list(structured.get("obsolete_context") or []),
         "audience": structured.get("audience") or "agent",
         "restore_context": restore_context,
+        "restore_hint": dict(restore_context),
         "related_entries": list(structured.get("related_entries") or []),
     }
 
@@ -1273,9 +1278,11 @@ def build_handoff_package(
     shared = {
         "workstream_id": resume["workstream_id"],
         "session_id": resume.get("session_id"),
+        "handoff_schema": "agent-first-operational-v1",
         "current_goal": resume.get("goal") or "",
         "next_goal": normalized_goal,
         "restore_context": dict(resume.get("restore_context") or {}),
+        "restore_hint": dict(resume.get("restore_context") or {}),
         "current_state": list(resume.get("current_state") or []),
         "open_loops": list(resume.get("open_loops") or []),
         "next_steps": list(resume.get("next_steps") or []),
@@ -1286,10 +1293,23 @@ def build_handoff_package(
         "latest_review": state.get("latest_review"),
         "active_decision_ids": list(resume.get("active_decision_ids") or []),
     }
+    shared["operational_handoff"] = {
+        "goal": normalized_goal,
+        "current_state": list(resume.get("current_state") or []),
+        "decisions": list(resume.get("active_decision_ids") or []),
+        "open_loops": list(resume.get("open_loops") or []),
+        "next_steps": list(resume.get("next_steps") or []),
+        "essential_context": list(compressed_context.get("essential") or []),
+        "optional_context": list(compressed_context.get("optional") or []),
+        "related_entries": list(resume.get("related_entry_ids") or []),
+        "restore_hint": dict(resume.get("restore_context") or {}),
+        "risk_flags": list(compressed_context.get("risky") or []),
+    }
     shared["agent_handoff"] = {
         "goal": normalized_goal,
         "summary": resume.get("summary") or "",
         "current_state": list(resume.get("current_state") or []),
+        "decisions": list(resume.get("active_decision_ids") or []),
         "open_loops": list(resume.get("open_loops") or []),
         "next_steps": list(resume.get("next_steps") or []),
         "essential_context": list(compressed_context.get("essential") or []),
@@ -1299,6 +1319,7 @@ def build_handoff_package(
         "obsolete_context": list(compressed_context.get("obsolete") or []),
         "related_entries": list(resume.get("related_entry_ids") or []),
         "restore_context": dict(resume.get("restore_context") or {}),
+        "restore_hint": dict(resume.get("restore_context") or {}),
         "audience": "agent",
     }
     shared["human_handoff"] = {
@@ -1356,7 +1377,7 @@ def close_session_with_handoff(
         next_goal=next_goal,
         include_deleted=include_deleted,
     ) or {}
-    selected_handoff = handoff_package.get("human_handoff") if str(audience).strip().lower() == "human" else handoff_package.get("agent_handoff")
+    selected_handoff = handoff_package.get("operational_handoff") or handoff_package.get("agent_handoff")
     selected_handoff = selected_handoff if isinstance(selected_handoff, dict) else {}
     handoff_entry = write_structured_handoff(
         root,
@@ -1365,6 +1386,7 @@ def close_session_with_handoff(
         goal=str(selected_handoff.get("goal") or next_goal).strip(),
         summary=_normalize_optional_text(summary) or _normalize_optional_text(selected_handoff.get("summary")) or "",
         current_state=list(selected_handoff.get("current_state") or handoff_package.get("current_state") or []),
+        decisions=list(selected_handoff.get("decisions") or handoff_package.get("active_decision_ids") or []),
         open_loops=_normalize_handoff_lines(open_loops) if open_loops is not None else list(selected_handoff.get("open_loops") or handoff_package.get("open_loops") or []),
         next_steps=_normalize_handoff_lines(next_steps) if next_steps is not None else list(selected_handoff.get("next_steps") or handoff_package.get("next_steps") or []),
         essential_context=_normalize_handoff_lines(essential_context) if essential_context is not None else list(selected_handoff.get("essential_context") or (handoff_package.get("compressed_context") or {}).get("essential") or []),

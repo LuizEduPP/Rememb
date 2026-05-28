@@ -148,7 +148,7 @@ def _extract_entry_metadata(payload: dict[str, Any]) -> dict[str, Any]:
     return metadata
 
 
-def generate_handoff(
+def _generate_handoff(
     goal: str,
     *,
     summary: str | None = None,
@@ -243,61 +243,6 @@ def generate_handoff(
     }
 
 
-def write_handoff(
-    root: Path,
-    goal: str,
-    *,
-    summary: str | None = None,
-    current_state: list[str] | None = None,
-    open_loops: list[str] | None = None,
-    next_steps: list[str] | None = None,
-    related_entries: list[str] | None = None,
-    restore_section: str = _HANDOFF_SECTION,
-    restore_query: str | None = None,
-    include_deleted: bool = False,
-    tags: list[str] | None = None,
-    workstream_id: str | None = None,
-    session_id: str | None = None,
-) -> dict[str, Any]:
-    """Persist a handoff as a normal entry in the actions section."""
-    payload = generate_handoff(
-        goal,
-        summary=summary,
-        current_state=current_state,
-        open_loops=open_loops,
-        next_steps=next_steps,
-        related_entries=related_entries,
-        restore_section=restore_section,
-        restore_query=restore_query,
-        include_deleted=include_deleted,
-        tags=tags,
-    )
-    return write_entry(
-        root,
-        payload["section"],
-        payload["content"],
-        payload["tags"],
-        meta_schema_version=payload.get("meta_schema_version"),
-        workstream_id=workstream_id,
-        session_id=session_id,
-        entry_kind=payload.get("entry_kind"),
-        entry_role=payload.get("entry_role"),
-        structured=payload.get("structured"),
-    )
-
-
-def list_handoffs(root: Path, *, limit: int | None = None, include_deleted: bool = False) -> list[dict[str, Any]]:
-    """List stored handoff entries, newest first."""
-    _assert_initialized(root)
-    handoffs = [
-        entry
-        for entry in read_entries(root, _HANDOFF_SECTION, include_deleted=include_deleted)
-        if _HANDOFF_TAG in entry.get("tags", [])
-    ]
-    handoffs.sort(key=lambda entry: str(entry.get("updated_at") or entry.get("created_at") or ""), reverse=True)
-    if limit is not None and limit >= 0:
-        return handoffs[:limit]
-    return handoffs
 
 
 def parse_handoff_restore_context(entry_or_content: dict[str, Any] | str) -> dict[str, Any]:
@@ -323,7 +268,7 @@ def parse_handoff_restore_context(entry_or_content: dict[str, Any] | str) -> dic
     }
 
 
-def get_handoff(root: Path, entry_id: str, *, include_deleted: bool = True) -> dict[str, Any] | None:
+def _get_handoff(root: Path, entry_id: str, *, include_deleted: bool = True) -> dict[str, Any] | None:
     """Return a stored handoff entry by ID."""
     for handoff in list_handoffs(root, include_deleted=include_deleted):
         if str(handoff.get("id", "")) == entry_id:
@@ -331,12 +276,6 @@ def get_handoff(root: Path, entry_id: str, *, include_deleted: bool = True) -> d
     return None
 
 
-def get_handoff_restore_context(root: Path, entry_id: str, *, include_deleted: bool = True) -> dict[str, Any] | None:
-    """Return parsed restore hints for a stored handoff entry."""
-    handoff = get_handoff(root, entry_id, include_deleted=include_deleted)
-    if handoff is None:
-        return None
-    return parse_handoff_restore_context(handoff)
 
 
 def _entry_timestamp(entry: dict[str, Any]) -> str:
@@ -1419,7 +1358,7 @@ def write_structured_handoff(
         _workstream_entries(root, normalized_workstream_id, include_deleted=include_deleted)
     )
     normalized_related_entries = _normalize_handoff_lines(related_entries)
-    payload = generate_handoff(
+    payload = _generate_handoff(
         goal,
         summary=summary,
         current_state=current_state,
@@ -1607,7 +1546,6 @@ def build_handoff_package(
         focus_entry_ids=list(resume.get("focus_entry_ids") or []),
     )
     shared["agent_handoff"] = {
-        "deprecated": True,
         "goal": normalized_goal,
         "summary": resume.get("summary") or "",
         "current_state": list(resume.get("current_state") or []),
@@ -1625,7 +1563,6 @@ def build_handoff_package(
         "audience": "agent",
     }
     shared["human_handoff"] = {
-        "deprecated": True,
         "goal": normalized_goal,
         "summary": resume.get("summary") or "",
         "what_changed": list(resume.get("what_changed") or []),
@@ -2256,13 +2193,10 @@ __all__ = [
     "init",
     "get_config",
     "update_config",
-    "generate_handoff",
-    "write_handoff",
-    "list_handoffs",
+    
     "list_workstreams",
     "open_workstream",
-    "get_handoff",
-    "get_handoff_restore_context",
+    
     "get_workstream_state",
     "parse_handoff_restore_context",
     "read_structured_handoff",

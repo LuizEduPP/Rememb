@@ -22,7 +22,6 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Side-by-side diff" in response.text
     assert "current vs previous" in response.text
     assert "/api/entries/" in response.text
-    assert "/api/handoffs" in response.text
     assert "/api/workstreams/" in response.text
     assert "Workstream state" in response.text
     assert "Workstream resume" in response.text
@@ -35,14 +34,13 @@ def test_index_exposes_deleted_and_history_controls():
     assert "/api/workstreams/queue" in response.text
     assert "/api/workstreams/compare" in response.text
     assert "/api/workstreams/switch-package" in response.text
-    assert "All workstreams" in response.text
-    assert "All sessions" in response.text
-    assert "Agent supervision" in response.text
     assert "Next execution package" in response.text
     assert "Agent Flow" in response.text
     assert "Runtime Controls" in response.text
     assert "Overview" in response.text
-    assert "Threads" in response.text
+    assert "Live workstreams" in response.text
+    assert "Open workstreams" in response.text
+    assert "operational workstream" in response.text
     assert "Skills" in response.text
 
 
@@ -128,85 +126,8 @@ def test_versions_diff_and_restore_endpoints(monkeypatch, tmp_path):
     assert stats_response.json()["deleted_entries"] == 0
 
 
-def test_handoff_endpoints_generate_list_and_parse_restore_context(monkeypatch, tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
-
-    create_response = client.post(
-        "/api/handoffs",
-        json={
-            "goal": "Ship store handoff",
-            "summary": "Create the first handoff entry.",
-            "next_steps": ["Expose MCP next."],
-            "related_entries": ["abcd1234@v2"],
-            "restore_query": "handoff store",
-            "workstream_id": "ws_store",
-            "session_id": "sess_store",
-        },
-    )
-    assert create_response.status_code == 201
-    entry = create_response.json()["entry"]
-
-    list_response = client.get("/api/handoffs")
-    assert list_response.status_code == 200
-    assert [item["id"] for item in list_response.json()["items"]] == [entry["id"]]
-
-    restore_context_response = client.get(f"/api/handoffs/{entry['id']}/restore-context")
-    assert restore_context_response.status_code == 200
-    parsed = restore_context_response.json()
-    assert entry["workstream_id"] == "ws_store"
-    assert entry["session_id"] == "sess_store"
-    assert parsed["goal"] == "Ship store handoff"
-    assert parsed["next_steps"] == ["Expose MCP next."]
-    assert parsed["related_entries"][0]["entry_id"] == "abcd1234"
-    assert parsed["related_entries"][0]["version"] == 2
-    assert parsed["restore_context"]["query"] == "handoff store"
 
 
-def test_workstream_endpoints_return_state_and_resume(monkeypatch, tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
-
-    state_entry = write_entry(
-        root,
-        "project",
-        "State snapshot",
-        workstream_id="ws_agent",
-        session_id="sess_a",
-        entry_kind="state",
-        structured={"goal": "Ship Web UI", "current_state": ["state ready"]},
-    )
-    handoff_response = client.post(
-        "/api/handoffs",
-        json={
-            "goal": "Ship Web UI",
-            "summary": "Use the linked workstream handoff.",
-            "next_steps": ["Add browser validation"],
-            "workstream_id": "ws_agent",
-            "session_id": "sess_b",
-            "related_entries": [state_entry["id"]],
-        },
-    )
-    assert handoff_response.status_code == 201
-
-    state_response = client.get("/api/workstreams/ws_agent/state")
-    resume_response = client.get("/api/workstreams/ws_agent/resume")
-
-    assert state_response.status_code == 200
-    assert state_response.json()["workstream_id"] == "ws_agent"
-    assert state_response.json()["entry_count"] == 2
-    assert state_response.json()["latest_state"]["id"] == state_entry["id"]
-    assert len(state_response.json()["timeline"]) == 2
-    assert state_response.json()["timeline"][0]["entry_kind"] == "handoff"
-    assert state_response.json()["timeline"][1]["entry_kind"] == "state"
-
-    assert resume_response.status_code == 200
-    assert resume_response.json()["goal"] == "Ship Web UI"
-    assert resume_response.json()["next_steps"] == ["Add browser validation"]
 
 
 def test_workstream_crud_like_endpoints_and_structured_handoff(monkeypatch, tmp_path):
@@ -572,18 +493,3 @@ def test_workstream_routes_normalize_domain_errors(monkeypatch, tmp_path):
     assert resume_response.json()["detail"] == "bad resume"
 
 
-def test_handoff_routes_normalize_domain_errors(monkeypatch, tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
-    monkeypatch.setattr(web, "list_handoffs", lambda *_args, **_kwargs: (_ for _ in ()).throw(RemembValidationError("bad handoff filter")))
-    monkeypatch.setattr(web, "get_handoff_restore_context", lambda *_args, **_kwargs: (_ for _ in ()).throw(RemembValidationError("bad handoff id")))
-
-    list_response = client.get("/api/handoffs")
-    restore_response = client.get("/api/handoffs/abcd1234/restore-context")
-
-    assert list_response.status_code == 422
-    assert list_response.json()["detail"] == "bad handoff filter"
-    assert restore_response.status_code == 422
-    assert restore_response.json()["detail"] == "bad handoff id"

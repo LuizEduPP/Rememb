@@ -6,7 +6,7 @@ import asyncio
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -27,13 +27,11 @@ from rememb.store import (
     delete_entry,
     edit_entry,
     get_config,
-    get_handoff_restore_context,
     get_review_session,
     get_review_workstream,
     get_stats,
     get_workstream_state,
     init,
-    list_handoffs,
     list_entry_versions,
     list_review_queue,
     list_workstream_queue,
@@ -49,7 +47,6 @@ from rememb.store import (
     update_review_status,
     update_config,
     update_workstream_state,
-    write_handoff,
     write_entry,
     write_structured_handoff,
 )
@@ -72,7 +69,7 @@ def _get_root() -> Path:
     return ensure_global_root(init)
 
 
-def _raise_http_error(exc: Exception, *, default_status: int = 422) -> None:
+def _raise_http_error(exc: Exception, *, default_status: int = 422) -> NoReturn:
     if isinstance(exc, RemembError):
         raise HTTPException(
             status_code=rememb_error_http_status(exc, default_status=default_status),
@@ -157,7 +154,7 @@ class SessionCloseRequest(BaseModel):
 
 
 class SessionCloseAndHandoffRequest(SessionCloseRequest):
-    next_goal: str
+    next_goal: str  # type: ignore[assignment]
     summary: str | None = None
     essential_context: list[str] | None = None
     optional_context: list[str] | None = None
@@ -240,18 +237,6 @@ async def list_entries(
     return result
 
 
-@app.get("/api/handoffs")
-async def handoff_list_endpoint(
-    include_deleted: bool = Query(False),
-    limit: int | None = Query(None, ge=1, le=100),
-) -> dict:
-    root = await asyncio.to_thread(_get_root)
-    try:
-        items = await asyncio.to_thread(list_handoffs, root, limit=limit, include_deleted=include_deleted)
-        return {"items": items}
-    except Exception as exc:
-        _raise_http_error(exc)
-
 
 @app.get("/api/workstreams")
 async def workstream_list_endpoint(
@@ -282,30 +267,6 @@ async def workstream_open_endpoint(req: WorkstreamOpenRequest) -> dict:
     except Exception as exc:
         _raise_http_error(exc)
 
-
-@app.post("/api/handoffs", status_code=201)
-async def create_handoff(req: HandoffWriteRequest) -> dict:
-    root = await asyncio.to_thread(_get_root)
-    try:
-        entry = await asyncio.to_thread(
-            write_handoff,
-            root,
-            req.goal,
-            summary=req.summary,
-            current_state=req.current_state,
-            open_loops=req.open_loops,
-            next_steps=req.next_steps,
-            related_entries=req.related_entries,
-            restore_section=req.restore_section,
-            restore_query=req.restore_query,
-            include_deleted=req.include_deleted,
-            tags=req.tags,
-            workstream_id=req.workstream_id,
-            session_id=req.session_id,
-        )
-        return {"entry": entry}
-    except Exception as exc:
-        _raise_http_error(exc)
 
 
 @app.get("/api/workstreams/{workstream_id}/state")
@@ -742,19 +703,6 @@ async def structured_handoff_read_endpoint(
         _raise_http_error(exc)
 
 
-
-@app.get("/api/handoffs/{entry_id}/restore-context")
-async def handoff_restore_context_endpoint(entry_id: str, include_deleted: bool = Query(True)) -> dict:
-    root = await asyncio.to_thread(_get_root)
-    try:
-        parsed = await asyncio.to_thread(get_handoff_restore_context, root, entry_id, include_deleted=include_deleted)
-        if parsed is None:
-            raise HTTPException(status_code=404, detail="Handoff not found.")
-        return parsed
-    except HTTPException:
-        raise
-    except Exception as exc:
-        _raise_http_error(exc)
 
 
 @app.post("/api/entries", status_code=201)

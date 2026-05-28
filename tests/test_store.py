@@ -22,13 +22,12 @@ from rememb.store import (
     delete_entries,
     edit_entries,
     format_entries,
-    generate_handoff,
+    _generate_handoff,
     get_review_session,
     get_review_workstream,
     get_stats,
     get_workstream_state,
     init,
-    list_handoffs,
     list_entry_versions,
     list_review_queue,
     list_workstream_queue,
@@ -46,7 +45,6 @@ from rememb.store import (
     update_config,
     update_review_status,
     update_workstream_state,
-    write_handoff,
     write_entries,
     write_entry,
     write_structured_handoff,
@@ -480,8 +478,8 @@ def test_format_entries_supports_summary_and_truncation():
     assert "aaaaa..." in text
 
 
-def test_generate_handoff_formats_content_and_parses_restore_context():
-    payload = generate_handoff(
+def test__generate_handoff_formats_content_and_parses_restore_context():
+    payload = _generate_handoff(
         "Ship handoff MVP",
         summary="Focus on the smallest useful store slice.",
         current_state=["Store already supports versions."],
@@ -517,42 +515,6 @@ def test_generate_handoff_formats_content_and_parses_restore_context():
     }
 
 
-def test_write_handoff_and_list_handoffs_use_normal_entries(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    handoff = write_handoff(
-        root,
-        "Finish store handoff",
-        summary="Persist the first handoff entry.",
-        next_steps=["Expose Web and MCP next."],
-        related_entries=["abcd1234@v3"],
-        tags=["resume"],
-        workstream_id="ws_handoff",
-        session_id="sess_handoff",
-    )
-    write_entry(root, "actions", "ordinary action", ["other"])
-
-    visible = list_handoffs(root)
-    delete_entries(root, [handoff["id"]])
-    hidden_after_delete = list_handoffs(root)
-    with_deleted = list_handoffs(root, include_deleted=True)
-    parsed = parse_handoff_restore_context(with_deleted[0])
-
-    assert handoff["section"] == "actions"
-    assert "handoff" in handoff["tags"]
-    assert "resume" in handoff["tags"]
-    assert handoff["entry_kind"] == "handoff"
-    assert handoff["structured"]["goal"] == "Finish store handoff"
-    assert handoff["workstream_id"] == "ws_handoff"
-    assert handoff["session_id"] == "sess_handoff"
-    assert any(tag.startswith("goal:finish-store-handoff") for tag in handoff["tags"])
-    assert [entry["id"] for entry in visible] == [handoff["id"]]
-    assert hidden_after_delete == []
-    assert [entry["id"] for entry in with_deleted] == [handoff["id"]]
-    assert parsed["related_entries"][0]["entry_id"] == "abcd1234"
-    assert parsed["related_entries"][0]["version"] == 3
 
 
 def test_workstream_state_and_resume_aggregate_sessions(tmp_path):
@@ -572,7 +534,7 @@ def test_workstream_state_and_resume_aggregate_sessions(tmp_path):
             "current_state": ["metadata stored"],
         },
     )
-    handoff_payload = generate_handoff(
+    handoff_payload = _generate_handoff(
         "Ship workstream resume",
         summary="Use the latest handoff when resuming.",
         current_state=["metadata stored", "MCP pending"],
@@ -625,28 +587,6 @@ def test_workstream_state_and_resume_aggregate_sessions(tmp_path):
     assert resume["focus_entry_ids"] == [handoff["id"], first_state["id"]]
 
 
-def test_resume_workstream_handles_handoff_without_state(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    handoff = write_handoff(
-        root,
-        "Resume only from handoff",
-        summary="No explicit state entry exists.",
-        next_steps=["Keep going"],
-        workstream_id="ws_handoff_only",
-        session_id="sess_only",
-    )
-
-    resume = resume_workstream(root, "ws_handoff_only")
-
-    assert resume is not None
-    assert resume["goal"] == "Resume only from handoff"
-    assert resume["summary"] == "No explicit state entry exists."
-    assert resume["next_steps"] == ["Keep going"]
-    assert resume["latest_entry_id"] == handoff["id"]
-    assert resume["restore_context"]["query"] == "Resume only from handoff"
 
 
 def test_resume_workstream_falls_back_to_state_context_without_handoff(tmp_path):
@@ -833,7 +773,6 @@ def test_build_handoff_package_and_close_session_with_handoff(tmp_path):
     assert package["next_execution"]["resume_mode"] == "goal_oriented"
     assert package["operational_handoff"]["goal"] == "Ship review mode"
     assert package["operational_handoff"]["restore_hint"] == package["restore_context"]
-    assert package["human_handoff"]["deprecated"] is True
     assert package["agent_handoff"]["essential_context"] == ["keep workstream-first flow"]
     assert package["human_handoff"]["watchouts"] == ["UI needs diff previews"]
     assert result is not None

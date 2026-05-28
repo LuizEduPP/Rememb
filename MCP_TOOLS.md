@@ -7,44 +7,284 @@ This file documents the current public MCP tools exposed by src/rememb/mcp_serve
 If you want rememb to run as a strictly agent-driven system, use this exact rules block in your IDE instructions or MCP wrapper prompt. The goal is to force the agent to route continuity, handoff, review, recovery and audit through rememb instead of falling back to ad hoc memory behavior:
 
 ```text
-When using rememb, always use the workstream-first and agent-driven flow. Do not fall back to broad entry-first usage, manual prompt memory, or non-rememb continuity when a rememb workstream flow is available.
+# Rememb Operating Rules
 
-Critical override: if a workstream flow is available, do not skip it or replace it with broad entry-first reads.
+Always use a workstream-first, execution-anchored Rememb flow.
 
-1. At the start of an execution, if a workstream is already known, call rememb_workstream_resume before any broad rememb_read, rememb_read_page, or rememb_search.
-2. If the workstream is not known yet, first inspect available workstreams with rememb_workstream_list. If no suitable workstream exists, create one with rememb_workstream_open and immediately start an execution anchor with rememb_execution_start.
-3. When you need the factual aggregated state of a workstream, use rememb_workstream_state_get exclusively. When you need the operational continuation context, use rememb_workstream_resume.
-4. Persist meaningful progress with rememb_workstream_state_update. Use rememb_write only for genuinely standalone entries that do not belong to an active workstream or execution lifecycle.
-5. End or pause an execution anchor with rememb_execution_close or rememb_handoff_write_structured. Use rememb_handoff_generate only when you want a simpler handoff entry rather than the full structured handoff flow.
-6. When a handoff already exists, inspect it with rememb_handoff_read_structured, rememb_handoff_restore_context, or rememb_handoff_list before falling back to broader reads.
-7. Use rememb_edit to update an existing fact instead of creating duplicates with rememb_write. Use rememb_delete for targeted soft deletion, rememb_restore to recover a deleted entry or prior version, rememb_versions to inspect revision history, and rememb_diff to compare revisions.
-8. Use rememb_read, rememb_read_page, or rememb_search only when the workstream is unknown, when broader context is explicitly required, or when you are intentionally inspecting raw entries outside the workstream flow.
-9. Use rememb_stats to inspect store size and section totals, and rememb_consolidate when you are intentionally cleaning duplicate memory rather than adding new workstream progress.
-10. Treat rememb_init as compatibility or recovery only. Do not use it as a normal step in the session flow when rememb is already running in MCP mode.
-11. Use rememb_list_skills and rememb_use_skill only when you need bundled rememb skill instructions. Do not substitute them for core memory, workstream, execution, handoff, versioning, or recovery tools.
-12. Before executing any memory-related tool, perform a silent internal check: does this action strictly follow the workstream-first flow? If not, pivot to the correct rememb tool first.
-13. When you want to close an execution anchor and persist the next-goal handoff in one step, use rememb_execution_close_and_handoff instead of manually chaining separate close and handoff calls.
-14. When you need a compact anti-context-switch restore package without writing a new handoff entry, use rememb_handoff_package.
-15. When you need the review backlog, use rememb_review_queue.
-16. When you need the review context for one execution anchor, use rememb_review_execution_get. When you need the review context for a full workstream, use rememb_review_workstream_get.
-17. When you need the operational queue of workstreams, use rememb_workstream_queue.
-18. When you need to compare two execution anchors in the same workstream, use rememb_compare_executions. When you need to compare two workstreams, use rememb_compare_workstreams.
-19. When you need to record a review decision, use rememb_review_update.
-20. When you intentionally need raw entry inspection outside the workstream flow, use rememb_read, rememb_read_page, or rememb_search.
-21. When you intentionally need direct low-level entry creation or maintenance outside the workstream flow, use rememb_write, rememb_edit, rememb_delete, or rememb_clear.
-22. When you need entry history or recovery, use rememb_versions to inspect revisions, rememb_restore to recover a deleted entry or prior version, and rememb_diff to compare revisions.
-23. When you need store-level maintenance, use rememb_stats to inspect totals and rememb_consolidate only for intentional duplicate cleanup.
-24. Use rememb_init only for compatibility or recovery when explicit initialization is really needed.
-25. When you need bundled skill instructions, use rememb_list_skills to discover them and rememb_use_skill to load one.
-26. Keep the memory flow anchored in rememb from start to finish. Discovery, open, state, resume, execution lifecycle, handoffs, review, comparisons, raw entry operations, recovery, maintenance, initialization, and skill lookup must all go through rememb tools rather than ad hoc prompt-only memory.
-27. Treat the full public rememb MCP surface as available to the agent at all times. The current public tool inventory is exactly 37 tools and is part of the routing contract.
-27.1 Use the core memory tools when working with raw persisted memory: rememb_read, rememb_read_page, rememb_search, rememb_write, rememb_edit, rememb_delete, rememb_clear, rememb_stats, rememb_consolidate, rememb_init.
-27.2 Use the versioning and recovery tools when inspecting or restoring history: rememb_versions, rememb_restore, rememb_diff.
-27.3 Use the handoff and continuity tools when handing off, restoring, or packaging the next execution context: rememb_handoff_generate, rememb_handoff_list, rememb_handoff_restore_context, rememb_handoff_write_structured, rememb_handoff_read_structured, rememb_handoff_package, rememb_workstream_switch_package.
-27.4 Use the workstream and execution tools when routing execution lifecycle state: rememb_workstream_list, rememb_workstream_open, rememb_workstream_state_get, rememb_workstream_state_update, rememb_workstream_resume, rememb_execution_start, rememb_execution_close, rememb_execution_close_and_handoff, rememb_workstream_queue.
-27.5 Use the review and comparison tools when classifying, validating, comparing, or escalating agent work: rememb_review_queue, rememb_review_execution_get, rememb_review_workstream_get, rememb_compare_executions, rememb_compare_workstreams, rememb_review_update.
-27.6 Use the skill tools when bundled rememb instructions are required: rememb_list_skills, rememb_use_skill.
-28. Do not invent a manual supervision loop outside rememb. If review, routing, escalation, restore, audit, switching, or handoff is needed, use the corresponding rememb tool instead of describing a manual operator workflow.
+Never replace Rememb continuity with:
+
+* ad hoc prompt memory
+* manual summaries
+* broad entry-first reads
+* external continuity systems
+  when an appropriate Rememb workstream flow exists.
+
+## Core Routing Priority
+
+Follow this order strictly:
+
+1. Workstream
+2. Execution
+3. Handoff
+4. State
+5. Raw memory entries
+
+Do not skip upward in the hierarchy.
+
+---
+
+# Primary Flow
+
+## 1. Known Workstream
+
+If the workstream is already known:
+
+* call `rememb_workstream_resume`
+* do this BEFORE any:
+
+  * `rememb_read`
+  * `rememb_read_page`
+  * `rememb_search`
+
+## 2. Unknown Workstream
+
+If the workstream is not known:
+
+1. call `rememb_workstream_list`
+2. select an existing workstream if suitable
+3. otherwise:
+
+   * call `rememb_workstream_open`
+   * immediately call `rememb_execution_start`
+
+---
+
+# Context Retrieval Rules
+
+## Operational Continuation
+
+Use:
+
+* `rememb_workstream_resume`
+
+for:
+
+* active execution continuity
+* next actions
+* execution recovery
+* continuation context
+
+## Aggregated Factual State
+
+Use:
+
+* `rememb_workstream_state_get`
+
+for:
+
+* canonical workstream facts
+* consolidated project state
+* durable structured state
+
+Do not use broad reads when workstream state is sufficient.
+
+---
+
+# Persistence Rules
+
+## Preferred Persistence
+
+Persist meaningful progress with:
+
+* `rememb_workstream_state_update`
+
+## Raw Entry Writes
+
+Use:
+
+* `rememb_write`
+
+ONLY when the information:
+
+* is standalone
+* is not tied to an execution lifecycle
+* does not belong to an active workstream
+
+## Editing Existing Facts
+
+Prefer:
+
+* `rememb_edit`
+
+instead of duplicating memory with new writes.
+
+---
+
+# Execution Lifecycle
+
+## Start
+
+Use:
+
+* `rememb_execution_start`
+
+when beginning active work.
+
+## Pause / End
+
+Use:
+
+* `rememb_execution_close`
+* `rememb_handoff_write_structured`
+
+or preferably:
+
+* `rememb_execution_close_and_handoff`
+
+when both actions are needed.
+
+---
+
+# Handoff Rules
+
+If a handoff exists:
+
+* inspect it first with:
+
+  * `rememb_handoff_read_structured`
+
+before broader reads.
+
+For compact execution restore packages without creating a new handoff:
+
+* use `rememb_handoff_package`
+
+For workstream switching:
+
+* use `rememb_workstream_switch_package`
+
+---
+
+# Raw Memory Access
+
+Use:
+
+* `rememb_read`
+* `rememb_read_page`
+* `rememb_search`
+
+ONLY when:
+
+* the workstream is unknown
+* broad inspection is explicitly required
+* raw entries are intentionally being inspected
+
+Do not use raw reads as the default continuity mechanism.
+
+---
+
+# Recovery & Versioning
+
+Use:
+
+* `rememb_versions`
+* `rememb_restore`
+* `rememb_diff`
+
+for:
+
+* history inspection
+* recovery
+* revision comparison
+
+Use:
+
+* `rememb_delete`
+
+for targeted soft deletion.
+
+---
+
+# Review & Comparison
+
+## Review Queue
+
+Use:
+
+* `rememb_review_queue`
+
+## Execution Review Context
+
+Use:
+
+* `rememb_review_execution_get`
+
+## Workstream Review Context
+
+Use:
+
+* `rememb_review_workstream_get`
+
+## Comparisons
+
+Use:
+
+* `rememb_compare_executions`
+* `rememb_compare_workstreams`
+
+## Recording Review Decisions
+
+Use:
+
+* `rememb_review_update`
+
+---
+
+# Maintenance
+
+Use:
+
+* `rememb_stats`
+
+for store inspection.
+
+Use:
+
+* `rememb_consolidate`
+
+ONLY for intentional duplicate cleanup.
+
+Do not consolidate during normal execution flow.
+
+---
+
+# Skills
+
+Use:
+
+* `rememb_list_skills`
+* `rememb_use_skill`
+
+ONLY when bundled Rememb operational instructions are needed.
+
+Do not substitute skills for core workstream flow.
+
+---
+
+# Critical Behavioral Rules
+
+Before any Rememb tool call, perform an internal check:
+
+"Am I following the workstream-first hierarchy?"
+
+If not:
+
+* pivot to the correct workstream or execution tool first.
+
+Never invent manual supervision, routing, continuity, escalation, review, or handoff systems outside Rememb when an official Rememb tool exists.
+
+Treat the full Rememb MCP surface as authoritative and always available.
+
 ```
 
 These rules are the canonical agent-driven routing contract. The documented tools below are the same public surface the agent rules must treat as available.
@@ -161,17 +401,6 @@ Key parameters:
 - mode
 - similarity_threshold
 
-### rememb_init
-
-Explicitly initialize storage. Usually optional because home-first MCP mode auto-initializes when needed.
-
-Status:
-- deprecated for normal day-to-day MCP usage
-- kept intentionally for compatibility, explicit recovery, and clients that still call it directly
-
-Key parameters:
-- project_name
-
 ## Versioning and recovery tools
 
 ### rememb_versions
@@ -200,40 +429,6 @@ Key parameters:
 - to_version (required)
 
 ## Handoff tools
-
-### rememb_handoff_generate
-
-Generate and save a normal handoff entry, optionally linked to a workstream or session.
-
-Key parameters:
-- goal (required)
-- summary
-- current_state
-- open_loops
-- next_steps
-- related_entries
-- restore_section
-- restore_query
-- include_deleted
-- tags
-- workstream_id
-- session_id
-
-### rememb_handoff_list
-
-List recent handoff entries.
-
-Key parameters:
-- limit
-- include_deleted
-
-### rememb_handoff_restore_context
-
-Read a stored handoff and return its restore hints and related entries.
-
-Key parameters:
-- entry_id (required)
-- include_deleted
 
 ### rememb_handoff_write_structured
 

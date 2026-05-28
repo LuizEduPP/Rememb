@@ -20,11 +20,9 @@ from rememb.store import (
     edit_entries,
     edit_entry,
     format_entries,
-    get_handoff_restore_context,
     get_review_session,
     get_review_workstream,
     get_workstream_state,
-    list_handoffs,
     list_review_queue,
     list_workstream_queue,
     list_workstreams,
@@ -43,11 +41,9 @@ from rememb.store import (
     start_session,
     update_review_status,
     update_workstream_state,
-    write_handoff,
     write_entries,
     write_entry,
     write_structured_handoff,
-    parse_handoff_restore_context,
 )
 
 
@@ -330,69 +326,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text=f"Entry {entry_id} or requested versions not found")]
         diff_text = result["diff"] or "(no content changes)"
         return [TextContent(type="text", text=f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")]
-
-    async def rememb_handoff_generate():
-        goal = arguments.get("goal")
-        if not goal or not str(goal).strip():
-            return [TextContent(type="text", text="Provide goal for the handoff.")]
-        entry = await asyncio.to_thread(
-            write_handoff,
-            root,
-            str(goal),
-            summary=arguments.get("summary"),
-            current_state=arguments.get("current_state"),
-            open_loops=arguments.get("open_loops"),
-            next_steps=arguments.get("next_steps"),
-            related_entries=arguments.get("related_entries"),
-            restore_section=arguments.get("restore_section", "actions"),
-            restore_query=arguments.get("restore_query"),
-            include_deleted=arguments.get("include_deleted", False),
-            tags=arguments.get("tags"),
-            workstream_id=arguments.get("workstream_id"),
-            session_id=arguments.get("session_id"),
-        )
-        return [TextContent(type="text", text=f"Saved handoff [{entry['section']}] id={entry['id']}")]
-
-    async def rememb_handoff_list():
-        limit = arguments.get("limit")
-        include_deleted = arguments.get("include_deleted", False)
-        handoffs = await asyncio.to_thread(list_handoffs, root, limit=limit, include_deleted=include_deleted)
-        if not handoffs:
-            return [TextContent(type="text", text="No handoffs found.")]
-        lines = ["Recent handoffs:"]
-        for handoff in handoffs:
-            parsed = parse_handoff_restore_context(handoff)
-            goal = parsed.get("goal") or "(no goal)"
-            lines.append(f"- {handoff['id']} goal={goal} section={handoff.get('section', '')}")
-        return [TextContent(type="text", text="\n".join(lines))]
-
-    async def rememb_handoff_restore_context():
-        entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
-        include_deleted = arguments.get("include_deleted", True)
-        try:
-            parsed = await asyncio.to_thread(get_handoff_restore_context, root, entry_id, include_deleted=include_deleted)
-        except RemembError:
-            parsed = None
-        if parsed is None:
-            handoffs = await asyncio.to_thread(list_handoffs, root, limit=None, include_deleted=include_deleted)
-            handoff = next((item for item in handoffs if str(item.get("id", "")) == entry_id), None)
-            if handoff is not None:
-                parsed = parse_handoff_restore_context(handoff)
-        if parsed is None:
-            return [TextContent(type="text", text=f"Handoff {entry_id} not found")]
-        related = ", ".join(item["raw"] for item in parsed["related_entries"]) or "none"
-        restore_context = parsed["restore_context"]
-        text = (
-            f"Handoff {entry_id}\n"
-            f"Goal: {parsed.get('goal', '')}\n"
-            f"Section: {restore_context.get('section', '')}\n"
-            f"Query: {restore_context.get('query', '')}\n"
-            f"Include deleted: {restore_context.get('include_deleted', False)}\n"
-            f"Related entries: {related}"
-        )
-        return [TextContent(type="text", text=text)]
 
     async def rememb_workstream_state_get():
         workstream_id = arguments.get("workstream_id")
@@ -1137,15 +1070,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             ),
         )]
 
-    async def rememb_init():
-        project_name = arguments.get("project_name", "")
-        init_root = global_root()
-        if await asyncio.to_thread(is_initialized, init_root):
-            return [TextContent(type="text", text=f"Already initialized at {init_root / '.rememb'}")]
-        _mcp_context.clear_root_cache()
-        effective_project_name = project_name or "global"
-        rememb_path = await asyncio.to_thread(init, init_root, effective_project_name, True)
-        return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
 
     async def rememb_list_skills():
         skills = await asyncio.to_thread(list_skill_definitions)
@@ -1186,9 +1110,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_versions": rememb_versions,
         "rememb_restore": rememb_restore,
         "rememb_diff": rememb_diff,
-        "rememb_handoff_generate": rememb_handoff_generate,
-        "rememb_handoff_list": rememb_handoff_list,
-        "rememb_handoff_restore_context": rememb_handoff_restore_context,
         "rememb_handoff_write_structured": rememb_handoff_write_structured,
         "rememb_handoff_read_structured": rememb_handoff_read_structured,
         "rememb_workstream_list": rememb_workstream_list,
@@ -1214,7 +1135,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_clear": rememb_clear,
         "rememb_stats": rememb_stats,
         "rememb_consolidate": rememb_consolidate,
-        "rememb_init": rememb_init,
         "rememb_list_skills": rememb_list_skills,
         "rememb_use_skill": rememb_use_skill,
     }
@@ -1263,7 +1183,7 @@ def _build_tools(Tool):
     return [
         _tool(
             name="rememb_read",
-            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Use this at the start of every session to load context. Prefer rememb_search when looking for specific information by keyword or topic.",
+            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Prefer workstream tools (rememb_workstream_resume) at session start, and use this only for broad recall of facts (user, project, systems) outside the workstream flow. Prefer rememb_search when looking for specific information by keyword or topic.",
             properties={
                 "section": {
                     "type": "string",
@@ -1338,7 +1258,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_search",
-            description="Search memory entries by content or tags using semantic similarity. Safe, read-only operation with no side effects. Use instead of rememb_read when you need to find specific entries by topic rather than loading all entries. Returns the top_k most relevant results ranked by similarity.",
+            description="Search memory entries by content or tags using semantic similarity. Safe, read-only operation. Best for querying broad facts outside the workstream context. Returns the top_k most relevant results ranked by similarity.",
             properties={
                 "query": {
                     "type": "string",
@@ -1424,100 +1344,6 @@ def _build_tools(Tool):
                 },
             },
             required=["entry_id", "from_version", "to_version"],
-        ),
-        _tool(
-            name="rememb_handoff_generate",
-            description="Generate and save a goal-oriented handoff as a normal memory entry in the actions section.",
-            properties={
-                "goal": {
-                    "type": "string",
-                    "description": "Goal for the next session",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "Compact summary of the current session state",
-                },
-                "current_state": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Current state bullets",
-                },
-                "open_loops": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Open loops that still need work",
-                },
-                "next_steps": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Ordered next-step list",
-                },
-                "related_entries": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Related entry references such as abcd1234 or deadbeef@v2",
-                },
-                "restore_section": {
-                    "type": "string",
-                    "enum": sections,
-                    "default": "actions",
-                    "description": "Preferred section to restore into context",
-                },
-                "restore_query": {
-                    "type": "string",
-                    "description": "Optional restore query hint",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether restore hints should include deleted entries",
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Additional tags to store alongside the handoff",
-                },
-                "workstream_id": {
-                    "type": "string",
-                    "description": "Optional logical workstream identifier for the handoff",
-                },
-                "session_id": {
-                    "type": "string",
-                    "description": "Optional logical session identifier for the handoff",
-                },
-            },
-            required=["goal"],
-        ),
-        _tool(
-            name="rememb_handoff_list",
-            description="List recent stored handoffs. Safe, read-only operation.",
-            properties={
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of handoffs to return",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted handoffs",
-                },
-            },
-        ),
-        _tool(
-            name="rememb_handoff_restore_context",
-            description="Read a stored handoff and return its restore hints and related entry references.",
-            properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Handoff entry ID (8 hex characters)",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Allow reading soft-deleted handoffs",
-                },
-            },
-            required=["entry_id"],
         ),
         _tool(
             name="rememb_handoff_write_structured",
@@ -1783,7 +1609,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_write",
-            description="Save a new memory entry or multiple entries in one call. Single-entry mode creates one new entry and returns its ID. Batch mode accepts entries[]. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID. semantic_scope controls whether semantic duplicate blocking checks globally or only inside the target section.",
+            description="Save a new memory entry or multiple entries in one call. Use this for standalone facts (user, project, systems) outside an active workstream; for execution progress, prefer rememb_workstream_state_update. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID.",
             properties=_with_entry_metadata_fields({
                 "content": {
                     "type": "string",
@@ -1937,16 +1763,6 @@ def _build_tools(Tool):
                     "default": DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
                     "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)",
                 },
-            },
-        ),
-        _tool(
-            name="rememb_init",
-            description="Initialize rememb memory storage. Useful for explicit setup and recovery flows. Home-first root resolution also auto-initializes ~/.rememb when needed, and this tool remains idempotent and safe to call repeatedly.",
-            properties={
-                "project_name": {
-                    "type": "string",
-                    "description": "Optional project name",
-                }
             },
         ),
         _tool(

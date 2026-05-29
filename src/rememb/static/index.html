@@ -17,7 +17,7 @@
             <span class="brand-name">rememb</span>
             <span class="version-badge" id="logo-version"></span>
           </div>
-          <span class="brand-caption">agent runtime</span>
+          <span class="brand-caption">agent memory supervision</span>
         </div>
       </a>
     </div>
@@ -28,13 +28,14 @@
       <input type="text" id="search-input" placeholder="Search memory…" autocomplete="off">
     </div>
     <div class="nav-section">
-      <span class="nav-group-title">Agent Flow</span>
-      <button class="nav-tab active" data-view="dashboard">Overview</button>
+      <span class="nav-group-title">Agent Memory</span>
+      <button class="nav-tab active" data-view="memories">Memory</button>
+      <span class="nav-group-title" style="margin-top:20px;">Agent Flow</span>
+      <button class="nav-tab" data-view="dashboard">Overview</button>
       <button class="nav-tab" data-view="workstreams">Workstreams</button>
     </div>
     <div class="nav-section">
       <span class="nav-group-title">Runtime Controls</span>
-      <button class="nav-tab utility" data-view="memories">Memory</button>
       <button class="nav-tab utility" data-view="stats">Stats</button>
       <button class="nav-tab utility" data-view="settings">Settings</button>
       <button class="nav-tab utility" data-view="skills">Skills</button>
@@ -42,7 +43,7 @@
   </nav>
   <div class="app-body">
 
-  <div id="view-dashboard" class="view view-scroll active">
+  <div id="view-dashboard" class="view view-scroll">
     <div class="view-pad">
       <div class="metric-bar">
         <div class="metric-item">
@@ -66,87 +67,74 @@
           <div class="metric-item-sub" id="dashboard-memory-caption">loading</div>
         </div>
       </div>
-      <div class="dash-grid">
-        <div class="dash-panel">
-          <div class="dash-panel-head">
-            <span class="dash-panel-title">Workstream registry</span>
+      <div class="theme-grid">
+        <div class="theme-panel theme-panel--tight">
+          <div class="detail-section-head detail-section-head--split">
+            <span class="field-label">Workstream registry</span>
             <button class="dash-shortcut" data-shortcut-view="workstreams">Open workstreams →</button>
           </div>
           <div id="dashboard-workstreams-list"></div>
         </div>
-        <div class="dash-panel">
-          <div class="dash-panel-head">
-            <span class="dash-panel-title">Supervision queue</span>
-            <button class="dash-shortcut" data-shortcut-view="workstreams" data-shortcut-panel="review">Open review →</button>
+        <div class="theme-panel theme-panel--tight">
+          <div class="detail-section-head detail-section-head--split">
+            <span class="field-label">Needs review</span>
+            <button class="dash-shortcut" data-shortcut-view="workstreams" data-shortcut-panel="review">Review queue →</button>
           </div>
           <div id="dashboard-attention-list"></div>
         </div>
       </div>
       <div class="ops-hint">
         <span class="ops-hint-kicker">Agent Flow</span>
-        <span class="ops-hint-copy">Open workstreams, run executions, review and ship continuity packages — the operational workstream lifecycle in one view.</span>
-        <button class="dash-shortcut" data-shortcut-view="workstreams" data-shortcut-panel="handoffs">Open continuity →</button>
+        <span class="ops-hint-copy">Overview keeps the active work visible: what exists, what needs review, and what should move next.</span>
+        <button class="dash-shortcut" data-shortcut-view="workstreams" data-shortcut-panel="handoffs">Open handoffs →</button>
       </div>
     </div>
   </div>
 
-  <div id="view-memories" class="view view-column">
-    <div id="search-results-bar" class="search-results-bar">
-      <span id="search-results-label"></span>
-      <button id="clear-search" class="text-sm font-medium text-ink underline-offset-4 hover:underline">Clear search</button>
-    </div>
-
-    <div id="main-body" class="content-shell">
-      <aside id="sidebar" class="sidebar">
-        <div class="sidebar-body">
-          <div class="sidebar-heading">
-            <span>Sections</span>
-            <span class="h-px flex-1 bg-line"></span>
+  <div id="view-memories" class="view view-column active">
+    <div id="main-body" class="memory-shell">
+      <div class="memory-hero">
+        <div class="memory-heading">
+          <span class="memory-kicker">Persistent agent memory</span>
+          <div class="memory-title-row">
+            <h2 id="section-title" class="view-title">Memory</h2>
+            <span id="total-badge" class="count-pill"></span>
           </div>
-          <div id="sections-list" class="section-list"></div>
+          <p class="memory-subtitle">Active context, section recall and long-term history in one readable stream.</p>
         </div>
-
-        <div class="sidebar-footer">
-          <div class="stats-mini">
-            <div class="sidebar-heading sidebar-heading--compact">
-              <span>Stats</span>
-              <span class="h-px flex-1 bg-line"></span>
-            </div>
-            <div class="space-y-1">
-              <div class="stats-mini-row">
-                <span>Total entries</span>
-                <span class="value" id="stat-total">—</span>
-              </div>
-              <div class="stats-mini-row">
-                <span>Sections active</span>
-                <span class="value" id="stat-sections">—</span>
-              </div>
-              <div class="stats-mini-row">
-                <span>Store size</span>
-                <span class="value" id="stat-size">—</span>
-              </div>
-              <div class="stats-mini-row">
-                <span>Deleted</span>
-                <span class="value" id="stat-deleted">—</span>
-              </div>
-            </div>
+        <div class="theme-grid theme-grid--metrics">
+          <div class="theme-panel theme-panel--metric theme-panel--tight">
+            <span class="memory-stat-label">Total entries</span>
+            <strong class="memory-stat-value" id="stat-total">—</strong>
           </div>
-
-          <div class="border-t border-line px-2 py-2.5">
-            <button class="app-button ghost w-full" id="btn-consolidate">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>
-              Consolidate
-            </button>
+          <div class="theme-panel theme-panel--metric theme-panel--tight">
+            <span class="memory-stat-label">Sections active</span>
+            <strong class="memory-stat-value" id="stat-sections">—</strong>
+          </div>
+          <div class="theme-panel theme-panel--metric theme-panel--tight">
+            <span class="memory-stat-label">Store size</span>
+            <strong class="memory-stat-value" id="stat-size">—</strong>
+          </div>
+          <div class="theme-panel theme-panel--metric theme-panel--tight">
+            <span class="memory-stat-label">Deleted</span>
+            <strong class="memory-stat-value" id="stat-deleted">—</strong>
           </div>
         </div>
-      </aside>
+      </div>
 
-      <main id="main-content" class="content-main">
-        <div class="section-header">
-          <h2 id="section-title" class="view-title">Memory Ledger</h2>
-          <span id="total-badge" class="count-pill"></span>
-          <label class="toggle-pill ml-auto">
-            <input type="checkbox" id="toggle-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
+      <div id="search-results-bar" class="search-results-bar">
+        <span id="search-results-label"></span>
+        <button id="clear-search" class="search-results-bar__clear">Clear search</button>
+      </div>
+
+      <div class="memory-toolbar">
+        <div class="memory-toolbar-group">
+          <div class="memory-toolbar-label">Sections</div>
+          <div id="sections-list" class="section-list section-list--pills"></div>
+        </div>
+        <div class="memory-toolbar-actions">
+          <label class="toggle-pill">
+            <input type="checkbox" id="toggle-include-deleted" class="toggle-pill__input">
             <span>Show deleted</span>
           </label>
           <select id="sort-select" class="field-control field-control--inline" title="Sort order">
@@ -155,10 +143,16 @@
             <option value="storage-asc">Storage order</option>
             <option value="storage-desc">Reversed</option>
           </select>
+          <button class="app-button ghost" id="btn-consolidate">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>
+            Consolidate
+          </button>
         </div>
+      </div>
 
-        <div id="cards-grid" class="cards-grid"></div>
-        <div id="load-more-wrap" class="mt-5 hidden text-center">
+      <main id="main-content" class="content-main content-main--memory">
+        <div id="cards-grid" class="theme-grid theme-grid--stacked theme-grid--flush"></div>
+        <div id="load-more-wrap" class="memory-load-more hidden">
           <button class="app-button ghost" id="btn-load-more">Load more</button>
         </div>
       </main>
@@ -170,12 +164,12 @@
       <div class="ws-topbar">
         <h2 class="ws-title">Workstreams</h2>
         <div class="thread-surface-bar" id="workstream-surface-bar">
-          <button class="thread-surface-tab active" data-workstream-surface="overview">Workstream overview</button>
-          <button class="thread-surface-tab" data-workstream-surface="review">Workstream review</button>
-          <button class="thread-surface-tab" data-workstream-surface="handoffs">Workstream handoffs</button>
+          <button class="thread-surface-tab active" data-workstream-surface="overview">Summary</button>
+          <button class="thread-surface-tab" data-workstream-surface="review">Review</button>
+          <button class="thread-surface-tab" data-workstream-surface="handoffs">Handoffs</button>
         </div>
         <label class="toggle-pill">
-          <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
+          <input type="checkbox" id="toggle-workstreams-include-deleted" class="toggle-pill__input">
           <span>Show deleted</span>
         </label>
       </div>
@@ -183,11 +177,11 @@
       <div class="ws-layout">
         <div class="ws-rail">
           <div class="ws-rail-section">
-            <div class="ws-rail-head">Workstream registry</div>
+            <div class="ws-rail-head">Open workstreams</div>
             <div id="workstream-grid" class="ws-list-inner"></div>
           </div>
           <div class="ws-rail-section">
-            <div class="ws-rail-head">Execution queue</div>
+            <div class="ws-rail-head">Next actions</div>
             <div id="workstream-queue-summary" class="queue-summary"></div>
             <div id="workstream-queue-list"></div>
           </div>
@@ -206,35 +200,35 @@
         <span class="page-updated" id="dash-updated"></span>
       </div>
 
-      <div class="stats-grid page-section-gap">
-        <div class="section-card metric-card">
+      <div class="theme-grid theme-grid--metrics theme-grid--flush page-section-gap">
+        <div class="theme-panel theme-panel--tight theme-panel--metric">
           <span class="metric-label">Total entries</span>
           <div class="metric-value" id="dash-total">—</div>
           <span class="metric-caption">across all sections</span>
         </div>
-        <div class="section-card metric-card">
+        <div class="theme-panel theme-panel--tight theme-panel--metric">
           <span class="metric-label">Active sections</span>
           <div class="metric-value" id="dash-active-sec">—</div>
           <span class="metric-caption">with content</span>
         </div>
-        <div class="section-card metric-card">
+        <div class="theme-panel theme-panel--tight theme-panel--metric">
           <span class="metric-label">Store size</span>
           <div class="metric-value" id="dash-size">—</div>
           <span class="metric-caption">KB on disk</span>
         </div>
-        <div class="section-card metric-card">
+        <div class="theme-panel theme-panel--tight theme-panel--metric">
           <span class="metric-label">Date range</span>
-          <div class="mt-1 flex items-center gap-1 font-mono text-sm font-semibold text-ink"><span id="dash-oldest">—</span><span class="text-mute">→</span><span id="dash-newest">—</span></div>
+          <div class="stats-date-range"><span id="dash-oldest">—</span><span class="stats-date-range__arrow">→</span><span id="dash-newest">—</span></div>
           <span class="metric-caption">oldest to newest</span>
         </div>
       </div>
 
-      <div class="dashboard-grid">
-        <div class="section-card">
+      <div class="theme-grid theme-grid--flush">
+        <div class="theme-panel">
           <div class="section-kicker">Entries by section</div>
           <div id="dash-section-bars"></div>
         </div>
-        <div class="section-card">
+        <div class="theme-panel">
           <div class="section-kicker">Recent entries</div>
           <div id="dash-recent-list"></div>
         </div>
@@ -252,7 +246,7 @@
         <span class="page-updated" id="skills-updated"></span>
       </div>
       <div id="skills-root">
-        <div class="page-loading-card">Loading…</div>
+        <div class="theme-panel theme-panel--loading">Loading…</div>
       </div>
     </div>
   </div>
@@ -261,7 +255,7 @@
     <div class="page-shell">
       <h2 class="page-title page-title-gap">Settings</h2>
       <div id="settings-form-root">
-        <div class="page-loading-card">Loading…</div>
+        <div class="theme-panel theme-panel--loading">Loading…</div>
       </div>
     </div>
   </div>
@@ -273,7 +267,7 @@
 
 <script>
 const state = {
-  view: 'dashboard',
+  view: 'memories',
   workstreamSurfaceFocus: 'overview',
   section: null,
   config: null,
@@ -538,8 +532,8 @@ function renderInlineWordDiff(leftText, rightText, side) {
   }
 
   const diffClass = side === 'left'
-    ? 'rounded bg-[rgba(192,64,64,0.18)] px-1 text-danger'
-    : 'rounded bg-[rgba(48,184,112,0.18)] px-1 text-[#1f7a4f]';
+    ? 'diff-inline-change diff-inline-change--removed'
+    : 'diff-inline-change diff-inline-change--added';
   return `${before}<span class="${diffClass}">${renderEscapedTokens(changedTokens)}</span>${after}`;
 }
 
@@ -554,23 +548,23 @@ function renderDiffCell(row, side) {
 function renderSideBySideDiff(diffText) {
   const rows = parseUnifiedDiff(diffText);
   if (!rows.length) {
-    return '<div class="rounded-xl border border-line bg-panelSoft px-4 py-6 text-center text-sm text-mute">No content changes.</div>';
+    return '<div class="theme-panel theme-panel--soft theme-panel--empty">No content changes.</div>';
   }
 
   const rowClasses = {
-    context: 'bg-panel',
-    changed: 'bg-[rgba(255,196,0,0.08)]',
-    added: 'bg-[rgba(48,184,112,0.10)]',
-    removed: 'bg-[rgba(192,64,64,0.10)]',
+    context: 'diff-row--context',
+    changed: 'diff-row--changed',
+    added: 'diff-row--added',
+    removed: 'diff-row--removed',
   };
 
   return `
-    <div class="overflow-hidden rounded-xl border border-line bg-panel shadow-hairline">
+    <div class="theme-panel theme-panel--shell">
       <div class="diff-header">
         <div>From</div>
         <div>To</div>
       </div>
-      <div class="max-h-[50vh] overflow-auto">
+      <div class="diff-scroll">
         ${rows.map((row) => `
           <div class="diff-row ${rowClasses[row.type] || rowClasses.context}">
             <div class="${row.left ? '' : 'muted'}">${renderDiffCell(row, 'left')}</div>
@@ -773,13 +767,13 @@ function parseFrontmatter(text) {
 function renderSkillFrontmatter(attributes) {
   if (!attributes.length) return '';
   return `
-    <section class="mb-5 rounded-2xl border border-line bg-panelSoft/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
-      <div class="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-mute">Frontmatter</div>
-      <dl class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <section class="theme-panel theme-panel--margin">
+      <div class="skill-frontmatter__title">Frontmatter</div>
+      <dl class="skill-frontmatter__grid">
         ${attributes.map(({ key, value }) => `
-          <div class="rounded-xl border border-line bg-panel px-3 py-2">
-            <dt class="text-[10px] font-bold uppercase tracking-[0.08em] text-mute">${escHtml(key || 'field')}</dt>
-            <dd class="mt-1 break-words font-mono text-[12px] leading-5 text-ink">${escHtml(value || '—')}</dd>
+          <div class="skill-frontmatter__item">
+            <dt class="skill-frontmatter__key">${escHtml(key || 'field')}</dt>
+            <dd class="skill-frontmatter__value">${escHtml(value || '—')}</dd>
           </div>
         `).join('')}
       </dl>
@@ -791,7 +785,7 @@ function renderModelSelect(currentValue) {
   const opts = semanticModels.map((m) =>
     `<option value="${escHtml(m.name)}" ${m.name === currentValue ? 'selected' : ''} title="${escHtml(m.description)}">${escHtml(m.label)}</option>`
   ).join('');
-  return `<select class="w-full rounded-xl border border-line bg-shell px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-[rgba(4,216,231,0.12)]" id="cfg-model">${opts}</select>`;
+  return `<select class="field-control settings-model-select" id="cfg-model">${opts}</select>`;
 }
 
 function toast(msg, type = 'info', duration = 3000) {
@@ -808,15 +802,6 @@ function toast(msg, type = 'info', duration = 3000) {
   }, duration);
 }
 
-function baseButtonClasses(kind = 'ghost', small = false) {
-  const size = small ? ' small-button' : '';
-  return `modal-button ${kind}${size}`;
-}
-
-function textInputClasses(multiline = false) {
-  return `field-control${multiline ? ' multiline' : ''}`;
-}
-
 function renderSections() {
   if (!state.config) return;
   const sections = state.config.sections || [];
@@ -827,8 +812,8 @@ function renderSections() {
 
   let html = `
     <button class="section-button ${allActive ? 'active section-button--active' : ''}" data-section="" ${allActive ? `style="${allSectionVars}"` : ''}>
-      <span class="w-4 text-center section-button__bullet" ${allActive ? 'style="--section-color: var(--accent);"' : ''}>◉</span>
-      <span class="flex-1">All entries</span>
+      <span class="section-button__bullet section-button__bullet--all" ${allActive ? 'style="--section-color: var(--accent);"' : ''}>◉</span>
+      <span class="section-button__label">All entries</span>
       <span class="count-pill ${allActive ? 'count-pill--active' : ''}" id="count-all" ${allActive ? `style="${allSectionVars}"` : ''}>${state.total || ''}</span>
     </button>`;
 
@@ -839,7 +824,7 @@ function renderSections() {
     html += `
       <button class="section-button ${active ? 'active section-button--active' : ''}" data-section="${escHtml(s)}" style="${active ? activeVars : `--section-color:${theme.color};`}">
         <span class="section-button__dot"></span>
-        <span class="flex-1 truncate">${escHtml(s)}</span>
+        <span class="section-button__label section-button__label--truncate">${escHtml(s)}</span>
         <span class="count-pill ${active ? 'count-pill--active' : ''}" id="count-${escHtml(s)}" ${active ? `style="${activeVars}"` : ''}>—</span>
       </button>`;
   }
@@ -875,10 +860,10 @@ function renderWorkstreamSummary(items) {
   const activeQueue = queueItems.filter((item) => item.status === 'active').length;
   const latest = items[0]?.updated_at || '';
   document.getElementById('workstream-summary').innerHTML = `
-    <div class="pill-row justify-between">
+    <div class="pill-row pill-row--split">
       <div>
-        <div class="section-title">Operational map</div>
-        <div class="page-subtitle">Primary operational workstreams for continuity, execution packaging, validation pressure and handoff state.</div>
+        <div class="section-title">At a glance</div>
+        <div class="page-subtitle">Current workstreams, review pressure and what is ready to resume.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
@@ -901,39 +886,39 @@ function renderOperationalQueue(items) {
   const ready = items.filter((item) => item.status === 'ready').length;
 
   summaryRoot.innerHTML = `
-    <div class="queue-summary-grid">
-      <div class="queue-stat">
-        <span class="queue-stat-label">Queue items</span>
-        <span class="queue-stat-value">${escHtml(items.length)}</span>
+    <div class="theme-grid theme-grid--metrics theme-grid--flush page-section-gap">
+      <div class="theme-panel layout-center">
+        <span class="memory-stat-value">${escHtml(items.length)}</span>
+        <span class="memory-stat-label">Queue items</span>
       </div>
-      <div class="queue-stat">
-        <span class="queue-stat-label">Active</span>
-        <span class="queue-stat-value">${escHtml(active)}</span>
+      <div class="theme-panel layout-center">
+        <span class="memory-stat-value">${escHtml(active)}</span>
+        <span class="memory-stat-label">Active</span>
       </div>
-      <div class="queue-stat">
-        <span class="queue-stat-label">Awaiting review</span>
-        <span class="queue-stat-value">${escHtml(awaitingReview)}</span>
+      <div class="theme-panel layout-center">
+        <span class="memory-stat-value">${escHtml(awaitingReview)}</span>
+        <span class="memory-stat-label">Awaiting review</span>
       </div>
-      <div class="queue-stat">
-        <span class="queue-stat-label">Resume ready</span>
-        <span class="queue-stat-value">${escHtml(ready)}</span>
+      <div class="theme-panel layout-center">
+        <span class="memory-stat-value">${escHtml(ready)}</span>
+        <span class="memory-stat-label">Resume ready</span>
       </div>
     </div>
   `;
 
   if (!items.length) {
-    listRoot.innerHTML = '<div class="muted empty-copy">No queue items yet. Active workstreams will surface here when executions or review pressure are detected.</div>';
+    listRoot.innerHTML = '<div class="muted empty-copy">No next actions right now. Work that needs attention will appear here.</div>';
     return;
   }
 
   listRoot.innerHTML = items.slice(0, 6).map((item) => `
-    <article class="queue-card" data-queue-workstream="${escHtml(item.workstream_id || '')}">
-      <div class="queue-card-top">
+    <article class="theme-panel theme-panel--compact" data-queue-workstream="${escHtml(item.workstream_id || '')}">
+      <div class="pill-row" style="margin-top:0;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
         <span class="tag-pill mono">${escHtml(item.status || 'queued')}</span>
         <span class="card-timestamp">${escHtml(relTime(item.updated_at || item.created_at || ''))}</span>
       </div>
-      <div class="queue-card-title">${escHtml(previewText(item.goal || item.workstream_id || 'Untitled queue item', 68))}</div>
-      <div class="queue-card-copy">${escHtml(previewText(item.summary || item.next_execution?.goal || 'No queue summary available.', 150))}</div>
+      <div class="card-title card-title--compact">${escHtml(previewText(item.goal || item.workstream_id || 'Untitled queue item', 68))}</div>
+      <div class="detail-copy">${escHtml(previewText(item.summary || item.next_execution?.goal || 'No queue summary available.', 150))}</div>
       <div class="pill-row">
         ${item.workstream_id ? `<span class="tag-pill mono">${escHtml(item.workstream_id)}</span>` : ''}
         ${item.next_execution?.goal ? `<span class="tag-pill mono">next:${escHtml(previewText(item.next_execution.goal, 28))}</span>` : ''}
@@ -958,15 +943,15 @@ function renderDashboardList(rootId, items, emptyMessage) {
     return;
   }
   root.innerHTML = items.map((item) => `
-    <div class="section-card detail-card detail-card--stacked">
-      <div class="flex items-start gap-3">
-        <div class="flex-1">
+    <div class="theme-panel theme-panel--tight">
+      <div class="dashboard-list-row">
+        <div class="dashboard-list-row__body">
           <div class="field-label">${escHtml(item.title || '')}</div>
           <div class="detail-copy">${escHtml(item.body || '')}</div>
         </div>
         ${item.meta ? `<span class="tag-pill mono">${escHtml(item.meta)}</span>` : ''}
       </div>
-      ${item.action ? `<div class="card-actions card-actions--flush card-actions--start"><button class="${baseButtonClasses(item.action.variant || 'ghost', true)}" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-workstream="${escHtml(item.action.workstreamId || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></div>` : ''}
+      ${item.action ? `<div class="card-actions card-actions--flush card-actions--start"><button class="app-button ${escHtml(item.action.variant || 'ghost')} app-button--small" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-workstream="${escHtml(item.action.workstreamId || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></div>` : ''}
     </div>
   `).join('');
   root.querySelectorAll('[data-dashboard-action]').forEach((button) => {
@@ -1031,7 +1016,7 @@ async function renderDashboardView() {
       : null;
 
     document.getElementById('dashboard-workstreams-count').textContent = String(workstreams.length);
-    document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent execution history` : 'no active workstreams';
+  document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent activity` : 'no active workstreams';
     document.getElementById('dashboard-execution-count').textContent = String(executionBacklog);
     document.getElementById('dashboard-execution-caption').textContent = executionBacklog ? `${queueItems.filter((item) => item.status === 'awaiting_review').length} awaiting review · ${queueItems.filter((item) => item.status === 'active').length} active` : 'no execution backlog';
     document.getElementById('dashboard-review-count').textContent = String(reviewItems.length);
@@ -1083,21 +1068,21 @@ async function renderDashboardView() {
 
 function renderWorkstreamCard(item) {
   const selected = item.workstream_id === state.selectedWorkstreamId ? ' is-selected' : '';
-  const statusClass = item.operational_status === 'active' ? 'ws-dot--active' : item.operational_status === 'awaiting_review' ? 'ws-dot--review' : 'ws-dot--idle';
+  const statusClass = item.operational_status === 'active' ? 'workstream-list-card__status--active' : item.operational_status === 'awaiting_review' ? 'workstream-list-card__status--review' : 'workstream-list-card__status--idle';
   return `
-    <div class="ws-row${selected}" data-workstream-id="${escHtml(item.workstream_id)}">
-      <div class="ws-dot ${statusClass}"></div>
-      <div class="ws-row-body">
-        <div class="ws-row-title">${escHtml(previewText(item.goal || item.workstream_id, 58))}</div>
-        <div class="ws-row-meta">${escHtml(item.workstream_id)} · ${escHtml(item.operational_status || 'active')} · ${escHtml(String(item.entry_count || 0))} entries</div>
+    <div class="workstream-list-card${selected}" data-workstream-id="${escHtml(item.workstream_id)}">
+      <div class="workstream-list-card__status ${statusClass}"></div>
+      <div class="workstream-list-card__body">
+        <div class="workstream-list-card__title">${escHtml(previewText(item.goal || item.workstream_id, 58))}</div>
+        <div class="workstream-list-card__meta">${escHtml(item.workstream_id)} · ${escHtml(item.operational_status || 'active')} · ${escHtml(String(item.entry_count || 0))} entries</div>
       </div>
-      <button class="ws-row-open" data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
+      <button class="workstream-list-card__action" data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
     </div>`;
 }
 
 function renderResumeListSection(title, items, ordered = false) {
   return `
-    <div class="section-card detail-card">
+    <div class="theme-panel theme-panel--list theme-panel--margin">
       <div class="field-label">${escHtml(title)}</div>
       <div class="markdown-body">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
     </div>
@@ -1132,7 +1117,7 @@ function renderWorkstreamTimeline(items) {
 function renderWorkstreamDetail() {
   const root = document.getElementById('workstream-detail-root');
   if (!state.selectedWorkstreamId) {
-    root.innerHTML = '<div class="empty-state">Select a workstream to inspect its current state, review, memory trail and handoff actions.</div>';
+    root.innerHTML = '<div class="theme-panel theme-panel--empty">Select a workstream to inspect its current state, review, memory trail and handoff actions.</div>';
     return;
   }
   if (
@@ -1141,11 +1126,11 @@ function renderWorkstreamDetail() {
     !state.workstreamDetail.stateData ||
     !state.workstreamDetail.resumeData
   ) {
-    root.innerHTML = '<div class="loading-state">Loading workstream detail…</div>';
+    root.innerHTML = '<div class="theme-panel theme-panel--loading">Loading workstream detail…</div>';
     return;
   }
   if (state.workstreamDetail.error) {
-    root.innerHTML = `<div class="empty-state">Failed to load workstream detail: ${escHtml(state.workstreamDetail.error)}</div>`;
+    root.innerHTML = `<div class="theme-panel theme-panel--danger">Failed to load workstream detail: ${escHtml(state.workstreamDetail.error)}</div>`;
     return;
   }
 
@@ -1157,14 +1142,14 @@ function renderWorkstreamDetail() {
 
   if (focus === 'overview') {
     const nextExecutionPanel = `
-      <section id="workstream-section-overview" class="section-card detail-card">
+      <section id="workstream-section-overview" class="theme-panel theme-panel--margin">
         <div class="field-label">Next execution package</div>
         <div>${escHtml(resumeData.next_execution?.goal || resumeData.goal || '')}</div>
         <div class="detail-note">resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</div>
       </section>
     `;
     const switchPanel = switchData ? `
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Anti-context-switch package</div>
         <div>${escHtml(switchData.current_workstream_id)} -> ${escHtml(switchData.target_workstream_id)}</div>
         <div class="detail-note">needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</div>
@@ -1172,37 +1157,37 @@ function renderWorkstreamDetail() {
       </div>
     ` : '';
     tabContent = `
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Goal</div>
         <div>${escHtml(resumeData.goal || '')}</div>
         <div class="detail-note">${escHtml(resumeData.summary || '')}</div>
       </div>
-      <div class="compare-grid detail-grid">
-        <div class="section-card detail-card detail-card--tight"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
-        <div class="section-card detail-card detail-card--tight"><div class="field-label">Review pending</div><div>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</div></div>
+      <div class="theme-grid">
+        <div class="theme-panel theme-panel--tight"><div class="field-label">Entries</div><div>${escHtml(stateData.entry_count)}</div></div>
+        <div class="theme-panel theme-panel--tight"><div class="field-label">Review pending</div><div>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</div></div>
       </div>
       ${nextExecutionPanel}
       ${switchPanel}
       ${renderResumeListSection('Current state', resumeData.current_state)}
       ${renderResumeListSection('Open loops', resumeData.open_loops)}
       ${renderResumeListSection('Next steps', resumeData.next_steps, true)}
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Restore context</div>
         <div class="mono">section=${escHtml(resumeData.restore_context?.section || '')} query=${escHtml(resumeData.restore_context?.query || '')} include_deleted=${resumeData.restore_context?.include_deleted ? 'true' : 'false'}</div>
       </div>
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Related entries</div>
         <div class="pill-row">${(resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>'}</div>
       </div>
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Execution history</div>
         <div class="detail-note">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest execution ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
       </div>
     `;
   } else if (focus === 'review') {
     tabContent = `
-      <section id="workstream-section-review" class="section-card detail-card">
-        <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
+      <section id="workstream-section-review" class="theme-panel theme-panel--margin">
+        <div class="detail-section-head detail-section-head--split">
           <div>
             <div class="field-label">Review in this workstream</div>
             <div class="detail-note">Validation stays attached to the operational workstream instead of floating as a separate workflow.</div>
@@ -1210,35 +1195,35 @@ function renderWorkstreamDetail() {
           <span class="tag-pill mono">pending:${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</span>
         </div>
         ${reviewItems.length ? `
-          <div class="version-grid detail-stack-gap">
+          <div class="theme-grid theme-grid--stacked">
             ${reviewItems.slice(0, 4).map((item) => `
-              <div class="section-card detail-card detail-card--compact">
+              <div class="theme-panel theme-panel--compact theme-panel--margin">
                 <div class="field-label">${escHtml(previewText(item.summary || item.entry_id, 58))}</div>
                 <div class="detail-note">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
                 <div class="card-actions card-actions--flush card-actions--start">
-                  <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
+                  <button class="app-button ghost app-button--small" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
                 </div>
               </div>
             `).join('')}
           </div>
         ` : '<div class="muted empty-copy">No pending review items for this workstream.</div>'}
         <div class="card-actions card-actions--flush card-actions--start">
-          <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Inspect review queue</button>
+          <button class="app-button ghost app-button--small" id="btn-persisted-workstream-review">Inspect review queue</button>
         </div>
       </section>
     `;
   } else if (focus === 'handoffs') {
     const timeline = renderWorkstreamTimeline(stateData.timeline || []);
     const handoffGoal = handoffData?.goal ? `
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Latest structured handoff</div>
         <div>${escHtml(handoffData.goal)}</div>
         <div class="detail-note">${escHtml(handoffData.summary || '')}</div>
       </div>
     ` : '';
     tabContent = `
-      <section id="workstream-section-handoffs" class="section-card detail-card">
-        <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
+      <section id="workstream-section-handoffs" class="theme-panel theme-panel--margin">
+        <div class="detail-section-head detail-section-head--split">
           <div>
             <div class="field-label">Handoffs in this workstream</div>
             <div class="detail-note">Continuity packages stay inside the same workstream so restore state and next execution stay visible together.</div>
@@ -1246,22 +1231,22 @@ function renderWorkstreamDetail() {
           <span class="tag-pill mono">count:${escHtml(handoffItems.length)}</span>
         </div>
         ${handoffItems.length ? `
-          <div class="version-grid detail-stack-gap">
+          <div class="theme-grid theme-grid--stacked">
             ${handoffItems.slice(0, 4).map((entry) => `
-              <div class="section-card detail-card detail-card--compact">
+              <div class="theme-panel theme-panel--compact theme-panel--margin">
                 <div class="field-label">${escHtml(previewText(entry.summary || entry.id, 58))}</div>
                 <div class="detail-note">${escHtml(relTime(entry.updated_at || entry.created_at || ''))} · execution ${escHtml(entry.session_id || 'not recorded')}</div>
                 <div class="detail-copy">${escHtml(previewText(entry.summary || 'No handoff summary available.', 140))}</div>
                 <div class="card-actions card-actions--flush card-actions--start">
-                  <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
-                  <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
+                  <button class="app-button ghost app-button--small" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
+                  <button class="app-button ghost app-button--small" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
                 </div>
               </div>
             `).join('')}
           </div>
         ` : '<div class="muted empty-copy">No handoffs recorded for this workstream yet.</div>'}
       </section>
-      <div class="section-card detail-card">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">Workstream timeline</div>
         ${timeline}
       </div>
@@ -1270,7 +1255,7 @@ function renderWorkstreamDetail() {
   }
 
   root.innerHTML = `
-    <div class="panel thread-detail-shell">
+    <div class="theme-panel theme-panel--shell">
       <div class="section-header section-header--tight">
         <div>
           <div class="page-title thread-detail-title">${escHtml(workstreamId)}</div>
@@ -1279,7 +1264,7 @@ function renderWorkstreamDetail() {
       </div>
       ${tabContent}
       <div class="card-actions card-actions--flush card-actions--start">
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-state">State</button>
+        <button class="app-button ghost app-button--small" id="btn-persisted-workstream-state">State</button>
       </div>
     </div>
   `;
@@ -1341,7 +1326,7 @@ function renderWorkstreams(items) {
   const grid = document.getElementById('workstream-grid');
   renderWorkstreamSummary(items);
   if (!items.length) {
-    grid.innerHTML = '<div class="empty-state">No workstreams yet. Open a workstream to manage state, review, memory trail and handoffs from one place.</div>';
+    grid.innerHTML = '<div class="theme-panel theme-panel--empty">No workstreams yet. Open a workstream to manage state, review, memory trail and handoffs from one place.</div>';
     state.selectedWorkstreamId = null;
     state.workstreamDetail = null;
     renderWorkstreamDetail();
@@ -1406,9 +1391,9 @@ async function loadWorkstreams() {
     }
     await selectWorkstream(nextSelected);
   } catch (e) {
-    document.getElementById('workstream-grid').innerHTML = `<div class="empty-state">Failed to load workstreams: ${escHtml(e.message)}</div>`;
+    document.getElementById('workstream-grid').innerHTML = `<div class="theme-panel theme-panel--danger">Failed to load workstreams: ${escHtml(e.message)}</div>`;
     const queueRoot = document.getElementById('workstream-queue-list');
-    if (queueRoot) queueRoot.innerHTML = `<div class="empty-state">Failed to load operational queue: ${escHtml(e.message)}</div>`;
+    if (queueRoot) queueRoot.innerHTML = `<div class="theme-panel theme-panel--danger">Failed to load operational queue: ${escHtml(e.message)}</div>`;
     document.getElementById('workstream-detail-root').innerHTML = '';
   }
 }
@@ -1420,10 +1405,10 @@ function renderHandoffCard(entry) {
     entry.session_id ? `<span class="tag-pill mono">session:${escHtml(entry.session_id)}</span>` : '',
   ].filter(Boolean).join('');
   const workstreamActions = entry.workstream_id ? `
-        <button class="${baseButtonClasses('ghost', true)}" data-workstream-state="${escHtml(entry.id)}">State</button>
+        <button class="app-button ghost app-button--small" data-workstream-state="${escHtml(entry.id)}">State</button>
   ` : '';
   return `
-    <article class="handoff-card" data-handoff-id="${escHtml(entry.id)}">
+    <article class="handoff-card theme-panel theme-panel--solid" data-handoff-id="${escHtml(entry.id)}">
       <div class="card-header card-header--handoff">
         <span class="section-pill section-pill--handoff">handoff</span>
         ${deletedBadge}
@@ -1435,7 +1420,7 @@ function renderHandoffCard(entry) {
         <div class="detail-copy">${escHtml(previewText(entry.content.replace(/\s+/g, ' '), 180))}</div>
       </div>
       <div class="card-actions">
-        <button class="${baseButtonClasses('ghost', true)}" data-handoff-open="${escHtml(entry.id)}">Open</button>
+        <button class="app-button ghost app-button--small" data-handoff-open="${escHtml(entry.id)}">Open</button>
         ${workstreamActions}
       </div>
     </article>`;
@@ -1449,7 +1434,7 @@ function renderReviewCard(item) {
   const selected = item.entry_id === state.selectedReviewId ? ' is-selected' : '';
   const agentReview = item.agent_review || {};
   return `
-    <article class="handoff-card${selected}" data-review-id="${escHtml(item.entry_id)}">
+    <article class="handoff-card theme-panel theme-panel--solid${selected}" data-review-id="${escHtml(item.entry_id)}">
       <div class="card-header card-header--review">
         <span class="tag-pill mono">${escHtml(item.entry_kind || 'entry')}</span>
         <span class="tag-pill">${escHtml(item.review_status || 'pending')}</span>
@@ -1463,7 +1448,7 @@ function renderReviewCard(item) {
         <div class="detail-copy">${escHtml(item.workstream_id || 'No workstream linked')}</div>
       </div>
       <div class="card-actions">
-        <button class="${baseButtonClasses('ghost', true)}" data-review-open="${escHtml(item.entry_id)}">Inspect</button>
+        <button class="app-button ghost app-button--small" data-review-open="${escHtml(item.entry_id)}">Inspect</button>
       </div>
     </article>`;
 }
@@ -1472,7 +1457,7 @@ function renderReviewCard(item) {
 
 function openHandoffViewModal(entry) {
   openModal(modalShell(`
-    <div class="modal-header">
+    <div class="modal-panel__header">
       <div>
         <div class="modal-title">Handoff</div>
         <div class="modal-subtitle">${escHtml(entry.id)} · ${escHtml(relTime(entry.updated_at || entry.created_at))}</div>
@@ -1489,9 +1474,9 @@ function openHandoffViewModal(entry) {
       </div>
     </div>
     <div class="modal-footer">
-      ${entry.workstream_id ? `<button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-state">Workstream state</button>` : ''}
-      ${entry.workstream_id ? `<button class="${baseButtonClasses('ghost')}" id="btn-handoff-open-resume">Workstream resume</button>` : ''}
-      <button class="${baseButtonClasses('primary')}" id="btn-handoff-history">History</button>
+      ${entry.workstream_id ? `<button class="app-button ghost" id="btn-handoff-open-state">Workstream state</button>` : ''}
+      ${entry.workstream_id ? `<button class="app-button ghost" id="btn-handoff-open-resume">Workstream resume</button>` : ''}
+      <button class="app-button primary" id="btn-handoff-history">History</button>
     </div>
   `, 'modal-panel--wide'));
   if (entry.workstream_id) {
@@ -1514,13 +1499,13 @@ async function openWorkstreamStateModal(workstreamId, sessionId = null) {
     if (sessionId) params.session_id = sessionId;
     const data = await api.workstreamState(workstreamId, params);
     const sessions = (data.sessions || []).map((session) => `
-      <div class="section-card detail-card detail-card--compact">
+      <div class="theme-panel theme-panel--compact">
         <div class="field-label">${escHtml(session.session_id || '(none)')}</div>
         <div class="detail-note">entries=${escHtml(session.entry_count)} latest=${escHtml(session.latest_entry_id || '')}</div>
       </div>
     `).join('') || '<div class="muted">No sessions aggregated.</div>';
     openModal(modalShell(`
-      <div class="modal-header">
+      <div class="modal-panel__header">
         <div>
           <div class="modal-title">Workstream state</div>
           <div class="modal-subtitle">${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</div>
@@ -1528,24 +1513,24 @@ async function openWorkstreamStateModal(workstreamId, sessionId = null) {
         <button class="modal-close">×</button>
       </div>
       <div class="modal-body">
-        <div class="compare-grid detail-grid compare-grid--stacked">
-          <div class="section-card"><div class="field-label">Entries</div><div>${escHtml(data.entry_count)}</div></div>
-          <div class="section-card"><div class="field-label">Sessions</div><div>${escHtml(data.session_count)}</div></div>
+        <div class="theme-grid theme-grid--stacked">
+          <div class="theme-panel theme-panel--tight"><div class="field-label">Entries</div><div>${escHtml(data.entry_count)}</div></div>
+          <div class="theme-panel theme-panel--tight"><div class="field-label">Sessions</div><div>${escHtml(data.session_count)}</div></div>
         </div>
-        <div class="section-card detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--margin">
           <div class="field-label">Latest entry</div>
           <div class="mono">${escHtml(data.latest_entry?.id || '')}</div>
           <div class="detail-note">kind=${escHtml(data.latest_entry?.entry_kind || '')} session=${escHtml(data.latest_entry?.session_id || '')}</div>
         </div>
-        <div class="compare-grid detail-grid compare-grid--stacked">
-          <div class="section-card"><div class="field-label">Latest handoff</div><div class="mono">${escHtml(data.latest_handoff?.id || '—')}</div></div>
-          <div class="section-card"><div class="field-label">Latest state</div><div class="mono">${escHtml(data.latest_state?.id || '—')}</div></div>
+        <div class="theme-grid theme-grid--stacked">
+          <div class="theme-panel theme-panel--tight"><div class="field-label">Latest handoff</div><div class="mono">${escHtml(data.latest_handoff?.id || '—')}</div></div>
+          <div class="theme-panel theme-panel--tight"><div class="field-label">Latest state</div><div class="mono">${escHtml(data.latest_state?.id || '—')}</div></div>
         </div>
         <div class="field-label">Aggregated sessions</div>
-        <div class="version-grid">${sessions}</div>
+        <div class="theme-grid">${sessions}</div>
       </div>
       <div class="modal-footer">
-        <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Close</button>
+        <button class="app-button ghost" onclick="closeModal()">Close</button>
       </div>
     `, 'modal-panel--wide'));
   } catch (e) {
@@ -1559,13 +1544,13 @@ async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
     if (sessionId) params.session_id = sessionId;
     const data = await api.workstreamResume(workstreamId, params);
     const listBlock = (title, items, ordered = false) => `
-      <div class="section-card detail-card detail-card--stacked">
+      <div class="theme-panel theme-panel--margin">
         <div class="field-label">${escHtml(title)}</div>
         <div class="markdown-body">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
       </div>
     `;
     openModal(modalShell(`
-      <div class="modal-header">
+      <div class="modal-panel__header">
         <div>
           <div class="modal-title">Workstream resume</div>
           <div class="modal-subtitle">${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</div>
@@ -1573,23 +1558,23 @@ async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
         <button class="modal-close">×</button>
       </div>
       <div class="modal-body">
-        <div class="section-card detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--margin">
           <div class="field-label">Goal</div>
           <div>${escHtml(data.goal || '')}</div>
           <div class="detail-note">${escHtml(data.summary || '')}</div>
         </div>
-        <div class="compare-grid detail-grid compare-grid--stacked">
-          <div class="section-card"><div class="field-label">Latest entry</div><div class="mono">${escHtml(data.latest_entry_id || '')}</div></div>
-          <div class="section-card"><div class="field-label">Focus entries</div><div class="mono">${escHtml((data.focus_entry_ids || []).join(', ') || 'none')}</div></div>
+        <div class="theme-grid theme-grid--stacked">
+          <div class="theme-panel theme-panel--tight"><div class="field-label">Latest entry</div><div class="mono">${escHtml(data.latest_entry_id || '')}</div></div>
+          <div class="theme-panel theme-panel--tight"><div class="field-label">Focus entries</div><div class="mono">${escHtml((data.focus_entry_ids || []).join(', ') || 'none')}</div></div>
         </div>
         ${listBlock('Current state', data.current_state)}
         ${listBlock('Open loops', data.open_loops)}
         ${listBlock('Next steps', data.next_steps, true)}
-        <div class="section-card detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--margin">
           <div class="field-label">Restore context</div>
           <div class="mono">section=${escHtml(data.restore_context?.section || '')} query=${escHtml(data.restore_context?.query || '')} include_deleted=${data.restore_context?.include_deleted ? 'true' : 'false'}</div>
         </div>
-        <div class="section-card detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--margin">
           <div class="field-label">Compressed context</div>
           <div class="pill-row">
             <span class="tag-pill mono">essential:${escHtml((data.compressed_context?.essential || []).length)}</span>
@@ -1599,22 +1584,22 @@ async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
             <span class="tag-pill mono">obsolete:${escHtml((data.compressed_context?.obsolete || []).length)}</span>
           </div>
         </div>
-        <div class="section-card detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--margin">
           <div class="field-label">Next execution package</div>
           <div>${escHtml(data.next_execution?.goal || data.goal || '')}</div>
           <div class="detail-note">resume_mode=${escHtml(data.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((data.next_execution?.essential_context || []).length)} risky=${escHtml((data.next_execution?.risky_context || []).length)}</div>
         </div>
-        <div class="section-card detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--margin">
           <div class="field-label">What changed since the last anchor</div>
           <div class="markdown-body">${renderMarkdown((data.what_changed || []).map((item) => `- ${item.summary || item.id}`).join('\n') || '_none_')}</div>
         </div>
-        <div class="section-card detail-card detail-card--tight">
+        <div class="theme-panel theme-panel--compact theme-panel--margin">
           <div class="field-label">Related entries</div>
           <div class="pill-row">${(data.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>'}</div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Close</button>
+        <button class="app-button ghost" onclick="closeModal()">Close</button>
       </div>
     `, 'modal-panel--wide'));
   } catch (e) {
@@ -1663,17 +1648,17 @@ function renderEntryCard(entry) {
     : '';
 
   return `
-    <div class="entry-card theme-card-frame" data-id="${escHtml(entry.id)}" style="${themeStyle}">
+    <div class="entry-card theme-panel theme-panel--solid" data-id="${escHtml(entry.id)}" style="${themeStyle}">
       <div class="entry-card-accent" style="background:linear-gradient(90deg, ${rgba(theme.color, 0.85)} 0%, ${rgba(theme.color, 0.18)} 100%)"></div>
-      <div class="entry-card-top theme-entry-top">
-        <div class="entry-card-section theme-entry-section">
+      <div class="entry-card-top">
+        <div class="entry-card-section">
           <span class="entry-card-section-dot" style="background:${theme.color}"></span>
           ${escHtml(entry.section)}
         </div>
         <div class="entry-card-meta">
           ${deletedBadge}
           ${scoreBadge}
-          <span class="entry-card-time ${isEdited ? 'text-ink' : 'text-mute'}" title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</span>
+          <span class="entry-card-time ${isEdited ? 'entry-card-time--edited' : 'entry-card-time--muted'}" title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</span>
         </div>
       </div>
       <div class="entry-card-main">
@@ -1695,10 +1680,10 @@ function renderCards(entries, append = false) {
 
   if (entries.length === 0 && !append) {
     grid.innerHTML = `
-      <div class="col-span-full rounded-2xl border border-dashed border-line bg-panel px-5 py-16 text-center text-mute shadow-hairline">
-        <div class="mb-3 text-4xl">📭</div>
-        <h3 class="mb-1 text-base font-semibold text-ink">${state.searchMode ? 'No results found' : 'No entries yet'}</h3>
-        <p class="text-sm">${state.searchMode ? 'Try a different search term.' : 'Click "+ New Entry" to add your first memory.'}</p>
+      <div class="theme-panel layout-center" style="padding: 64px 20px; border-style: dashed;">
+        <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+        <h3 style="font-size: 18px; font-weight: 500; color: var(--fg); margin: 0 0 8px 0;">${state.searchMode ? 'No results found' : 'No entries yet'}</h3>
+        <p style="font-size: 14px; color: var(--mute); margin: 0;">${state.searchMode ? 'Try a different search term.' : 'Click "+ New Entry" to add your first memory.'}</p>
       </div>`;
     return;
   }
@@ -1737,7 +1722,7 @@ async function loadEntries(append = false) {
   state.loading = true;
   const grid = document.getElementById('cards-grid');
   if (!append) {
-    grid.innerHTML = '<div class="col-span-full flex items-center justify-center gap-3 rounded-2xl bg-panel px-5 py-10 text-sm text-mute shadow-hairline"><span class="inline-block h-[18px] w-[18px] animate-spin rounded-full border-2 border-line border-t-accent"></span>Loading…</div>';
+    grid.innerHTML = '<div class="theme-panel theme-panel--loading"><span class="memory-loading-state__spinner"></span>Loading…</div>';
   }
 
   const offset = append ? state.offset : 0;
@@ -1760,7 +1745,7 @@ async function loadEntries(append = false) {
     state.total = total;
     state.hasMore = data.has_more ?? false;
 
-    document.getElementById('section-title').textContent = state.section || 'Memory Ledger';
+    document.getElementById('section-title').textContent = state.section || 'Memory';
     document.getElementById('total-badge').textContent = total ? `${total} entries` : '';
 
     renderCards(items, append);
@@ -1784,7 +1769,7 @@ async function doSearch(query) {
   state.searchMode = true;
   state.searchQuery = query;
   const grid = document.getElementById('cards-grid');
-  grid.innerHTML = '<div class="col-span-full flex items-center justify-center gap-3 rounded-2xl bg-panel px-5 py-10 text-sm text-mute shadow-hairline"><span class="inline-block h-[18px] w-[18px] animate-spin rounded-full border-2 border-line border-t-accent"></span>Searching…</div>';
+  grid.innerHTML = '<div class="theme-panel theme-panel--loading"><span class="memory-loading-state__spinner"></span>Searching…</div>';
   document.getElementById('load-more-wrap').classList.add('hidden');
   document.getElementById('sort-select').classList.add('hidden');
   document.getElementById('section-title').textContent = 'Search results';
@@ -1862,7 +1847,7 @@ function openViewModal(entry) {
   const scoreBadge = entry.score != null ? `<span class="tag-pill theme-score-pill" style="${themeStyle}">${(entry.score * 100).toFixed(0)}%</span>` : '';
   const accessBadge = (entry.access_count || 0) > 0 ? `<span class="card-timestamp" title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</span>` : '';
   const deletedNotice = entry.deleted_at
-    ? `<div class="section-card detail-card detail-card--stacked tag-pill--deleted">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available for inspection.</div>`
+    ? `<div class="theme-panel theme-panel--alert">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available for inspection.</div>`
     : '';
 
   openModal(modalShell(`
@@ -1888,7 +1873,7 @@ function openViewModal(entry) {
       </div>
     </div>
     <div class="modal-footer">
-      <button class="${baseButtonClasses('ghost')}" id="btn-view-history">History</button>
+      <button class="app-button ghost" id="btn-view-history">History</button>
     </div>
   `, 'modal-panel--reading'));
   document.getElementById('btn-view-history').addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
@@ -1899,7 +1884,7 @@ async function openDiffModal(entry, fromVersion, toVersion) {
     const data = await api.diffVersions(entry.id, { from_version: String(fromVersion), to_version: String(toVersion) });
     const diffText = data.diff || '(no content changes)';
     openModal(modalShell(`
-      <div class="modal-header">
+      <div class="modal-panel__header">
         <div>
           <div class="modal-title">Diff for ${escHtml(entry.id)}</div>
           <div class="modal-subtitle">v${fromVersion} → v${toVersion}</div>
@@ -1907,7 +1892,7 @@ async function openDiffModal(entry, fromVersion, toVersion) {
         <button class="modal-close">×</button>
       </div>
       <div class="modal-body">
-        <div class="detail-stack-gap">
+        <div class="modal-stack">
           <div class="field-label">Side-by-side diff</div>
           ${renderSideBySideDiff(diffText)}
         </div>
@@ -1930,7 +1915,7 @@ async function openVersionsModal(entry) {
     const previousVersion = versions.length > 1 ? versions[versions.length - 2]?.version : currentVersion;
 
     openModal(modalShell(`
-      <div class="modal-header">
+      <div class="modal-panel__header">
         <div>
           <div class="modal-title">Version history</div>
           <div class="modal-subtitle">${escHtml(entry.id)} · ${versions.length} revision(s)</div>
@@ -1938,12 +1923,12 @@ async function openVersionsModal(entry) {
         <button class="modal-close">×</button>
       </div>
       <div class="modal-body">
-        <div class="panel panel-soft detail-card detail-card--stacked">
+        <div class="theme-panel theme-panel--soft">
           <div class="field-label">Compare revisions</div>
           <div class="detail-copy">Timeline stays focused on current vs previous for quick inspection. Older revisions can still be diffed against the current state directly from the timeline.</div>
         </div>
         <div class="field-label">Timeline</div>
-        <div class="space-y-4" id="timeline-root"></div>
+        <div class="timeline-list" id="timeline-root"></div>
       </div>
     `, 'modal-panel--wide'));
 
@@ -1959,31 +1944,31 @@ async function openVersionsModal(entry) {
         const preview = previewText(revision.content, 120);
         const activeBorder = isSelectedFrom || isSelectedTo ? `border-color:${theme.color}; box-shadow:0 0 0 1px ${theme.color}, 0 8px 24px ${theme.glow};` : '';
         return `
-          <div class="relative pl-10" data-timeline-card="${revision.version}">
-            ${!isLast ? '<div class="absolute bottom-[-14px] left-[15px] top-6 w-px bg-line"></div>' : ''}
-            <div class="absolute left-0 top-1.5 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-panel shadow-hairline" style="box-shadow:0 0 0 3px ${theme.softBg};">
-              <span class="h-2.5 w-2.5 rounded-full" style="background:${theme.color}"></span>
+          <div class="timeline-item" data-timeline-card="${revision.version}">
+            ${!isLast ? '<div class="timeline-item__rail"></div>' : ''}
+            <div class="timeline-item__node" style="box-shadow:0 0 0 3px ${theme.softBg};">
+              <span class="timeline-item__dot" style="background:${theme.color}"></span>
             </div>
-            <div class="overflow-hidden rounded-2xl border border-line bg-panel shadow-hairline transition" style="${activeBorder}">
-              <div class="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3" style="background:${theme.faint};">
-                <span class="rounded-full border border-line bg-panelSoft px-2 py-0.5 font-mono text-[11px] text-ink">v${revision.version}</span>
-                <span class="text-[11px] text-mute">${escHtml(revision.section || '')}</span>
-                ${revision.deleted_at ? '<span class="rounded-full border border-[rgba(192,64,64,0.25)] bg-[rgba(192,64,64,0.1)] px-2 py-0.5 text-[11px] font-semibold text-danger">deleted</span>' : ''}
-                ${isCurrent ? '<span class="rounded-full border border-[rgba(4,216,231,0.22)] bg-[rgba(4,216,231,0.12)] px-2 py-0.5 text-[11px] font-semibold text-ink">current</span>' : ''}
-                ${isSelectedFrom ? '<span class="rounded-full border border-[rgba(192,64,64,0.22)] bg-[rgba(192,64,64,0.10)] px-2 py-0.5 text-[11px] font-semibold text-danger">from</span>' : ''}
-                ${isSelectedTo ? '<span class="rounded-full border border-[rgba(48,184,112,0.22)] bg-[rgba(48,184,112,0.10)] px-2 py-0.5 text-[11px] font-semibold text-[#1f7a4f]">to</span>' : ''}
-                <span class="ml-auto text-[11px] text-mute">${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
+            <div class="theme-panel theme-panel--shell" style="${activeBorder}">
+              <div class="timeline-card__head" style="background:${theme.faint};">
+                <span class="timeline-badge timeline-badge--version">v${revision.version}</span>
+                <span class="timeline-badge timeline-badge--section">${escHtml(revision.section || '')}</span>
+                ${revision.deleted_at ? '<span class="timeline-badge timeline-badge--deleted">deleted</span>' : ''}
+                ${isCurrent ? '<span class="timeline-badge timeline-badge--current">current</span>' : ''}
+                ${isSelectedFrom ? '<span class="timeline-badge timeline-badge--from">from</span>' : ''}
+                ${isSelectedTo ? '<span class="timeline-badge timeline-badge--to">to</span>' : ''}
+                <span class="timeline-card__time">${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
               </div>
-              <div class="px-4 py-3">
-                <div class="mb-2 text-[12px] leading-6 text-ink">${escHtml(preview)}</div>
-                <div class="flex flex-wrap items-center gap-2 text-[11px] text-mute">
+              <div class="timeline-card__body">
+                <div class="timeline-card__preview">${escHtml(preview)}</div>
+                <div class="timeline-card__meta">
                   <span>Created ${escHtml(relTime(revision.created_at))}</span>
                   <span>•</span>
                   <span>Updated ${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
                 </div>
               </div>
-              <div class="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3">
-                ${!isCurrent ? `<button class="${baseButtonClasses('ghost', true)}" data-diff-version="${revision.version}">Diff to current</button>` : ''}
+              <div class="timeline-card__actions">
+                ${!isCurrent ? `<button class="app-button ghost app-button--small" data-diff-version="${revision.version}">Diff to current</button>` : ''}
               </div>
             </div>
           </div>`;
@@ -2004,36 +1989,36 @@ function openConsolidateModal() {
   const sections = state.config?.sections || [];
   const opts = sections.map((s) => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
   openModal(modalShell(`
-    <div class="flex items-center justify-between gap-3 border-b border-[rgba(18,33,70,0.07)] px-6 py-5">
-      <span class="text-[15px] font-semibold">Consolidate duplicates</span>
-      <button class="modal-close flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-panelSoft text-base text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-danger">×</button>
+    <div class="consolidate-modal__header">
+      <span class="consolidate-modal__title">Consolidate duplicates</span>
+      <button class="modal-close consolidate-modal__close">×</button>
     </div>
-    <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Section <span class="font-normal normal-case tracking-normal text-mute">(optional)</span></label>
-        <select class="${textInputClasses()}" id="f-cons-section">
+    <div class="consolidate-modal__body">
+      <div class="consolidate-modal__group">
+        <label class="consolidate-modal__label">Section <span class="consolidate-modal__label-note">(optional)</span></label>
+        <select class="field-control" id="f-cons-section">
           <option value="">All sections</option>
           ${opts}
         </select>
       </div>
-      <div class="mb-4">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Mode</label>
-        <select class="${textInputClasses()}" id="f-cons-mode">
+      <div class="consolidate-modal__group">
+        <label class="consolidate-modal__label">Mode</label>
+        <select class="field-control" id="f-cons-mode">
           <option value="exact">Exact (normalized content match)</option>
           <option value="semantic">Semantic (similarity threshold)</option>
         </select>
       </div>
-      <div class="hidden" id="threshold-group">
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Similarity threshold</label>
-        <input type="number" class="${textInputClasses()}" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
-        <div class="mt-1.5 text-[11px] text-mute">Higher = stricter (less aggressive). Range: 0.5 – 1.0</div>
+      <div class="consolidate-modal__group hidden" id="threshold-group">
+        <label class="consolidate-modal__label">Similarity threshold</label>
+        <input type="number" class="field-control" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
+        <div class="consolidate-modal__help">Higher = stricter (less aggressive). Range: 0.5 – 1.0</div>
       </div>
     </div>
-    <div class="flex justify-end gap-2 border-t border-[rgba(18,33,70,0.06)] px-6 pb-5 pt-3.5">
-      <button class="${baseButtonClasses('ghost')}" onclick="closeModal()">Cancel</button>
-      <button class="${baseButtonClasses('primary')}" id="btn-run-consolidate">Run</button>
+    <div class="consolidate-modal__footer">
+      <button class="app-button ghost" onclick="closeModal()">Cancel</button>
+      <button class="app-button primary" id="btn-run-consolidate">Run</button>
     </div>
-  `, 'w-[min(420px,94vw)]'));
+  `, 'modal-panel--compact'));
 
   const modeSelect = document.getElementById('f-cons-mode');
   const thresholdGroup = document.getElementById('threshold-group');
@@ -2104,7 +2089,7 @@ async function renderStatsView() {
         <span class="stat-bar__value">${count}</span>
       </div>`;
     }).join('');
-    document.getElementById('dash-section-bars').innerHTML = barsHtml || '<span class="text-xs text-mute">No sections configured.</span>';
+    document.getElementById('dash-section-bars').innerHTML = barsHtml || '<span class="dashboard-empty-note">No sections configured.</span>';
 
     const recent = await api.entries({ offset: 0, limit: 8, sort_by: 'recent', descending: true });
     const items = recent.items || [];
@@ -2116,7 +2101,7 @@ async function renderStatsView() {
         <span class="recent-item__time">${relTime(e.updated_at || e.created_at)}</span>
       </div>`;
     }).join('');
-    document.getElementById('dash-recent-list').innerHTML = recentHtml || '<span class="text-xs text-mute">No entries yet.</span>';
+    document.getElementById('dash-recent-list').innerHTML = recentHtml || '<span class="dashboard-empty-note">No entries yet.</span>';
   } catch (e) {
     toast('Stats error: ' + e.message, 'error');
   }
@@ -2129,7 +2114,7 @@ async function openSkillModal(skillId) {
     const parsed = parseFrontmatter(skill?.content || '');
     const body = parsed.body || '';
     openModal(modalShell(`
-      <div class="modal-header modal-header--top">
+      <div class="modal-panel__header modal-panel__header--top">
         <div>
           <div class="modal-title">${escHtml(skill.name || skill.id || 'Skill')}</div>
           <div class="modal-subtitle">${escHtml(skill.path || '')}</div>
@@ -2153,19 +2138,19 @@ function renderSkillsCards(skills) {
   }
 
   return `<div class="skills-grid">${skills.map((skill) => `
-    <div class="skill-card flex cursor-pointer flex-col gap-3 rounded-2xl bg-panel px-5 py-4 shadow-hairline transition hover:-translate-y-0.5 hover:shadow-hairlineStrong" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
-      <div class="flex items-start justify-between gap-2">
-        <div class="text-base font-bold text-ink">${escHtml(skill.name || skill.id)}</div>
+    <div class="theme-panel theme-panel--shell theme-panel--interactive" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
+      <div class="skill-tile__head">
+        <div class="skill-tile__title">${escHtml(skill.name || skill.id)}</div>
       </div>
-      <div class="text-sm leading-6 text-mute">${escHtml(skill.description || 'No description.')}</div>
-      <div class="truncate rounded-xl border border-line bg-panelSoft px-3 py-2 font-mono text-[11px] text-mute" title="${escHtml(skill.path || '')}">${escHtml(skill.path || '')}</div>
+      <div class="skill-tile__copy">${escHtml(skill.description || 'No description.')}</div>
+      <div class="skill-tile__path" title="${escHtml(skill.path || '')}">${escHtml(skill.path || '')}</div>
     </div>
   `).join('')}</div>`;
 }
 
 async function renderSkillsView() {
   const root = document.getElementById('skills-root');
-  root.innerHTML = '<div class="page-loading-card">Loading…</div>';
+  root.innerHTML = '<div class="theme-panel theme-panel--loading">Loading…</div>';
   try {
     const data = await api.skills();
     const skills = data.skills || [];
@@ -2199,61 +2184,61 @@ function renderSettingsPage() {
 
   const cfg = state.config;
   const sectionRows = (cfg.sections || []).map((s) => `
-    <tr data-section="${escHtml(s)}">
-      <td class="px-2 py-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full align-middle" style="background:${sectionColor(s)}"></span><span class="ml-2 align-middle">${escHtml(s)}</span></td>
-      <td class="px-2 py-1.5"><input type="color" class="h-8 w-11 cursor-pointer rounded-md border border-line bg-panel p-0.5" data-field="color" value="${escHtml((cfg.section_colors || {})[s] || '#888888')}"></td>
-      <td class="px-2 py-1.5 text-center"><button class="rounded-md px-2 py-1 text-sm text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-dangerStrong" data-remove="${escHtml(s)}" title="Remove">⨯</button></td>
+    <tr class="settings-table__row" data-section="${escHtml(s)}">
+      <td class="settings-table__cell"><span class="settings-table__dot" style="background:${sectionColor(s)}"></span><span class="settings-table__name">${escHtml(s)}</span></td>
+      <td class="settings-table__cell"><input type="color" class="settings-table__color" data-field="color" value="${escHtml((cfg.section_colors || {})[s] || '#888888')}"></td>
+      <td class="settings-table__cell settings-table__cell--actions"><button class="settings-table__remove" data-remove="${escHtml(s)}" title="Remove">⨯</button></td>
     </tr>`).join('');
 
   document.getElementById('settings-form-root').innerHTML = `
     ${settingsSectionTitle('Limits')}
-    <div class="rounded-2xl bg-panel p-4 shadow-hairline">
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Max content length</label><input type="number" class="${textInputClasses()}" id="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"></div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Max entries</label><input type="number" class="${textInputClasses()}" id="cfg-max-entries" value="${escHtml(String(cfg.max_entries))}"></div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Max tags per entry</label><input type="number" class="${textInputClasses()}" id="cfg-max-tags" value="${escHtml(String(cfg.max_tags_per_entry))}"></div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Max tag length</label><input type="number" class="${textInputClasses()}" id="cfg-max-tag-len" value="${escHtml(String(cfg.max_tag_length))}"></div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Entry batch size</label><input type="number" class="${textInputClasses()}" id="cfg-batch-size" min="1" value="${escHtml(String(cfg.entry_batch_size))}"></div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Entry load threshold</label><input type="number" class="${textInputClasses()}" id="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}"></div>
+    <div class="theme-panel theme-panel--tight">
+      <div class="settings-form-grid settings-form-grid--two">
+        <div class="settings-field"><label class="settings-label">Max content length</label><input type="number" class="field-control" id="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"></div>
+        <div class="settings-field"><label class="settings-label">Max entries</label><input type="number" class="field-control" id="cfg-max-entries" value="${escHtml(String(cfg.max_entries))}"></div>
+        <div class="settings-field"><label class="settings-label">Max tags per entry</label><input type="number" class="field-control" id="cfg-max-tags" value="${escHtml(String(cfg.max_tags_per_entry))}"></div>
+        <div class="settings-field"><label class="settings-label">Max tag length</label><input type="number" class="field-control" id="cfg-max-tag-len" value="${escHtml(String(cfg.max_tag_length))}"></div>
+        <div class="settings-field"><label class="settings-label">Entry batch size</label><input type="number" class="field-control" id="cfg-batch-size" min="1" value="${escHtml(String(cfg.entry_batch_size))}"></div>
+        <div class="settings-field"><label class="settings-label">Entry load threshold</label><input type="number" class="field-control" id="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}"></div>
       </div>
     </div>
     ${settingsSectionTitle('Semantic search')}
-    <div class="rounded-2xl bg-panel p-4 shadow-hairline">
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div class="md:col-span-3"><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Model</label>${renderModelSelect(cfg.semantic_model_name || '')}</div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Conflict threshold</label><input type="number" class="${textInputClasses()}" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></div>
-        <div><label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-mute">Model idle TTL (s)</label><input type="number" class="${textInputClasses()}" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></div>
+    <div class="theme-panel theme-panel--tight">
+      <div class="settings-form-grid settings-form-grid--three">
+        <div class="settings-field settings-field--full"><label class="settings-label">Model</label>${renderModelSelect(cfg.semantic_model_name || '')}</div>
+        <div class="settings-field"><label class="settings-label">Conflict threshold</label><input type="number" class="field-control" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></div>
+        <div class="settings-field"><label class="settings-label">Model idle TTL (s)</label><input type="number" class="field-control" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></div>
       </div>
     </div>
     ${settingsSectionTitle('Sections')}
-    <div class="rounded-2xl bg-panel p-4 shadow-hairline">
-      <div class="mb-3 overflow-hidden rounded-xl border border-line">
-        <table class="w-full border-collapse text-sm">
-          <thead class="bg-shell text-left text-[11px] font-medium text-mute">
+    <div class="theme-panel theme-panel--tight">
+      <div class="settings-table-wrap">
+        <table class="settings-table">
+          <thead class="settings-table__head">
             <tr>
-              <th class="px-2 py-2">Name</th>
-              <th class="px-2 py-2">Color</th>
-              <th class="w-10"></th>
+              <th class="settings-table__header">Name</th>
+              <th class="settings-table__header">Color</th>
+              <th class="settings-table__header settings-table__header--compact"></th>
             </tr>
           </thead>
           <tbody id="cfg-sections-tbody-page">${sectionRows}</tbody>
         </table>
       </div>
-      <div class="flex gap-2">
-        <input type="text" class="${textInputClasses()} flex-1" id="cfg-new-section-page" placeholder="New section name">
-        <button class="${baseButtonClasses('ghost', true)}" id="cfg-add-section-page">+ Add</button>
+      <div class="settings-sections-actions">
+        <input type="text" class="field-control" id="cfg-new-section-page" placeholder="New section name">
+        <button class="app-button ghost app-button--small" id="cfg-add-section-page">+ Add</button>
       </div>
     </div>
     ${settingsSectionTitle('Maintenance')}
-    <div class="flex items-center justify-between gap-4 rounded-2xl bg-panel p-4 shadow-hairline">
-      <div>
-        <div class="text-sm font-medium text-ink">Consolidate duplicates</div>
-        <div class="mt-1 text-xs text-mute">Remove semantically duplicate entries</div>
+    <div class="settings-maintenance">
+      <div class="settings-maintenance__copy">
+        <div class="settings-maintenance__title">Consolidate duplicates</div>
+        <div class="settings-maintenance__hint">Remove semantically duplicate entries</div>
       </div>
-      <button class="${baseButtonClasses('ghost', true)}" id="btn-consolidate-page">Run consolidate</button>
+      <button class="app-button ghost app-button--small" id="btn-consolidate-page">Run consolidate</button>
     </div>
-    <div class="mt-6 flex justify-end gap-2">
-      <button class="${baseButtonClasses('primary')}" id="btn-save-config-page">Save settings</button>
+    <div class="settings-footer-actions">
+      <button class="app-button primary" id="btn-save-config-page">Save settings</button>
     </div>`;
 
   document.getElementById('cfg-sections-tbody-page').addEventListener('click', (e) => {
@@ -2271,11 +2256,12 @@ function renderSettingsPage() {
     }
     const tbody = document.getElementById('cfg-sections-tbody-page');
     const tr = document.createElement('tr');
+    tr.className = 'settings-table__row';
     tr.dataset.section = name;
     tr.innerHTML = `
-      <td class="px-2 py-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full align-middle" style="background:#888888"></span><span class="ml-2 align-middle">${escHtml(name)}</span></td>
-      <td class="px-2 py-1.5"><input type="color" class="h-8 w-11 cursor-pointer rounded-md border border-line bg-panel p-0.5" data-field="color" value="#888888"></td>
-      <td class="px-2 py-1.5 text-center"><button class="rounded-md px-2 py-1 text-sm text-mute transition hover:bg-[rgba(192,64,64,0.16)] hover:text-dangerStrong" data-remove="${escHtml(name)}" title="Remove">⨯</button></td>`;
+      <td class="settings-table__cell"><span class="settings-table__dot" style="background:#888888"></span><span class="settings-table__name">${escHtml(name)}</span></td>
+      <td class="settings-table__cell"><input type="color" class="settings-table__color" data-field="color" value="#888888"></td>
+      <td class="settings-table__cell settings-table__cell--actions"><button class="settings-table__remove" data-remove="${escHtml(name)}" title="Remove">⨯</button></td>`;
     tbody.appendChild(tr);
     inp.value = '';
   });
@@ -2406,7 +2392,7 @@ async function boot() {
   document.getElementById('toggle-workstreams-include-deleted').checked = state.workstreamsIncludeDeleted;
   await loadStats();
   await loadEntries();
-  switchView('dashboard');
+  switchView('memories');
 }
 
 boot();

@@ -8,6 +8,7 @@ build/
 venv/
 .vscode/
 .venv/
+.pytest_cache
 .rememb/embeddings.npy
 .rememb/embeddings.hash
 .mcpregistry_*_token

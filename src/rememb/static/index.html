@@ -7,129 +7,85 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div id="app" class="flex h-screen flex-col overflow-hidden">
-  <header class="app-header">
-    <a class="brand-link" href="/">
-      <img src="/static/logo.png" alt="rememb" class="brand-logo">
-      <div class="brand-stack">
-        <div class="brand-meta">
-          <span class="brand-name">rememb</span>
-          <span class="version-badge" id="logo-version"></span>
+<div id="app">
+  <nav class="app-nav">
+    <div class="nav-brand">
+      <a href="/" class="brand-link">
+        <img src="/static/logo.png" alt="rememb" class="brand-logo">
+        <div class="brand-stack">
+          <div class="brand-meta">
+            <span class="brand-name">rememb</span>
+            <span class="version-badge" id="logo-version"></span>
+          </div>
+          <span class="brand-caption">agent runtime</span>
         </div>
-        <span class="brand-caption">Local-first agent runtime for workstreams, review and continuity</span>
-      </div>
-    </a>
-
-    <div class="divider"></div>
-
-    <nav class="nav-tabs">
-      <div class="nav-group nav-group--primary">
-        <span class="nav-group-title">Agent Flow</span>
-        <button class="nav-tab active" data-view="dashboard">Overview</button>
-        <button class="nav-tab" data-view="workstreams">Workstreams</button>
-      </div>
-      <div class="nav-group nav-group--utility">
-        <span class="nav-group-title">Runtime Controls</span>
-        <button class="nav-tab utility" data-view="memories">Memory</button>
-        <button class="nav-tab utility" data-view="stats">Stats</button>
-        <button class="nav-tab utility" data-view="settings">Settings</button>
-        <button class="nav-tab utility" data-view="skills">Skills</button>
-      </div>
-    </nav>
-
-    <div class="header-search" id="header-search">
-      <svg class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-mute" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      </a>
+    </div>
+    <div id="header-search" class="nav-search">
+      <svg class="nav-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path>
       </svg>
       <input type="text" id="search-input" placeholder="Search memory…" autocomplete="off">
-      <kbd>/</kbd>
     </div>
-
-  </header>
+    <div class="nav-section">
+      <span class="nav-group-title">Agent Flow</span>
+      <button class="nav-tab active" data-view="dashboard">Overview</button>
+      <button class="nav-tab" data-view="workstreams">Workstreams</button>
+    </div>
+    <div class="nav-section">
+      <span class="nav-group-title">Runtime Controls</span>
+      <button class="nav-tab utility" data-view="memories">Memory</button>
+      <button class="nav-tab utility" data-view="stats">Stats</button>
+      <button class="nav-tab utility" data-view="settings">Settings</button>
+      <button class="nav-tab utility" data-view="skills">Skills</button>
+    </div>
+  </nav>
+  <div class="app-body">
 
   <div id="view-dashboard" class="view view-scroll active">
-    <div class="content-main content-main--fluid">
-      <div class="dashboard-stack">
-        <section class="hero-panel">
-          <div class="hero-meta">
-            <div class="hero-copy">
-              <span class="hero-eyebrow">Agent Flow</span>
-              <h2 class="hero-title">One continuous flow for active workstreams, escalations and handoff state.</h2>
-              <div class="hero-text">Start from the live workstream, inspect review pressure where it happened, and only drop into runtime controls when you need memory maintenance or configuration.</div>
-            </div>
-          </div>
-          <div class="hero-actions">
-            <button class="flow-card" data-shortcut-view="workstreams">
-              <div>
-                <div class="flow-card-label">Workstreams</div>
-                <div class="flow-card-title">Inspect the active operational workstream</div>
-              </div>
-              <div>
-                <div class="flow-card-copy">Open the workstream list, pick the right context and see current state, next execution and timeline in one detail panel.</div>
-                <div class="flow-card-link">Open workstreams</div>
-              </div>
-            </button>
-            <button class="flow-card" data-shortcut-view="workstreams" data-shortcut-panel="review">
-              <div>
-                <div class="flow-card-label">Review</div>
-                <div class="flow-card-title">Resolve escalations without leaving the flow</div>
-              </div>
-              <div>
-                <div class="flow-card-copy">Use the review queue to inspect risk, provenance, diff context and next execution packaging before confirming the outcome.</div>
-                <div class="flow-card-link">Open workstream review</div>
-              </div>
-            </button>
-            <button class="flow-card" data-shortcut-view="workstreams" data-shortcut-panel="handoffs">
-              <div>
-                <div class="flow-card-label">Continuity</div>
-                <div class="flow-card-title">Resume from the right handoff package</div>
-              </div>
-              <div>
-                <div class="flow-card-copy">Browse recent continuity packages, restore the right context tier and keep anti-context-switch decisions visible.</div>
-                <div class="flow-card-link">Open workstream handoffs</div>
-              </div>
-            </button>
-          </div>
-        </section>
-
-        <div class="stats-grid stats-grid--tight">
-          <div class="section-card metric-card">
-            <span class="metric-label">Active workstreams</span>
-            <div class="metric-value" id="dashboard-workstreams-count">—</div>
-            <span class="metric-caption" id="dashboard-workstreams-caption">loading</span>
-          </div>
-          <div class="section-card metric-card">
-            <span class="metric-label">Pending review</span>
-            <div class="metric-value" id="dashboard-review-count">—</div>
-            <span class="metric-caption" id="dashboard-review-caption">loading</span>
-          </div>
-          <div class="section-card metric-card">
-            <span class="metric-label">Memory entries</span>
-            <div class="metric-value" id="dashboard-memory-count">—</div>
-            <span class="metric-caption" id="dashboard-memory-caption">loading</span>
-          </div>
+    <div class="view-pad">
+      <div class="metric-bar">
+        <div class="metric-item">
+          <div class="metric-item-val" id="dashboard-workstreams-count">—</div>
+          <div class="metric-item-label">Active workstreams</div>
+          <div class="metric-item-sub" id="dashboard-workstreams-caption">loading</div>
         </div>
-
-        <div class="dashboard-grid">
-          <div class="section-card">
-            <div class="section-header section-header--compact">
-              <div>
-                <div class="section-title">Live workstreams</div>
-                <div class="page-subtitle">Inspect the current operational record when you need the full workstream picture.</div>
-              </div>
-            </div>
-            <div id="dashboard-workstreams-list" class="space-y-3"></div>
-          </div>
-          <div class="section-card">
-            <div class="section-header section-header--compact">
-              <div>
-                <div class="section-title">Action queue</div>
-                <div class="page-subtitle">Escalations, continuity packages and runtime follow-up stay in one operating surface.</div>
-              </div>
-            </div>
-            <div id="dashboard-attention-list" class="space-y-3"></div>
-          </div>
+        <div class="metric-item">
+          <div class="metric-item-val" id="dashboard-execution-count">—</div>
+          <div class="metric-item-label">Execution backlog</div>
+          <div class="metric-item-sub" id="dashboard-execution-caption">loading</div>
         </div>
+        <div class="metric-item">
+          <div class="metric-item-val" id="dashboard-review-count">—</div>
+          <div class="metric-item-label">Pending review</div>
+          <div class="metric-item-sub" id="dashboard-review-caption">loading</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-item-val" id="dashboard-memory-count">—</div>
+          <div class="metric-item-label">Memory entries</div>
+          <div class="metric-item-sub" id="dashboard-memory-caption">loading</div>
+        </div>
+      </div>
+      <div class="dash-grid">
+        <div class="dash-panel">
+          <div class="dash-panel-head">
+            <span class="dash-panel-title">Workstream registry</span>
+            <button class="dash-shortcut" data-shortcut-view="workstreams">Open workstreams →</button>
+          </div>
+          <div id="dashboard-workstreams-list"></div>
+        </div>
+        <div class="dash-panel">
+          <div class="dash-panel-head">
+            <span class="dash-panel-title">Supervision queue</span>
+            <button class="dash-shortcut" data-shortcut-view="workstreams" data-shortcut-panel="review">Open review →</button>
+          </div>
+          <div id="dashboard-attention-list"></div>
+        </div>
+      </div>
+      <div class="ops-hint">
+        <span class="ops-hint-kicker">Agent Flow</span>
+        <span class="ops-hint-copy">Open workstreams, run executions, review and ship continuity packages — the operational workstream lifecycle in one view.</span>
+        <button class="dash-shortcut" data-shortcut-view="workstreams" data-shortcut-panel="handoffs">Open continuity →</button>
       </div>
     </div>
   </div>
@@ -210,31 +166,36 @@
   </div>
 
   <div id="view-workstreams" class="view view-scroll">
-    <div class="content-main content-main--fluid">
-      <div class="section-header">
-        <div>
-          <h2 class="page-title">Workstreams</h2>
-          <div class="page-subtitle">Operate parallel agent work without losing context, focus or control. Review and handoff stay attached to the selected workstream.</div>
+    <div class="view-pad">
+      <div class="ws-topbar">
+        <h2 class="ws-title">Workstreams</h2>
+        <div class="thread-surface-bar" id="workstream-surface-bar">
+          <button class="thread-surface-tab active" data-workstream-surface="overview">Workstream overview</button>
+          <button class="thread-surface-tab" data-workstream-surface="review">Workstream review</button>
+          <button class="thread-surface-tab" data-workstream-surface="handoffs">Workstream handoffs</button>
         </div>
-        <label class="toggle-pill ml-auto">
+        <label class="toggle-pill">
           <input type="checkbox" id="toggle-workstreams-include-deleted" class="h-3.5 w-3.5 accent-[#122146]">
           <span>Show deleted</span>
         </label>
       </div>
-      <div class="thread-surface-bar" id="workstream-surface-bar">
-        <button class="thread-surface-tab active" data-workstream-surface="overview">Workstream overview</button>
-        <button class="thread-surface-tab" data-workstream-surface="review">Workstream review</button>
-        <button class="thread-surface-tab" data-workstream-surface="handoffs">Workstream handoffs</button>
-      </div>
-      <div id="workstream-summary" class="panel summary-panel"></div>
-      <div class="workstream-layout">
-        <div id="workstream-grid" class="handoff-grid"></div>
-        <div id="workstream-detail-root" class="workstream-detail-panel"></div>
+      <div id="workstream-summary" class="ws-summary"></div>
+      <div class="ws-layout">
+        <div class="ws-rail">
+          <div class="ws-rail-section">
+            <div class="ws-rail-head">Workstream registry</div>
+            <div id="workstream-grid" class="ws-list-inner"></div>
+          </div>
+          <div class="ws-rail-section">
+            <div class="ws-rail-head">Execution queue</div>
+            <div id="workstream-queue-summary" class="queue-summary"></div>
+            <div id="workstream-queue-list"></div>
+          </div>
+        </div>
+        <div id="workstream-detail-root" class="ws-detail"></div>
       </div>
     </div>
   </div>
-
-  
 
   
 
@@ -304,9 +265,10 @@
       </div>
     </div>
   </div>
+  </div>
 </div>
 
-<div id="toast-container" class="fixed bottom-6 right-6 z-[200] flex max-w-[calc(100vw-2rem)] flex-col gap-2"></div>
+<div id="toast-container" class="toast-container"></div>
 <div id="modal-root"></div>
 
 <script>
@@ -906,24 +868,86 @@ function summarizeDiff(diffText) {
 
 function renderWorkstreamSummary(items) {
   const total = items.length;
-  const sessions = items.reduce((sum, item) => sum + (item.session_count || 0), 0);
+  const executions = items.reduce((sum, item) => sum + (item.session_count || 0), 0);
   const awaitingReview = items.filter((item) => item.operational_status === 'awaiting_review').length;
   const readyToResume = items.filter((item) => item.next_execution?.goal).length;
+  const queueItems = state.workstreamQueueItems || [];
+  const activeQueue = queueItems.filter((item) => item.status === 'active').length;
   const latest = items[0]?.updated_at || '';
   document.getElementById('workstream-summary').innerHTML = `
     <div class="pill-row justify-between">
       <div>
         <div class="section-title">Operational map</div>
-        <div class="page-subtitle">Primary operational workstreams for agent continuity, next-execution packaging and validation state.</div>
+        <div class="page-subtitle">Primary operational workstreams for continuity, execution packaging, validation pressure and handoff state.</div>
       </div>
       <div class="pill-row">
         <span class="count-pill">${total} workstream${total === 1 ? '' : 's'}</span>
-        <span class="count-pill">${sessions} execution cycle${sessions === 1 ? '' : 's'}</span>
+        <span class="count-pill">${executions} execution cycle${executions === 1 ? '' : 's'}</span>
         <span class="count-pill">${awaitingReview} awaiting_review</span>
         <span class="count-pill">${readyToResume} resume-ready</span>
+        <span class="count-pill">${activeQueue} active in queue</span>
         <span class="count-pill">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
       </div>
     </div>`;
+}
+
+function renderOperationalQueue(items) {
+  const summaryRoot = document.getElementById('workstream-queue-summary');
+  const listRoot = document.getElementById('workstream-queue-list');
+  if (!summaryRoot || !listRoot) return;
+
+  const active = items.filter((item) => item.status === 'active').length;
+  const awaitingReview = items.filter((item) => item.status === 'awaiting_review').length;
+  const ready = items.filter((item) => item.status === 'ready').length;
+
+  summaryRoot.innerHTML = `
+    <div class="queue-summary-grid">
+      <div class="queue-stat">
+        <span class="queue-stat-label">Queue items</span>
+        <span class="queue-stat-value">${escHtml(items.length)}</span>
+      </div>
+      <div class="queue-stat">
+        <span class="queue-stat-label">Active</span>
+        <span class="queue-stat-value">${escHtml(active)}</span>
+      </div>
+      <div class="queue-stat">
+        <span class="queue-stat-label">Awaiting review</span>
+        <span class="queue-stat-value">${escHtml(awaitingReview)}</span>
+      </div>
+      <div class="queue-stat">
+        <span class="queue-stat-label">Resume ready</span>
+        <span class="queue-stat-value">${escHtml(ready)}</span>
+      </div>
+    </div>
+  `;
+
+  if (!items.length) {
+    listRoot.innerHTML = '<div class="muted empty-copy">No queue items yet. Active workstreams will surface here when executions or review pressure are detected.</div>';
+    return;
+  }
+
+  listRoot.innerHTML = items.slice(0, 6).map((item) => `
+    <article class="queue-card" data-queue-workstream="${escHtml(item.workstream_id || '')}">
+      <div class="queue-card-top">
+        <span class="tag-pill mono">${escHtml(item.status || 'queued')}</span>
+        <span class="card-timestamp">${escHtml(relTime(item.updated_at || item.created_at || ''))}</span>
+      </div>
+      <div class="queue-card-title">${escHtml(previewText(item.goal || item.workstream_id || 'Untitled queue item', 68))}</div>
+      <div class="queue-card-copy">${escHtml(previewText(item.summary || item.next_execution?.goal || 'No queue summary available.', 150))}</div>
+      <div class="pill-row">
+        ${item.workstream_id ? `<span class="tag-pill mono">${escHtml(item.workstream_id)}</span>` : ''}
+        ${item.next_execution?.goal ? `<span class="tag-pill mono">next:${escHtml(previewText(item.next_execution.goal, 28))}</span>` : ''}
+      </div>
+    </article>
+  `).join('');
+
+  listRoot.querySelectorAll('[data-queue-workstream]').forEach((node) => {
+    node.addEventListener('click', async () => {
+      const workstreamId = node.dataset.queueWorkstream;
+      if (!workstreamId) return;
+      await selectWorkstream(workstreamId);
+    });
+  });
 }
 
 function renderDashboardList(rootId, items, emptyMessage) {
@@ -987,16 +1011,20 @@ function renderDashboardList(rootId, items, emptyMessage) {
 
 async function renderDashboardView() {
   try {
-    const [statsData, workstreamsData, reviewData] = await Promise.all([
+    const [statsData, workstreamsData, reviewData, queueData] = await Promise.all([
       api.stats(),
       api.workstreams({ include_deleted: 'false', limit: '6' }),
       api.reviewQueue({ pending_only: 'true', limit: '6' }),
+      api.workstreamQueue({ limit: '8' }).catch(() => ({ items: [] })),
     ]);
     const workstreams = workstreamsData.items || [];
     const reviewItems = reviewData.items || [];
+    const queueItems = queueData.items || [];
+    const executionBacklog = queueItems.filter((item) => item.status === 'ready' || item.status === 'active' || item.status === 'awaiting_review').length;
     
     state.workstreams = workstreams;
     state.reviewItems = reviewItems;
+    state.workstreamQueueItems = queueItems;
     state.total = statsData.total_entries ?? 0;
     state.dashboardSwitchPackage = workstreams.length > 1
       ? await api.workstreamSwitchPackage({ current_workstream_id: workstreams[0].workstream_id, target_workstream_id: workstreams[1].workstream_id }).catch(() => null)
@@ -1004,6 +1032,8 @@ async function renderDashboardView() {
 
     document.getElementById('dashboard-workstreams-count').textContent = String(workstreams.length);
     document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent execution history` : 'no active workstreams';
+    document.getElementById('dashboard-execution-count').textContent = String(executionBacklog);
+    document.getElementById('dashboard-execution-caption').textContent = executionBacklog ? `${queueItems.filter((item) => item.status === 'awaiting_review').length} awaiting review · ${queueItems.filter((item) => item.status === 'active').length} active` : 'no execution backlog';
     document.getElementById('dashboard-review-count').textContent = String(reviewItems.length);
     document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items escalated for final validation' : 'nothing escalated right now';
     document.getElementById('dashboard-memory-count').textContent = String(statsData.total_entries ?? 0);
@@ -1022,7 +1052,7 @@ async function renderDashboardView() {
         title: item.goal || item.workstream_id,
         body: `${item.summary || 'No summary available yet.'} next=${item.next_execution?.goal || 'not packaged'} · status=${item.operational_status || 'active'}`,
         meta: item.workstream_id,
-        action: null,
+        action: { name: 'open-workstream', value: item.workstream_id, label: 'Open workstream', variant: 'ghost' },
       }))],
       'No workstreams yet. Agents will start creating continuity here once work begins.'
     );
@@ -1053,30 +1083,16 @@ async function renderDashboardView() {
 
 function renderWorkstreamCard(item) {
   const selected = item.workstream_id === state.selectedWorkstreamId ? ' is-selected' : '';
-  const nextExecution = item.next_execution || {};
+  const statusClass = item.operational_status === 'active' ? 'ws-dot--active' : item.operational_status === 'awaiting_review' ? 'ws-dot--review' : 'ws-dot--idle';
   return `
-    <article class="handoff-card${selected}" data-workstream-id="${escHtml(item.workstream_id)}">
-      <div class="card-header card-header--workstream">
-        <span class="section-pill section-pill--workstream">workstream</span>
-        <span class="tag-pill mono">${escHtml(item.workstream_id)}</span>
-        <span class="card-timestamp">${escHtml(relTime(item.updated_at || ''))}</span>
+    <div class="ws-row${selected}" data-workstream-id="${escHtml(item.workstream_id)}">
+      <div class="ws-dot ${statusClass}"></div>
+      <div class="ws-row-body">
+        <div class="ws-row-title">${escHtml(previewText(item.goal || item.workstream_id, 58))}</div>
+        <div class="ws-row-meta">${escHtml(item.workstream_id)} · ${escHtml(item.operational_status || 'active')} · ${escHtml(String(item.entry_count || 0))} entries</div>
       </div>
-      <div class="card-body">
-        <div class="card-title card-title--compact">${escHtml(previewText(item.goal || 'Untitled workstream', 72))}</div>
-        <div class="detail-copy detail-copy--spaced">${escHtml(previewText(item.summary || 'No summary available.', 160))}</div>
-        <div class="pill-row">
-          <span class="tag-pill mono">entries:${escHtml(item.entry_count || 0)}</span>
-          <span class="tag-pill mono">history:${escHtml(item.session_count || 0)}</span>
-          <span class="tag-pill mono">status:${escHtml(item.operational_status || 'active')}</span>
-          <span class="tag-pill mono">next:${escHtml(nextExecution.goal || 'n/a')}</span>
-          ${item.latest_session_id ? `<span class="tag-pill mono">latest:${escHtml(item.latest_session_id)}</span>` : ''}
-        </div>
-      </div>
-      <div class="card-actions">
-        <button class="${baseButtonClasses('ghost', true)}" data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
-        <button class="${baseButtonClasses('ghost', true)}" data-workstream-state-card="${escHtml(item.workstream_id)}">State</button>
-      </div>
-    </article>`;
+      <button class="ws-row-open" data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
+    </div>`;
 }
 
 function renderResumeListSection(title, items, ordered = false) {
@@ -1101,7 +1117,7 @@ function renderWorkstreamTimeline(items) {
             <div class="timeline-title-row">
               <span class="tag-pill mono">${escHtml(item.entry_kind || 'entry')}</span>
               ${item.entry_role ? `<span class="tag-pill">${escHtml(item.entry_role)}</span>` : ''}
-              ${item.session_id ? `<span class="tag-pill mono">${escHtml(item.session_id)}</span>` : ''}
+              ${item.session_id ? `<span class="tag-pill mono">execution:${escHtml(item.session_id)}</span>` : ''}
               <span class="tag-pill">${escHtml(item.section || '')}</span>
             </div>
             <div class="timeline-summary">${escHtml(item.summary || 'No summary available.')}</div>
@@ -1135,98 +1151,27 @@ function renderWorkstreamDetail() {
 
   const { workstreamId, stateData, resumeData, handoffData, handoffItems = [], reviewItems = [], reviewSummary = null } = state.workstreamDetail;
   const switchData = state.workstreamDetail.switchData || null;
-  const timeline = renderWorkstreamTimeline(stateData.timeline || []);
-  const relatedEntries = (resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>';
-  const handoffGoal = handoffData?.goal ? `
-    <div class="section-card detail-card">
-      <div class="field-label">Latest structured handoff</div>
-      <div>${escHtml(handoffData.goal)}</div>
-      <div class="detail-note">${escHtml(handoffData.summary || '')}</div>
-    </div>
-  ` : '';
-  const reviewPanel = `
-    <section id="workstream-section-review" class="section-card detail-card surface-section ${state.workstreamSurfaceFocus === 'review' ? 'surface-section--active' : ''}">
-      <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
-        <div>
-          <div class="field-label">Review in this workstream</div>
-          <div class="detail-note">Validation stays attached to the operational workstream instead of floating as a separate workflow.</div>
-        </div>
-        <span class="tag-pill mono">pending:${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</span>
-      </div>
-      ${reviewItems.length ? `
-        <div class="version-grid detail-stack-gap">
-          ${reviewItems.slice(0, 4).map((item) => `
-            <div class="section-card detail-card detail-card--compact">
-              <div class="field-label">${escHtml(previewText(item.summary || item.entry_id, 58))}</div>
-              <div class="detail-note">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
-              <div class="card-actions card-actions--flush card-actions--start">
-                <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      ` : '<div class="muted empty-copy">No pending review items for this workstream.</div>'}
-      <div class="card-actions card-actions--flush card-actions--start">
-        <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Inspect review queue</button>
-      </div>
-    </section>
-  `;
-  const handoffPanel = `
-    <section id="workstream-section-handoffs" class="section-card detail-card surface-section ${state.workstreamSurfaceFocus === 'handoffs' ? 'surface-section--active' : ''}">
-      <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
-        <div>
-          <div class="field-label">Handoffs in this workstream</div>
-          <div class="detail-note">Continuity packages stay inside the same workstream so restore state and next execution stay visible together.</div>
-        </div>
-        <span class="tag-pill mono">count:${escHtml(handoffItems.length)}</span>
-      </div>
-      ${handoffItems.length ? `
-        <div class="version-grid detail-stack-gap">
-          ${handoffItems.slice(0, 4).map((entry) => `
-            <div class="section-card detail-card detail-card--compact">
-              <div class="field-label">${escHtml(previewText(entry.summary || entry.id, 58))}</div>
-              <div class="detail-note">${escHtml(relTime(entry.updated_at || entry.created_at || ''))} · ${escHtml(entry.session_id || 'no execution id')}</div>
-              <div class="detail-copy">${escHtml(previewText(entry.summary || 'No handoff summary available.', 140))}</div>
-              <div class="card-actions card-actions--flush card-actions--start">
-                <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
-                <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      ` : '<div class="muted empty-copy">No handoffs recorded for this workstream yet.</div>'}
-    </section>
-  `;
-  const historySummary = `
-    <div class="section-card detail-card">
-      <div class="field-label">Execution history</div>
-      <div class="detail-note">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
-    </div>
-  `;
-  const nextExecutionPanel = `
-    <section id="workstream-section-overview" class="section-card detail-card surface-section ${state.workstreamSurfaceFocus === 'overview' ? 'surface-section--active' : ''}">
-      <div class="field-label">Next execution package</div>
-      <div>${escHtml(resumeData.next_execution?.goal || resumeData.goal || '')}</div>
-      <div class="detail-note">resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</div>
-    </section>
-  `;
-  const switchPanel = switchData ? `
-    <div class="section-card detail-card">
-      <div class="field-label">Anti-context-switch package</div>
-      <div>${escHtml(switchData.current_workstream_id)} -> ${escHtml(switchData.target_workstream_id)}</div>
-      <div class="detail-note">needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</div>
-      <div class="pill-row detail-pills">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">Target already fits the current context.</span>'}</div>
-    </div>
-  ` : '';
+  const focus = state.workstreamSurfaceFocus;
 
-  root.innerHTML = `
-    <div class="panel thread-detail-shell">
-      <div class="section-header section-header--tight">
-        <div>
-          <div class="page-title thread-detail-title">${escHtml(workstreamId)}</div>
-          <div class="page-subtitle">Inspect one operational workstream: memory, review, handoff and next actions in the same context.</div>
-        </div>
+  let tabContent = '';
+
+  if (focus === 'overview') {
+    const nextExecutionPanel = `
+      <section id="workstream-section-overview" class="section-card detail-card">
+        <div class="field-label">Next execution package</div>
+        <div>${escHtml(resumeData.next_execution?.goal || resumeData.goal || '')}</div>
+        <div class="detail-note">resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</div>
+      </section>
+    `;
+    const switchPanel = switchData ? `
+      <div class="section-card detail-card">
+        <div class="field-label">Anti-context-switch package</div>
+        <div>${escHtml(switchData.current_workstream_id)} -> ${escHtml(switchData.target_workstream_id)}</div>
+        <div class="detail-note">needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</div>
+        <div class="pill-row detail-pills">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">Target already fits the current context.</span>'}</div>
       </div>
+    ` : '';
+    tabContent = `
       <div class="section-card detail-card">
         <div class="field-label">Goal</div>
         <div>${escHtml(resumeData.goal || '')}</div>
@@ -1238,10 +1183,6 @@ function renderWorkstreamDetail() {
       </div>
       ${nextExecutionPanel}
       ${switchPanel}
-      <div class="compare-grid detail-grid">
-        <div class="section-card detail-card detail-card--tight"><div class="field-label">Latest entry</div><div class="mono">${escHtml(resumeData.latest_entry_id || '')}</div></div>
-        <div class="section-card detail-card detail-card--tight"><div class="field-label">Focus entries</div><div class="mono">${escHtml((resumeData.focus_entry_ids || []).join(', ') || 'none')}</div></div>
-      </div>
       ${renderResumeListSection('Current state', resumeData.current_state)}
       ${renderResumeListSection('Open loops', resumeData.open_loops)}
       ${renderResumeListSection('Next steps', resumeData.next_steps, true)}
@@ -1251,16 +1192,92 @@ function renderWorkstreamDetail() {
       </div>
       <div class="section-card detail-card">
         <div class="field-label">Related entries</div>
-        <div class="pill-row">${relatedEntries}</div>
+        <div class="pill-row">${(resumeData.related_entry_ids || []).map((item) => `<span class="tag-pill mono">${escHtml(item)}</span>`).join('') || '<span class="muted">none</span>'}</div>
       </div>
-      ${historySummary}
-      ${reviewPanel}
-      ${handoffPanel}
+      <div class="section-card detail-card">
+        <div class="field-label">Execution history</div>
+        <div class="detail-note">${escHtml(stateData.session_count)} recorded execution cycle(s) · latest execution ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</div>
+      </div>
+    `;
+  } else if (focus === 'review') {
+    tabContent = `
+      <section id="workstream-section-review" class="section-card detail-card">
+        <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
+          <div>
+            <div class="field-label">Review in this workstream</div>
+            <div class="detail-note">Validation stays attached to the operational workstream instead of floating as a separate workflow.</div>
+          </div>
+          <span class="tag-pill mono">pending:${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</span>
+        </div>
+        ${reviewItems.length ? `
+          <div class="version-grid detail-stack-gap">
+            ${reviewItems.slice(0, 4).map((item) => `
+              <div class="section-card detail-card detail-card--compact">
+                <div class="field-label">${escHtml(previewText(item.summary || item.entry_id, 58))}</div>
+                <div class="detail-note">${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</div>
+                <div class="card-actions card-actions--flush card-actions--start">
+                  <button class="${baseButtonClasses('ghost', true)}" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="muted empty-copy">No pending review items for this workstream.</div>'}
+        <div class="card-actions card-actions--flush card-actions--start">
+          <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-review">Inspect review queue</button>
+        </div>
+      </section>
+    `;
+  } else if (focus === 'handoffs') {
+    const timeline = renderWorkstreamTimeline(stateData.timeline || []);
+    const handoffGoal = handoffData?.goal ? `
+      <div class="section-card detail-card">
+        <div class="field-label">Latest structured handoff</div>
+        <div>${escHtml(handoffData.goal)}</div>
+        <div class="detail-note">${escHtml(handoffData.summary || '')}</div>
+      </div>
+    ` : '';
+    tabContent = `
+      <section id="workstream-section-handoffs" class="section-card detail-card">
+        <div class="flex items-start gap-3 detail-head-row detail-head-row--spaced">
+          <div>
+            <div class="field-label">Handoffs in this workstream</div>
+            <div class="detail-note">Continuity packages stay inside the same workstream so restore state and next execution stay visible together.</div>
+          </div>
+          <span class="tag-pill mono">count:${escHtml(handoffItems.length)}</span>
+        </div>
+        ${handoffItems.length ? `
+          <div class="version-grid detail-stack-gap">
+            ${handoffItems.slice(0, 4).map((entry) => `
+              <div class="section-card detail-card detail-card--compact">
+                <div class="field-label">${escHtml(previewText(entry.summary || entry.id, 58))}</div>
+                <div class="detail-note">${escHtml(relTime(entry.updated_at || entry.created_at || ''))} · execution ${escHtml(entry.session_id || 'not recorded')}</div>
+                <div class="detail-copy">${escHtml(previewText(entry.summary || 'No handoff summary available.', 140))}</div>
+                <div class="card-actions card-actions--flush card-actions--start">
+                  <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
+                  <button class="${baseButtonClasses('ghost', true)}" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="muted empty-copy">No handoffs recorded for this workstream yet.</div>'}
+      </section>
       <div class="section-card detail-card">
         <div class="field-label">Workstream timeline</div>
         ${timeline}
       </div>
       ${handoffGoal}
+    `;
+  }
+
+  root.innerHTML = `
+    <div class="panel thread-detail-shell">
+      <div class="section-header section-header--tight">
+        <div>
+          <div class="page-title thread-detail-title">${escHtml(workstreamId)}</div>
+          <div class="page-subtitle">Inspect one operational workstream: memory, review, handoff and next actions in the same context.</div>
+        </div>
+      </div>
+      ${tabContent}
       <div class="card-actions card-actions--flush card-actions--start">
         <button class="${baseButtonClasses('ghost', true)}" id="btn-persisted-workstream-state">State</button>
       </div>
@@ -1370,9 +1387,15 @@ async function setWorkstreamSurfaceFocus(focus, options = {}) {
 
 async function loadWorkstreams() {
   try {
-    const data = await api.workstreams({ include_deleted: String(state.workstreamsIncludeDeleted), limit: '50' });
+    const [data, queueData] = await Promise.all([
+      api.workstreams({ include_deleted: String(state.workstreamsIncludeDeleted), limit: '50' }),
+      api.workstreamQueue({ limit: '12' }).catch(() => ({ items: [] })),
+    ]);
     state.workstreams = data.items || [];
+    state.workstreamQueueItems = queueData.items || [];
     renderWorkstreams(state.workstreams);
+    renderOperationalQueue(state.workstreamQueueItems);
+    renderWorkstreamSummary(state.workstreams);
     const availableIds = new Set(state.workstreams.map((item) => item.workstream_id));
     const nextSelected = availableIds.has(state.selectedWorkstreamId) ? state.selectedWorkstreamId : state.workstreams[0]?.workstream_id || null;
     if (!nextSelected) {
@@ -1384,6 +1407,8 @@ async function loadWorkstreams() {
     await selectWorkstream(nextSelected);
   } catch (e) {
     document.getElementById('workstream-grid').innerHTML = `<div class="empty-state">Failed to load workstreams: ${escHtml(e.message)}</div>`;
+    const queueRoot = document.getElementById('workstream-queue-list');
+    if (queueRoot) queueRoot.innerHTML = `<div class="empty-state">Failed to load operational queue: ${escHtml(e.message)}</div>`;
     document.getElementById('workstream-detail-root').innerHTML = '';
   }
 }
@@ -2045,7 +2070,7 @@ function switchView(name) {
     const active = tab.dataset.view === name;
     tab.classList.toggle('active', active);
   });
-  document.getElementById('header-search').style.display = name === 'memories' ? '' : 'none';
+  // search always visible in sidebar
   if (name === 'dashboard') renderDashboardView();
   else if (name === 'stats') renderStatsView();
   else if (name === 'skills') renderSkillsView();

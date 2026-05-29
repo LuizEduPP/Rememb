@@ -38,7 +38,7 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Agent Flow" in response.text
     assert "Runtime Controls" in response.text
     assert "Overview" in response.text
-    assert "Live workstreams" in response.text
+    assert "Workstream registry" in response.text
     assert "Open workstreams" in response.text
     assert "operational workstream" in response.text
     assert "Skills" in response.text

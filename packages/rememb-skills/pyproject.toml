@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rememb-skills"
+version = "0.4.9"
+description = "Bundled agent skills for rememb (optional install)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["../../src"]
+include = ["rememb_skills*"]
+
+[tool.setuptools.package-data]
+rememb_skills = ["**/*.md", "**/*.py", "**/*.json", "**/*.txt", "**/*.xsd", "**/*.xml", "**/*.js", "**/*.sh", "**/*.ps1"]

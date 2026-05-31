@@ -37,7 +37,8 @@ dependencies = [
 rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pytest>=8.0.0"]
+dev = ["build", "twine", "pytest>=8.0.0", "httpx>=0.27.0"]
+skills = ["rememb-skills==0.4.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -51,10 +52,11 @@ Changelog = "https://github.com/LuizEduPP/rememb/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["rememb*"]
+exclude = ["rememb_skills*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.md", "*.json", "*.gif", "*.html", "*.png"]
-"rememb" = ["skills/**/*.md"]
 
 [tool.setuptools]
 include-package-data = true

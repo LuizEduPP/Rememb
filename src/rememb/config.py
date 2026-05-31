@@ -80,4 +80,5 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"semantic_conflict_threshold": DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
 	"entry_batch_size": ENTRY_BATCH_SIZE,
 	"entry_load_threshold": ENTRY_LOAD_THRESHOLD,
+	"storage_backend": "json",
 }

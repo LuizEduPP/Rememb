@@ -275,6 +275,12 @@ def _validate_config_updates(
             next_config[key] = {str(section_name): str(color).strip().lower() for section_name, color in value.items()}
             continue
 
+        if key == "storage_backend":
+            from rememb.storage import normalize_storage_backend
+
+            next_config[key] = normalize_storage_backend(value)
+            continue
+
         next_config[key] = value
 
     current_sections = _validate_sections_config(current_config["sections"])
@@ -604,150 +610,32 @@ def _assert_initialized(root) -> None:
 
 @contextmanager
 def _file_lock(filepath: Path, mode: str = "r+"):
-    """Context manager for cross-platform file locking.
-    
-    Args:
-        filepath: Path to file to lock
-        mode: File mode (r+ for read/write, r for read)
-    
-    Yields:
-        Open file handle with lock acquired
-    """
-    if not filepath.exists() and _requires_exclusive_lock(mode):
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text("[]", encoding="utf-8")
-    
-    f: IO[str] = open(filepath, mode, encoding="utf-8")
-    wants_exclusive_lock = _requires_exclusive_lock(mode)
-    is_windows = platform.system() == "Windows"
-    try:
-        if is_windows:
-            import msvcrt
-            lock_mode = getattr(msvcrt, "LK_LOCK", 1) if wants_exclusive_lock else getattr(msvcrt, "LK_RLCK", 1)
-            getattr(msvcrt, "locking")(f.fileno(), lock_mode, 1)
-        else:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_EX if wants_exclusive_lock else fcntl.LOCK_SH)
-        yield f
-    finally:
-        if is_windows:
-            import msvcrt
-            getattr(msvcrt, "locking")(f.fileno(), getattr(msvcrt, "LK_UNLCK", 1), 1)
-        else:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_UN)
-        f.close()
+    """Backward-compatible wrapper around the shared storage file lock."""
+    from rememb.storage.locking import file_lock
+
+    with file_lock(filepath, mode=mode) as handle:
+        yield handle
 
 
 def _load_entries(root: Path) -> list[dict]:
-    """Load entries from JSON file with corruption recovery.
-    
-    Args:
-        root: Project root path
-    
-    Returns:
-        List of entry dictionaries
-    
-    Raises:
-        RemembStorageError: If file is corrupted and recovery fails
-    """
-    filepath = _entries_path(root)
-    with _file_lock(filepath, mode="r") as f:
-        raw = f.read()
-    try:
-        entries = json.loads(raw)
-        logger.debug(f"Loaded {len(entries)} entries from {filepath}")
-        return entries
-    except json.JSONDecodeError as e:
-        backup_path = filepath.parent / (filepath.name + ".corrupted")
-        try:
-            if not backup_path.exists():
-                backup_path.write_bytes(filepath.read_bytes())
-        except OSError:
-            pass
-        
-        try:
-            entries = []
-            raw_stripped = raw.strip()
-            if raw_stripped.startswith("["):
-                json_objects = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw)
-                for obj_str in json_objects:
-                    try:
-                        entry = json.loads(obj_str)
-                        if isinstance(entry, dict) and "id" in entry:
-                            entries.append(entry)
-                    except json.JSONDecodeError:
-                        continue
-            
-            if entries:
-                _save_entries(root, entries)
-                return entries
-        except Exception:
-            pass
-        
-        raise RemembStorageError(
-            f"Memory file is corrupted ({filepath}): {e}\n"
-            f"Backup saved to {backup_path}. Delete {filepath} to reset."
-        ) from e
+    """Load entries from the configured storage backend."""
+    from rememb.storage import get_storage_backend
+
+    return get_storage_backend(root).load_entries(root)
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:
-    """Save entries to JSON file atomically.
-    
-    Args:
-        root: Project root path
-        entries: List of entry dictionaries to save
-    """
-    filepath = _entries_path(root)
-    data = json.dumps(entries, indent=2)
-    tmp_path = filepath.parent / (filepath.name + ".tmp")
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp_path.replace(filepath)
-        logger.debug(f"Saved {len(entries)} entries to {filepath}")
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
+    """Save entries through the configured storage backend."""
+    from rememb.storage import get_storage_backend
+
+    get_storage_backend(root).save_entries(root, entries)
 
 
 def _atomic_modify(root: Path, modifier: Callable[[list[dict]], _ModifierResult]) -> _ModifierResult:
-    """Execute modifier function atomically with file lock.
-    
-    Args:
-        root: Project root path
-        modifier: Function that takes entries list and returns modified result
-    
-    Returns:
-        Result from modifier function
-    
-    Raises:
-        RemembStorageError: If file is corrupted
-    """
-    filepath = _entries_path(root)
-    with _file_lock(filepath, mode="r+") as f:
-        raw = f.read()
-        logger.debug(f"Atomic modify on {filepath}")
-        try:
-            entries = json.loads(raw)
-        except json.JSONDecodeError as e:
-            raise RemembStorageError(
-                f"Memory file is corrupted ({filepath}): {e}\n"
-                f"Fix manually or delete {filepath} to reset."
-            ) from e
-        
-        result = modifier(entries)
-        
-        data = json.dumps(entries, indent=2)
-        f.seek(0)
-        f.write(data)
-        f.truncate()
-        f.flush()
-        os.fsync(f.fileno())
-        return result
+    """Execute modifier function atomically through the storage backend."""
+    from rememb.storage import get_storage_backend
+
+    return get_storage_backend(root).atomic_modify(root, modifier)
 
 def _compute_entries_hash(entries: list[dict]) -> str:
     """Compute SHA256 hash of entries for cache validation.

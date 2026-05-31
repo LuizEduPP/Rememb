@@ -26,10 +26,32 @@ jobs:
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev]" -e packages/rememb-skills
 
       - name: Run tests
         run: python -m pytest
 
       - name: Compile Python sources
-        run: python -m py_compile src/rememb/*.py
+        run: |
+          python -m py_compile src/rememb/*.py
+          python -m py_compile src/rememb/store/*.py
+          python -m py_compile src/rememb/storage/*.py
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" -e packages/rememb-skills
+
+      - name: Build and smoke-test Docker image
+        run: python -m pytest tests/test_docker.py -q

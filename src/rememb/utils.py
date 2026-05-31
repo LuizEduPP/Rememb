@@ -148,8 +148,17 @@ def _parse_simple_frontmatter(content: str) -> dict[str, str]:
 
 
 def _default_skill_roots() -> list[Path]:
-    """Return the internal rememb package roots that may contain skills."""
-    return [(Path(__file__).resolve().parent / "skills")]
+    """Return configured skill roots from the optional rememb-skills package."""
+    roots: list[Path] = []
+    try:
+        import rememb_skills
+
+        package_root = Path(rememb_skills.__file__).resolve().parent
+        if package_root.is_dir():
+            roots.append(package_root)
+    except ImportError:
+        pass
+    return roots
 
 
 def list_skill_definitions(skill_roots: list[Path] | None = None) -> list[dict[str, str]]:
@@ -246,7 +255,10 @@ def find_root(start: Path | None = None, local: bool = False) -> Path:
 
 def is_initialized(root: Path) -> bool:
     """Check if rememb is initialized at the given root."""
-    return _entries_path(root).exists()
+    rememb_dir = _rememb_path(root)
+    if (_entries_path(root)).exists():
+        return True
+    return (rememb_dir / "entries.db").exists()
 
 
 def ensure_global_root(initializer: Callable[[Path, str, bool], object]) -> Path:

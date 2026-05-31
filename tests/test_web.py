@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import rememb.web as web
+from rememb.web import deps
 from rememb.exceptions import RemembValidationError
 from rememb.store import edit_entry, init, write_entry
 
@@ -17,30 +18,37 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Show deleted" in response.text
     assert "Workstreams" in response.text
     assert "Handoffs" in response.text
-    assert "Version history" in response.text
-    assert "Timeline" in response.text
-    assert "Side-by-side diff" in response.text
-    assert "current vs previous" in response.text
-    assert "/api/entries/" in response.text
-    assert "/api/workstreams/" in response.text
-    assert "Workstream state" in response.text
-    assert "Workstream resume" in response.text
-    assert "Workstream timeline" in response.text
-    assert "workstream detail" in response.text
-    assert "Review" in response.text
-    assert "/api/review" in response.text
-    assert "/api/review/workstreams/" in response.text
-    assert "handoff-package" in response.text
-    assert "/api/workstreams/queue" in response.text
-    assert "/api/workstreams/compare" in response.text
-    assert "/api/workstreams/switch-package" in response.text
-    assert "Next execution package" in response.text
+    assert "/static/app.js" in response.text
+    assert "Storage backend" in response.text
+    assert "rememb-skills" in response.text
+
+    app_js = client.get("/static/app.js")
+    assert app_js.status_code == 200
+    script = app_js.text
+    assert "Version history" in script
+    assert "Timeline" in script
+    assert "Side-by-side diff" in script
+    assert "current vs previous" in script
+    assert "/api/entries/" in script
+    assert "/api/workstreams/" in script
+    assert "Workstream state" in script
+    assert "Workstream resume" in script
+    assert "Workstream timeline" in script
+    assert "workstream detail" in script
+    assert "Review" in script
+    assert "/api/review" in script
+    assert "/api/review/workstreams/" in script
+    assert "handoff-package" in script
+    assert "/api/workstreams/queue" in script
+    assert "/api/workstreams/compare" in script
+    assert "/api/workstreams/switch-package" in script
+    assert "Next execution package" in script
     assert "Agent Flow" in response.text
     assert "Runtime Controls" in response.text
     assert "Overview" in response.text
     assert "Workstream registry" in response.text
     assert "Open workstreams" in response.text
-    assert "operational workstream" in response.text
+    assert "operational workstream" in script
     assert "Skills" in response.text
 
 
@@ -58,7 +66,7 @@ def test_entries_endpoint_hides_deleted_by_default(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     first = write_entry(root, "project", "Hidden after delete", ["alpha"])
     second = write_entry(root, "project", "Still active", ["alpha"])
@@ -82,7 +90,7 @@ def test_versions_diff_and_restore_endpoints(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     create_response = client.post(
         "/api/entries",
@@ -134,7 +142,7 @@ def test_workstream_crud_like_endpoints_and_structured_handoff(monkeypatch, tmp_
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     opened = client.post(
         "/api/workstreams/open",
@@ -205,7 +213,7 @@ def test_handoff_package_close_and_handoff_and_review_endpoints(monkeypatch, tmp
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     client.post(
         "/api/workstreams/open",
@@ -285,7 +293,7 @@ def test_review_endpoint_filters_by_session(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     write_entry(
         root,
@@ -319,7 +327,7 @@ def test_review_summary_queue_and_compare_endpoints(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     client.post(
         "/api/workstreams/open",
@@ -451,7 +459,7 @@ def test_entries_endpoint_accepts_workstream_and_session_metadata(monkeypatch, t
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
 
     created = client.post(
         "/api/entries",
@@ -480,9 +488,15 @@ def test_workstream_routes_normalize_domain_errors(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    monkeypatch.setattr(web, "_get_root", lambda: root)
-    monkeypatch.setattr(web, "get_workstream_state", lambda *_args, **_kwargs: (_ for _ in ()).throw(RemembValidationError("bad workstream")))
-    monkeypatch.setattr(web, "resume_workstream", lambda *_args, **_kwargs: (_ for _ in ()).throw(RemembValidationError("bad resume")))
+    monkeypatch.setattr(deps, "get_root", lambda: root)
+    monkeypatch.setattr(
+        "rememb.web.routes.workstreams.get_workstream_state",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RemembValidationError("bad workstream")),
+    )
+    monkeypatch.setattr(
+        "rememb.web.routes.workstreams.resume_workstream",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RemembValidationError("bad resume")),
+    )
 
     state_response = client.get("/api/workstreams/ws_bad/state")
     resume_response = client.get("/api/workstreams/ws_bad/resume")

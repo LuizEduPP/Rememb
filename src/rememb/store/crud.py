@@ -999,7 +999,15 @@ def get_stats(root: Path) -> dict:
             by_section[sec] = 0
         by_section[sec] += 1
     entries_path = _entries_path(root)
-    size_kb = round(entries_path.stat().st_size / 1024, 1) if entries_path.exists() else 0
+    db_path = _rememb_path(root) / "entries.db"
+    if db_path.exists():
+        size_kb = round(db_path.stat().st_size / 1024, 1)
+    elif entries_path.exists():
+        size_kb = round(entries_path.stat().st_size / 1024, 1)
+    else:
+        size_kb = 0
+    config = _store_context.get_config(root)
+    storage_backend = str(config.get("storage_backend") or "json")
     timestamps = sorted(e.get("created_at", "") for e in active_entries if e.get("created_at"))
     oldest = timestamps[0][:10] if timestamps else "—"
     newest = timestamps[-1][:10] if timestamps else "—"
@@ -1008,6 +1016,7 @@ def get_stats(root: Path) -> dict:
         "deleted_total": len(deleted_entries),
         "by_section": by_section,
         "size_kb": size_kb,
+        "storage_backend": storage_backend,
         "oldest": oldest,
         "newest": newest,
     }

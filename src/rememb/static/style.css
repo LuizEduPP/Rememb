@@ -77,6 +77,21 @@ button {
   overflow: hidden;
 }
 
+[data-ui="skills-package-banner"] {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--ink-soft);
+}
+
+[data-ui="skills-package-banner"] code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+
 [data-ui="app"] > nav {
   background: var(--nav-bg);
   border-right: 1px solid rgba(255, 255, 255, 0.07);

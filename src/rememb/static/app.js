@@ -1,5 +1,5 @@
 const state = {
-  view: 'memories',
+  view: 'dashboard',
   workstreamSurfaceFocus: 'overview',
   section: null,
   config: null,
@@ -101,7 +101,6 @@ const api = {
 
 let semanticModels = [];
 
-
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -110,66 +109,90 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-function uiSelector(name) {
-  const value = String(name ?? '');
-  if (window.CSS?.escape) {
-    return `[data-ui="${CSS.escape(value)}"]`;
-  }
-  return `[data-ui="${value.replace(/"/g, '\\"')}"]`;
+function toast(msg, type = 'info', duration = 3000) {
+  const accent = type === 'error' ? '#ef4444' : (type === 'success' ? '#22c55e' : '#0891b2');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.setAttribute('role', 'status');
+  el.style.borderLeftColor = accent;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, duration);
 }
 
-function ui(name, root = document) {
-  return (root || document).querySelector(uiSelector(name));
-}
-
-function uiAll(name, root = document) {
-  return Array.from((root || document).querySelectorAll(uiSelector(name)));
-}
-
-const nativeDocumentGetElementById = Document.prototype.getElementById;
-Document.prototype.getElementById = function remembDataUiLookup(id) {
-  return ui(id, this) || nativeDocumentGetElementById.call(this, id);
+const STATUS_LABELS = {
+  awaiting_review: 'Awaiting review',
+  active: 'Active',
+  ready: 'Ready',
+  idle: 'Idle',
+  pending: 'Pending',
+  approved: 'Approved',
+  dismissed: 'Dismissed',
+  goal_oriented: 'Goal oriented',
 };
 
-function stripClassAttributesFromMarkup(markup) {
-  return String(markup || '').replace(/\sclass=("[^"]*"|'[^']*')/g, '');
+function humanLabel(value) {
+  if (value == null || value === '') return '—';
+  const key = String(value);
+  return STATUS_LABELS[key] || key.replace(/_/g, ' ');
 }
 
-const elementInnerHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-if (elementInnerHTMLDescriptor?.set && elementInnerHTMLDescriptor?.get) {
-  Object.defineProperty(Element.prototype, 'innerHTML', {
-    configurable: true,
-    enumerable: elementInnerHTMLDescriptor.enumerable,
-    get() {
-      return elementInnerHTMLDescriptor.get.call(this);
-    },
-    set(value) {
-      elementInnerHTMLDescriptor.set.call(this, stripClassAttributesFromMarkup(value));
-    },
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function renderWorkstreamSurfaceBar() {
+  const tabs = [
+    { id: 'overview', label: 'State' },
+    { id: 'review', label: 'Review' },
+    { id: 'handoffs', label: 'Handoffs' },
+  ];
+  return `<nav class="tabs">${tabs.map((tab) => `
+    <button type="button" class="btn btn-sm" data-workstream-surface="${tab.id}" ${state.workstreamSurfaceFocus === tab.id ? 'aria-current="page"' : ''}>${tab.label}</button>
+  `).join('')}</nav>`;
+}
+
+function bindWorkstreamSurfaceBar(root) {
+  root.querySelectorAll('[data-workstream-surface]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await setWorkstreamSurfaceFocus(button.dataset.workstreamSurface, { ensureSelected: true, scroll: true });
+    });
   });
 }
 
-function stripClassesFromTree(root) {
-  if (!root) return;
-  if (root.nodeType === Node.ELEMENT_NODE) {
-    root.removeAttribute('class');
-  }
-  if (root.querySelectorAll) {
-    root.querySelectorAll('[class]').forEach((el) => el.removeAttribute('class'));
-  }
+function renderFactList(rows) {
+  const items = rows.filter((row) => row != null);
+  if (!items.length) return '';
+  return `<dl class="facts">${items.map(([label, value]) => `
+    <div><dt>${escHtml(label)}</dt><dd>${escHtml(value)}</dd></div>
+  `).join('')}</dl>`;
 }
 
-const classlessObserver = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-      mutation.target.removeAttribute('class');
-      continue;
-    }
-    if (mutation.type === 'childList') {
-      mutation.addedNodes.forEach((node) => stripClassesFromTree(node));
-    }
-  }
-});
+function renderMetrics(items) {
+  if (!items.length) return '';
+  return `<section class="metrics">${items.map(([value, label]) => `
+    <div class="metric"><strong>${value}</strong><span>${escHtml(label)}</span></div>
+  `).join('')}</section>`;
+}
+
+const VIEW_META = {
+  dashboard: { title: 'Overview', subtitle: 'What the agent is doing right now' },
+  memories: { title: 'Memory', subtitle: 'Entries persisted by the agent' },
+  workstreams: { title: 'Workstreams', subtitle: 'Operational threads opened by the agent' },
+  stats: { title: 'Stats', subtitle: 'Store size and section distribution' },
+  settings: { title: 'Settings', subtitle: 'Runtime configuration for this workspace' },
+  skills: { title: 'Skills', subtitle: 'Optional bundled agent skills' },
+};
+
+function updatePageHeader(view, subtitle) {
+  const meta = VIEW_META[view] || { title: view, subtitle: '' };
+  setText('page-title', meta.title);
+  setText('page-subtitle', subtitle || meta.subtitle);
+}
 
 function hexToRgb(hex) {
   const clean = String(hex || '').trim().replace('#', '');
@@ -250,6 +273,13 @@ function readFloatInput(id, fallback) {
   const raw = document.getElementById(id)?.value ?? '';
   const parsed = parseFloat(String(raw).trim());
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function renderModelSelect(currentValue) {
+  const opts = semanticModels.map((m) =>
+    `<option value="${escHtml(m.name)}" ${m.name === currentValue ? 'selected' : ''} title="${escHtml(m.description)}">${escHtml(m.label)}</option>`
+  ).join('');
+  return `<select id="cfg-model" class="select">${opts}</select>`;
 }
 
 function parseUnifiedDiff(diffText) {
@@ -341,20 +371,20 @@ function renderDiffCell(row, side) {
 function renderSideBySideDiff(diffText) {
   const rows = parseUnifiedDiff(diffText);
   if (!rows.length) {
-    return '<article data-panel="soft" data-empty="true">No content changes.</article>';
+    return '<article class="panel panel-soft" data-empty="true">No content changes.</article>';
   }
 
   return `
-    <article data-panel="shell" data-diff="table">
-      <header data-diff-header>
+    <article class="panel panel-shell">
+      <header class="diff-head">
         <div>From</div>
         <div>To</div>
       </header>
-      <section data-diff-scroll>
+      <section class="diff-scroll">
         ${rows.map((row) => `
-          <div data-diff-row="${row.type || 'context'}">
-            <div${row.left ? '' : ' data-empty="true"'}>${renderDiffCell(row, 'left')}</div>
-            <div${row.right ? '' : ' data-empty="true"'}>${renderDiffCell(row, 'right')}</div>
+          <div class="diff-row ${escHtml(row.type || 'context')}">
+            <div>${renderDiffCell(row, 'left')}</div>
+            <div>${renderDiffCell(row, 'right')}</div>
           </div>
         `).join('')}
       </section>
@@ -470,7 +500,7 @@ function renderMarkdown(text) {
   flushParagraph();
   flushList();
   flushCodeFence();
-  return `<article data-markdown="true">${blocks.join('')}</article>`;
+  return `<div class="prose">${blocks.join('')}</div>`;
 }
 
 function parseFrontmatter(text) {
@@ -553,7 +583,7 @@ function parseFrontmatter(text) {
 function renderSkillFrontmatter(attributes) {
   if (!attributes.length) return '';
   return `
-    <section data-panel="default">
+    <section class="panel">
       <h4>Frontmatter</h4>
       <dl>
         ${attributes.map(({ key, value }) => `
@@ -567,52 +597,22 @@ function renderSkillFrontmatter(attributes) {
   `;
 }
 
-function renderModelSelect(currentValue) {
-  const opts = semanticModels.map((m) =>
-    `<option value="${escHtml(m.name)}" ${m.name === currentValue ? 'selected' : ''} title="${escHtml(m.description)}">${escHtml(m.label)}</option>`
-  ).join('');
-  return `<select data-ui="cfg-model" data-role="model-select">${opts}</select>`;
-}
-
-function toast(msg, type = 'info', duration = 3000) {
-  const accent = type === 'error' ? '#c04040' : (type === 'success' ? '#30b870' : '#04D8E7');
-  const el = document.createElement('div');
-  el.setAttribute('role', 'status');
-  el.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:#0f172a;color:#e2e8f0;box-shadow:var(--shadow-md);margin-top:8px;';
-  el.style.borderLeft = `3px solid ${accent}`;
-  el.innerHTML = `<span>${msg}</span>`;
-  const container = document.getElementById('toast-container');
-  container.appendChild(el);
-  setTimeout(() => {
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 300);
-  }, duration);
-}
-
 function renderSections() {
   if (!state.config) return;
   const sections = state.config.sections || [];
   const list = document.getElementById('sections-list');
   const allActive = state.section === null && !state.searchMode;
 
-  const allSectionVars = '--section-color: var(--accent); --section-soft-bg: rgba(4,216,231,0.12); --section-soft-border: rgba(4,216,231,0.18);';
-
   let html = `
-    <button data-section="" ${allActive ? 'aria-current="page"' : ''} ${allActive ? `style="${allSectionVars}"` : ''}>
-      <span ${allActive ? 'style="--section-color: var(--accent);"' : ''}>◉</span>
-      <span>All entries</span>
-      <span data-ui="count-all" ${allActive ? `style="${allSectionVars}"` : ''}>${state.total || ''}</span>
+    <button class="chip" data-section="" ${allActive ? 'aria-current="page"' : ''}>
+      All <span id="count-all">${state.total || ''}</span>
     </button>`;
 
   for (const s of sections) {
-    const theme = sectionTheme(s);
     const active = state.section === s && !state.searchMode;
-    const activeVars = `--section-color:${theme.color};--section-soft-bg:${theme.softBg};--section-soft-border:${theme.softBorder};`;
     html += `
-      <button data-section="${escHtml(s)}" ${active ? 'aria-current="page"' : ''} style="${active ? activeVars : `--section-color:${theme.color};`}">
-        <span>●</span>
-        <span>${escHtml(s)}</span>
-        <span data-ui="count-${escHtml(s)}" ${active ? `style="${activeVars}"` : ''}>—</span>
+      <button class="chip" data-section="${escHtml(s)}" ${active ? 'aria-current="page"' : ''}>
+        ${escHtml(s)} <span id="count-${escHtml(s)}">—</span>
       </button>`;
   }
 
@@ -647,20 +647,17 @@ function renderWorkstreamSummary(items) {
   const activeQueue = queueItems.filter((item) => item.status === 'active').length;
   const latest = items[0]?.updated_at || '';
   document.getElementById('workstream-summary').innerHTML = `
-    <header data-summary-header="split">
-      <div>
-        <h3>At a glance</h3>
-        <p>Current workstreams, review pressure and what is ready to resume.</p>
-      </div>
-      <div data-pill-row>
-        <span data-pill="count">${total} workstream${total === 1 ? '' : 's'}</span>
-        <span data-pill="count">${executions} execution cycle${executions === 1 ? '' : 's'}</span>
-        <span data-pill="count">${awaitingReview} awaiting_review</span>
-        <span data-pill="count">${readyToResume} resume-ready</span>
-        <span data-pill="count">${activeQueue} active in queue</span>
-        <span data-pill="count">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
-      </div>
-    </header>`;
+    <header class="panel-head">
+      <h2>At a glance</h2>
+    </header>
+    <div class="tags">
+      <span class="tag">${total} workstream${total === 1 ? '' : 's'}</span>
+      <span class="tag">${executions} execution cycle${executions === 1 ? '' : 's'}</span>
+      <span class="tag">${awaitingReview} need review</span>
+      <span class="tag">${readyToResume} ready to resume</span>
+      <span class="tag">${activeQueue} in queue</span>
+      <span class="tag">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
+    </div>`;
 }
 
 function renderOperationalQueue(items) {
@@ -672,43 +669,29 @@ function renderOperationalQueue(items) {
   const awaitingReview = items.filter((item) => item.status === 'awaiting_review').length;
   const ready = items.filter((item) => item.status === 'ready').length;
 
-  summaryRoot.innerHTML = `
-    <section data-metric-grid>
-      <article data-metric-card>
-        <strong>${escHtml(items.length)}</strong>
-        <small>Queue items</small>
-      </article>
-      <article data-metric-card>
-        <strong>${escHtml(active)}</strong>
-        <small>Active</small>
-      </article>
-      <article data-metric-card>
-        <strong>${escHtml(awaitingReview)}</strong>
-        <small>Awaiting review</small>
-      </article>
-      <article data-metric-card>
-        <strong>${escHtml(ready)}</strong>
-        <small>Resume ready</small>
-      </article>
-    </section>
-  `;
+  summaryRoot.innerHTML = renderMetrics([
+    [escHtml(items.length), 'Queue items'],
+    [escHtml(active), 'Active'],
+    [escHtml(awaitingReview), 'Awaiting review'],
+    [escHtml(ready), 'Resume ready'],
+  ]);
 
   if (!items.length) {
-    listRoot.innerHTML = '<p data-note="muted">No next actions right now. Work that needs attention will appear here.</p>';
+    listRoot.innerHTML = '<p class="meta">No next actions right now. Work that needs attention will appear here.</p>';
     return;
   }
 
   listRoot.innerHTML = items.slice(0, 6).map((item) => `
-    <article data-panel="compact" data-queue-workstream="${escHtml(item.workstream_id || '')}">
-      <header data-row="space-between">
-        <span data-pill="mono">${escHtml(item.status || 'queued')}</span>
+    <article class="card card-compact" data-queue-workstream="${escHtml(item.workstream_id || '')}">
+      <header class="row">
+        <span class="tag-mono">${escHtml(item.status || 'queued')}</span>
         <time>${escHtml(relTime(item.updated_at || item.created_at || ''))}</time>
       </header>
       <h4>${escHtml(previewText(item.goal || item.workstream_id || 'Untitled queue item', 68))}</h4>
       <p>${escHtml(previewText(item.summary || item.next_execution?.goal || 'No queue summary available.', 150))}</p>
-      <footer data-pill-row>
-        ${item.workstream_id ? `<span data-pill="mono">${escHtml(item.workstream_id)}</span>` : ''}
-        ${item.next_execution?.goal ? `<span data-pill="mono">next:${escHtml(previewText(item.next_execution.goal, 28))}</span>` : ''}
+      <footer class="tags">
+        ${item.workstream_id ? `<span class="tag-mono">${escHtml(item.workstream_id)}</span>` : ''}
+        ${item.next_execution?.goal ? `<span class="tag-mono">next:${escHtml(previewText(item.next_execution.goal, 28))}</span>` : ''}
       </footer>
     </article>
   `).join('');
@@ -726,19 +709,19 @@ function renderDashboardList(rootId, items, emptyMessage) {
   const root = document.getElementById(rootId);
   if (!root) return;
   if (!items.length) {
-    root.innerHTML = `<p data-note="muted">${escHtml(emptyMessage)}</p>`;
+    root.innerHTML = `<p class="meta">${escHtml(emptyMessage)}</p>`;
     return;
   }
   root.innerHTML = items.map((item) => `
-    <article data-panel="tight">
-      <header data-row="space-between">
-        <div>
+    <article class="card card-compact">
+      <div class="row">
+        <div class="row-main">
           <h4>${escHtml(item.title || '')}</h4>
           <p>${escHtml(item.body || '')}</p>
         </div>
-        ${item.meta ? `<span data-pill="mono">${escHtml(item.meta)}</span>` : ''}
-      </header>
-      ${item.action ? `<footer data-actions><button data-variant="${escHtml(item.action.variant || 'ghost')}" data-size="small" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-workstream="${escHtml(item.action.workstreamId || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></footer>` : ''}
+        ${item.meta ? `<span class="tag-mono">${escHtml(item.meta)}</span>` : ''}
+      </div>
+      ${item.action ? `<footer class="actions"><button class="btn btn-ghost btn-sm" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-workstream="${escHtml(item.action.workstreamId || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></footer>` : ''}
     </article>
   `).join('');
   root.querySelectorAll('[data-dashboard-action]').forEach((button) => {
@@ -822,7 +805,7 @@ async function renderDashboardView() {
         }] : []),
         ...workstreams.slice(0, 4).map((item) => ({
         title: item.goal || item.workstream_id,
-        body: `${item.summary || 'No summary available yet.'} next=${item.next_execution?.goal || 'not packaged'} · status=${item.operational_status || 'active'}`,
+        body: `${item.summary || 'No summary yet.'} · ${humanLabel(item.operational_status || 'active')} · next: ${item.next_execution?.goal ? previewText(item.next_execution.goal, 40) : 'none'}`,
         meta: item.workstream_id,
         action: { name: 'open-workstream', value: item.workstream_id, label: 'Open workstream', variant: 'ghost' },
       }))],
@@ -833,17 +816,17 @@ async function renderDashboardView() {
     if (reviewItems.length) {
       attentionItems.push(...reviewItems.slice(0, 3).map((item) => ({
         title: item.summary || item.entry_id,
-        body: `${item.workstream_id || 'no workstream'} · ${item.review_status || 'pending'} · ${(item.review_reasons || []).join(', ') || 'no explicit reason'}`,
+        body: `${item.workstream_id || 'No workstream'} · ${humanLabel(item.review_status || 'pending')} · ${(item.review_reasons || []).join(', ') || 'No reason given'}`,
         meta: item.entry_kind || 'entry',
         action: { name: 'open-review', value: item.workstream_id || '', workstreamId: item.workstream_id || '', entryId: item.entry_id, label: 'Inspect review', variant: 'primary' },
       })));
     }
     if (attentionItems.length < 4) {
       attentionItems.push({
-        title: 'Runtime controls',
-        body: 'Memory, stats, settings and skills stay available as controls for the agent runtime without becoming a separate workflow.',
-        meta: 'controls',
-        action: { name: 'open-runtime-controls', value: 'settings', label: 'Open runtime controls', variant: 'ghost' },
+        title: 'System',
+        body: 'Inspect store stats, runtime settings and bundled skills.',
+        meta: 'system',
+        action: { name: 'open-runtime-controls', value: 'stats', label: 'Open stats', variant: 'ghost' },
       });
     }
     renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate validation backlog. Escalations and admin-only follow-up will surface here.');
@@ -857,43 +840,42 @@ function renderWorkstreamCard(item) {
   const selected = item.workstream_id === state.selectedWorkstreamId;
   const status = item.operational_status === 'active' ? 'active' : item.operational_status === 'awaiting_review' ? 'review' : 'idle';
   return `
-    <article data-workstream-card="${selected ? 'selected' : 'normal'}" data-workstream-id="${escHtml(item.workstream_id)}">
-      <span data-workstream-status="${status}"></span>
-      <div>
+    <article class="ws-card ${selected ? 'selected' : ''}" data-workstream-open="${escHtml(item.workstream_id)}" role="button" tabindex="0">
+      <span class="ws-card-bar ${status}"></span>
+      <div class="ws-card-body">
         <h4>${escHtml(previewText(item.goal || item.workstream_id, 58))}</h4>
-        <p>${escHtml(item.workstream_id)} · ${escHtml(item.operational_status || 'active')} · ${escHtml(String(item.entry_count || 0))} entries</p>
+        <p>${escHtml(humanLabel(item.operational_status || 'active'))} · ${escHtml(String(item.entry_count || 0))} entries</p>
       </div>
-      <button data-workstream-open="${escHtml(item.workstream_id)}">Open</button>
     </article>`;
 }
 
 function renderResumeListSection(title, items, ordered = false) {
   return `
-    <section data-panel="list">
+    <section class="panel panel-tight">
       <h4>${escHtml(title)}</h4>
-      ${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}
+      <div class="prose">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
     </section>
   `;
 }
 
 function renderWorkstreamTimeline(items) {
   if (!items || !items.length) {
-    return '<p data-note="muted">No timeline events yet.</p>';
+    return '<p class="meta">No timeline events yet.</p>';
   }
   return `
-    <section data-timeline>
+    <section class="timeline">
       ${items.map((item) => `
-        <article data-timeline-item>
+        <article class="timeline-item">
           <time>${escHtml(relTime(item.updated_at || item.created_at || ''))}</time>
           <div>
-            <header data-pill-row>
-              <span data-pill="mono">${escHtml(item.entry_kind || 'entry')}</span>
-              ${item.entry_role ? `<span data-pill="default">${escHtml(item.entry_role)}</span>` : ''}
-              ${item.session_id ? `<span data-pill="mono">execution:${escHtml(item.session_id)}</span>` : ''}
-              <span data-pill="default">${escHtml(item.section || '')}</span>
+            <header class="tags">
+              <span class="tag-mono">${escHtml(item.entry_kind || 'entry')}</span>
+              ${item.entry_role ? `<span class="tag">${escHtml(item.entry_role)}</span>` : ''}
+              ${item.session_id ? `<span class="tag-mono">execution:${escHtml(item.session_id)}</span>` : ''}
+              <span class="tag">${escHtml(item.section || '')}</span>
             </header>
             <p>${escHtml(item.summary || 'No summary available.')}</p>
-            ${item.related_entry_ids && item.related_entry_ids.length ? `<footer data-pill-row>${item.related_entry_ids.map((relatedId) => `<span data-pill="mono">${escHtml(relatedId)}</span>`).join('')}</footer>` : ''}
+            ${item.related_entry_ids && item.related_entry_ids.length ? `<footer class="tags">${item.related_entry_ids.map((relatedId) => `<span class="tag-mono">${escHtml(relatedId)}</span>`).join('')}</footer>` : ''}
           </div>
         </article>
       `).join('')}
@@ -904,7 +886,7 @@ function renderWorkstreamTimeline(items) {
 function renderWorkstreamDetail() {
   const root = document.getElementById('workstream-detail-root');
   if (!state.selectedWorkstreamId) {
-    root.innerHTML = '<article data-panel="empty">Select a workstream to inspect its current state, review, memory trail and handoff actions.</article>';
+    root.innerHTML = '<article class="state">Select a workstream from the registry on the left.</article>';
     return;
   }
   if (
@@ -913,11 +895,11 @@ function renderWorkstreamDetail() {
     !state.workstreamDetail.stateData ||
     !state.workstreamDetail.resumeData
   ) {
-    root.innerHTML = '<article data-panel="loading">Loading workstream detail…</article>';
+    root.innerHTML = '<article class="state state-loading">Loading workstream detail…</article>';
     return;
   }
   if (state.workstreamDetail.error) {
-    root.innerHTML = `<article data-panel="danger">Failed to load workstream detail: ${escHtml(state.workstreamDetail.error)}</article>`;
+    root.innerHTML = `<article class="state state-error">Failed to load workstream detail: ${escHtml(state.workstreamDetail.error)}</article>`;
     return;
   }
 
@@ -928,112 +910,124 @@ function renderWorkstreamDetail() {
   let tabContent = '';
 
   if (focus === 'overview') {
+    const next = resumeData.next_execution || {};
     const nextExecutionPanel = `
-      <section data-ui="workstream-section-overview" data-panel="default">
-        <h4>Next execution package</h4>
-        <p>${escHtml(resumeData.next_execution?.goal || resumeData.goal || '')}</p>
-        <p>resume_mode=${escHtml(resumeData.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((resumeData.next_execution?.essential_context || []).length)} optional=${escHtml((resumeData.next_execution?.optional_context || []).length)} risky=${escHtml((resumeData.next_execution?.risky_context || []).length)}</p>
+      <section class="panel">
+        <h4>Next execution</h4>
+        <p>${escHtml(next.goal || resumeData.goal || 'Not packaged yet')}</p>
+        ${renderFactList([
+          ['Mode', humanLabel(next.resume_mode || 'goal_oriented')],
+          ['Essential context', `${(next.essential_context || []).length} items`],
+          ['Optional context', `${(next.optional_context || []).length} items`],
+          ['Risky context', `${(next.risky_context || []).length} items`],
+        ])}
       </section>
     `;
     const switchPanel = switchData ? `
-      <section data-panel="default">
-        <h4>Anti-context-switch package</h4>
-        <p>${escHtml(switchData.current_workstream_id)} -> ${escHtml(switchData.target_workstream_id)}</p>
-        <p>needed_now=${escHtml((switchData.state_gap?.needed_now_but_not_open || []).length)} optional=${escHtml((switchData.state_gap?.optional_to_load || []).length)} risky=${escHtml((switchData.state_gap?.risky_to_carry || []).length)}</p>
-        <div data-pill-row>${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span data-pill="mono">${escHtml(item)}</span>`).join('') || '<span data-note="muted">Target already fits the current context.</span>'}</div>
+      <section class="panel">
+        <h4>Context switch</h4>
+        <p>${escHtml(switchData.current_workstream_id)} → ${escHtml(switchData.target_workstream_id)}</p>
+        ${renderFactList([
+          ['Load now', `${(switchData.state_gap?.needed_now_but_not_open || []).length} items`],
+          ['Optional', `${(switchData.state_gap?.optional_to_load || []).length} items`],
+          ['Risky to carry', `${(switchData.state_gap?.risky_to_carry || []).length} items`],
+        ])}
+        <div class="tags">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-mono">${escHtml(item)}</span>`).join('') || '<span class="meta">Nothing missing for the target workstream.</span>'}</div>
       </section>
     ` : '';
     tabContent = `
-      <section data-panel="default">
+      <section class="panel">
         <h4>Goal</h4>
-        <p>${escHtml(resumeData.goal || '')}</p>
+        <p>${escHtml(resumeData.goal || 'No goal recorded')}</p>
         <p>${escHtml(resumeData.summary || '')}</p>
       </section>
-      <section data-metric-grid>
-        <article data-metric-card><strong>${escHtml(stateData.entry_count)}</strong><small>Entries</small></article>
-        <article data-metric-card><strong>${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</strong><small>Review pending</small></article>
-      </section>
+      ${renderMetrics([
+        [escHtml(stateData.entry_count), 'Entries'],
+        [escHtml(reviewSummary?.pending_review_count ?? reviewItems.length), 'Review pending'],
+        [escHtml(stateData.session_count), 'Executions'],
+      ])}
       ${nextExecutionPanel}
       ${switchPanel}
       ${renderResumeListSection('Current state', resumeData.current_state)}
       ${renderResumeListSection('Open loops', resumeData.open_loops)}
       ${renderResumeListSection('Next steps', resumeData.next_steps, true)}
-      <section data-panel="default">
+      <section class="panel">
         <h4>Restore context</h4>
-        <p>section=${escHtml(resumeData.restore_context?.section || '')} query=${escHtml(resumeData.restore_context?.query || '')} include_deleted=${resumeData.restore_context?.include_deleted ? 'true' : 'false'}</p>
+        ${renderFactList([
+          ['Section', resumeData.restore_context?.section || '—'],
+          ['Query', resumeData.restore_context?.query || '—'],
+          ['Include deleted', resumeData.restore_context?.include_deleted ? 'yes' : 'no'],
+        ])}
       </section>
-      <section data-panel="default">
+      <section class="panel">
         <h4>Related entries</h4>
-        <div data-pill-row>${(resumeData.related_entry_ids || []).map((item) => `<span data-pill="mono">${escHtml(item)}</span>`).join('') || '<span data-note="muted">none</span>'}</div>
+        <div class="tags">${(resumeData.related_entry_ids || []).map((item) => `<span class="tag-mono">${escHtml(item)}</span>`).join('') || '<span class="meta">None linked</span>'}</div>
       </section>
-      <section data-panel="default">
-        <h4>Execution history</h4>
-        <p>${escHtml(stateData.session_count)} recorded execution cycle(s) · latest execution ${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'n/a')}</p>
+      <section class="panel">
+        <h4>Latest execution</h4>
+        <p>${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'None recorded')}</p>
       </section>
     `;
   } else if (focus === 'review') {
     tabContent = `
-      <section data-ui="workstream-section-review" data-panel="default">
-        <header data-row="space-between">
-          <div>
-            <h4>Review in this workstream</h4>
-            <p>Validation stays attached to the operational workstream instead of floating as a separate workflow.</p>
+      <section class="panel">
+        <header class="row">
+          <div class="row-main">
+            <h4>Review queue</h4>
+            <p>Items the agent flagged for validation inside this workstream.</p>
           </div>
-          <span data-pill="mono">pending:${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)}</span>
+          <span class="tag-mono">${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)} pending</span>
         </header>
         ${reviewItems.length ? `
           <section>
             ${reviewItems.slice(0, 4).map((item) => `
-              <article data-panel="compact">
+              <article class="card card-compact">
                 <h4>${escHtml(previewText(item.summary || item.entry_id, 58))}</h4>
-                <p>${escHtml(item.review_status || 'pending')} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'no explicit reason'}</p>
-                <footer data-actions>
-                  <button data-variant="ghost" data-size="small" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect review</button>
+                <p>${escHtml(humanLabel(item.review_status || 'pending'))} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'No reason given'}</p>
+                <footer class="actions">
+                  <button class="btn btn-ghost btn-sm" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect</button>
                 </footer>
               </article>
             `).join('')}
           </section>
-        ` : '<p data-note="muted">No pending review items for this workstream.</p>'}
-        <footer data-actions>
-          <button data-variant="ghost" data-size="small" data-ui="btn-persisted-workstream-review">Inspect review queue</button>
-        </footer>
+        ` : '<p class="meta">No pending review items for this workstream.</p>'}
       </section>
     `;
   } else if (focus === 'handoffs') {
     const timeline = renderWorkstreamTimeline(stateData.timeline || []);
     const handoffGoal = handoffData?.goal ? `
-      <section data-panel="default">
+      <section class="panel">
         <h4>Latest structured handoff</h4>
         <p>${escHtml(handoffData.goal)}</p>
         <p>${escHtml(handoffData.summary || '')}</p>
       </section>
     ` : '';
     tabContent = `
-      <section data-ui="workstream-section-handoffs" data-panel="default">
-        <header data-row="space-between">
-          <div>
-            <h4>Handoffs in this workstream</h4>
-            <p>Continuity packages stay inside the same workstream so restore state and next execution stay visible together.</p>
+      <section class="panel">
+        <header class="row">
+          <div class="row-main">
+            <h4>Handoffs</h4>
+            <p>Continuity packages recorded by the agent for this workstream.</p>
           </div>
-          <span data-pill="mono">count:${escHtml(handoffItems.length)}</span>
+          <span class="tag-mono">${escHtml(handoffItems.length)} total</span>
         </header>
         ${handoffItems.length ? `
           <section>
             ${handoffItems.slice(0, 4).map((entry) => `
-              <article data-panel="compact">
+              <article class="card card-compact">
                 <h4>${escHtml(previewText(entry.summary || entry.id, 58))}</h4>
                 <p>${escHtml(relTime(entry.updated_at || entry.created_at || ''))} · execution ${escHtml(entry.session_id || 'not recorded')}</p>
                 <p>${escHtml(previewText(entry.summary || 'No handoff summary available.', 140))}</p>
-                <footer data-actions>
-                  <button data-variant="ghost" data-size="small" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
-                  <button data-variant="ghost" data-size="small" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
+                <footer class="actions">
+                  <button class="btn btn-ghost btn-sm" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
+                  <button class="btn btn-ghost btn-sm" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
                 </footer>
               </article>
             `).join('')}
           </section>
-        ` : '<p data-note="muted">No handoffs recorded for this workstream yet.</p>'}
+        ` : '<p class="meta">No handoffs recorded for this workstream yet.</p>'}
       </section>
-      <section data-panel="default">
+      <section class="panel">
         <h4>Workstream timeline</h4>
         ${timeline}
       </section>
@@ -1042,25 +1036,20 @@ function renderWorkstreamDetail() {
   }
 
   root.innerHTML = `
-    <article data-panel="shell">
-      <header>
-        <div>
-          <h3>${escHtml(workstreamId)}</h3>
-          <p>Inspect one operational workstream: memory, review, handoff and next actions in the same context.</p>
-        </div>
-      </header>
-      ${tabContent}
-      <footer data-actions>
-        <button data-variant="ghost" data-size="small" data-ui="btn-persisted-workstream-state">State</button>
-      </footer>
-    </article>
+    ${renderWorkstreamSurfaceBar()}
+    <header class="detail-head">
+      <h3>${escHtml(workstreamId)}</h3>
+      <p>${escHtml(previewText(resumeData.summary || resumeData.goal || '', 120))}</p>
+    </header>
+    <div class="tab-pane" id="workstream-section-${focus}">${tabContent}</div>
+    <footer class="actions inspector-foot">
+      <button class="btn btn-ghost btn-sm" id="btn-persisted-workstream-state">Full state</button>
+    </footer>
   `;
 
+  bindWorkstreamSurfaceBar(root);
   renderWorkstreamSurfaceTabs();
   document.getElementById('btn-persisted-workstream-state').addEventListener('click', async () => await openWorkstreamStateModal(workstreamId, null));
-  document.getElementById('btn-persisted-workstream-review')?.addEventListener('click', async () => {
-    await setWorkstreamSurfaceFocus('review', { ensureSelected: true, scroll: true });
-  });
   root.querySelectorAll('[data-workstream-review-open]').forEach((button) => {
     button.addEventListener('click', async () => {
       state.selectedReviewId = button.dataset.workstreamReviewOpen;
@@ -1113,21 +1102,23 @@ function renderWorkstreams(items) {
   const grid = document.getElementById('workstream-grid');
   renderWorkstreamSummary(items);
   if (!items.length) {
-    grid.innerHTML = '<article data-panel="empty">No workstreams yet. Open a workstream to manage state, review, memory trail and handoffs from one place.</article>';
+    grid.innerHTML = '<article class="state">No workstreams yet. The agent creates them via MCP when work begins.</article>';
     state.selectedWorkstreamId = null;
     state.workstreamDetail = null;
     renderWorkstreamDetail();
     return;
   }
   grid.innerHTML = items.map(renderWorkstreamCard).join('');
-  grid.querySelectorAll('[data-workstream-open]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await selectWorkstream(button.dataset.workstreamOpen);
-    });
-  });
-  grid.querySelectorAll('[data-workstream-state-card]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await openWorkstreamStateModal(button.dataset.workstreamStateCard, null);
+  grid.querySelectorAll('[data-workstream-open]').forEach((node) => {
+    const open = async () => {
+      await selectWorkstream(node.dataset.workstreamOpen);
+    };
+    node.addEventListener('click', open);
+    node.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
     });
   });
 }
@@ -1180,9 +1171,9 @@ async function loadWorkstreams() {
     }
     await selectWorkstream(nextSelected);
   } catch (e) {
-    document.getElementById('workstream-grid').innerHTML = `<article data-panel="danger">Failed to load workstreams: ${escHtml(e.message)}</article>`;
+    document.getElementById('workstream-grid').innerHTML = `<article class="state state-error">Failed to load workstreams: ${escHtml(e.message)}</article>`;
     const queueRoot = document.getElementById('workstream-queue-list');
-    if (queueRoot) queueRoot.innerHTML = `<article data-panel="danger">Failed to load operational queue: ${escHtml(e.message)}</article>`;
+    if (queueRoot) queueRoot.innerHTML = `<article class="state state-error">Failed to load operational queue: ${escHtml(e.message)}</article>`;
     document.getElementById('workstream-detail-root').innerHTML = '';
   }
 }
@@ -1191,26 +1182,26 @@ async function loadWorkstreams() {
 
 function openHandoffViewModal(entry) {
   openModal(modalShell(`
-    <header data-modal-header>
+    <header class="modal-head">
       <div>
         <h3>Handoff</h3>
         <p>${escHtml(entry.id)} · ${escHtml(relTime(entry.updated_at || entry.created_at))}</p>
       </div>
-      <button data-modal-close>×</button>
+      <button class="modal-close" type="button">×</button>
     </header>
-    <section data-modal-body>
+    <section class="modal-body prose">
       ${renderMarkdown(entry.content)}
-      <footer data-pill-row>
-        <span data-pill="mono">${escHtml(entry.id)}</span>
-        ${entry.workstream_id ? `<span data-pill="mono">workstream:${escHtml(entry.workstream_id)}</span>` : ''}
-        ${entry.session_id ? `<span data-pill="mono">session:${escHtml(entry.session_id)}</span>` : ''}
-        ${(entry.tags || []).map((tag) => `<span data-pill="default">${escHtml(tag)}</span>`).join('')}
+      <footer class="tags">
+        <span class="tag-mono">${escHtml(entry.id)}</span>
+        ${entry.workstream_id ? `<span class="tag-mono">workstream:${escHtml(entry.workstream_id)}</span>` : ''}
+        ${entry.session_id ? `<span class="tag-mono">session:${escHtml(entry.session_id)}</span>` : ''}
+        ${(entry.tags || []).map((tag) => `<span class="tag">${escHtml(tag)}</span>`).join('')}
       </footer>
     </section>
-    <footer data-modal-footer>
-      ${entry.workstream_id ? `<button data-variant="ghost" data-ui="btn-handoff-open-state">Workstream state</button>` : ''}
-      ${entry.workstream_id ? `<button data-variant="ghost" data-ui="btn-handoff-open-resume">Workstream resume</button>` : ''}
-      <button data-variant="primary" data-ui="btn-handoff-history">History</button>
+    <footer class="modal-foot">
+      ${entry.workstream_id ? `<button class="btn btn-ghost" id="btn-handoff-open-state" type="button">Workstream state</button>` : ''}
+      ${entry.workstream_id ? `<button class="btn btn-ghost" id="btn-handoff-open-resume" type="button">Workstream resume</button>` : ''}
+      <button class="btn btn-primary" id="btn-handoff-history" type="button">History</button>
     </footer>
   `, 'modal-panel--wide'));
   if (entry.workstream_id) {
@@ -1233,40 +1224,40 @@ async function openWorkstreamStateModal(workstreamId, sessionId = null) {
     if (sessionId) params.session_id = sessionId;
     const data = await api.workstreamState(workstreamId, params);
     const sessions = (data.sessions || []).map((session) => `
-      <article data-panel="compact">
+      <article class="card card-compact">
         <h4>${escHtml(session.session_id || '(none)')}</h4>
         <p>entries=${escHtml(session.entry_count)} latest=${escHtml(session.latest_entry_id || '')}</p>
       </article>
-    `).join('') || '<p data-note="muted">No sessions aggregated.</p>';
+    `).join('') || '<p class="meta">No sessions aggregated.</p>';
     openModal(modalShell(`
-      <header data-modal-header>
+      <header class="modal-head">
         <div>
           <h3>Workstream state</h3>
           <p>${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</p>
         </div>
-        <button data-modal-close>×</button>
+        <button class="modal-close" type="button">×</button>
       </header>
-      <section data-modal-body>
-        <section data-metric-grid>
-          <article data-metric-card><strong>${escHtml(data.entry_count)}</strong><small>Entries</small></article>
-          <article data-metric-card><strong>${escHtml(data.session_count)}</strong><small>Sessions</small></article>
-        </section>
-        <section data-panel="default">
+      <section class="modal-body">
+        ${renderMetrics([
+          [escHtml(data.entry_count), 'Entries'],
+          [escHtml(data.session_count), 'Sessions'],
+        ])}
+        <section class="panel">
           <h4>Latest entry</h4>
           <p>${escHtml(data.latest_entry?.id || '')}</p>
           <p>kind=${escHtml(data.latest_entry?.entry_kind || '')} session=${escHtml(data.latest_entry?.session_id || '')}</p>
         </section>
-        <section data-metric-grid>
-          <article data-metric-card><strong>${escHtml(data.latest_handoff?.id || '—')}</strong><small>Latest handoff</small></article>
-          <article data-metric-card><strong>${escHtml(data.latest_state?.id || '—')}</strong><small>Latest state</small></article>
-        </section>
+        ${renderMetrics([
+          [escHtml(data.latest_handoff?.id || '—'), 'Latest handoff'],
+          [escHtml(data.latest_state?.id || '—'), 'Latest state'],
+        ])}
         <section>
           <h4>Aggregated sessions</h4>
-          <div data-metric-grid>${sessions}</div>
+          <div class="feed">${sessions}</div>
         </section>
       </section>
-      <footer data-modal-footer>
-        <button data-variant="ghost" onclick="closeModal()">Close</button>
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" onclick="closeModal()">Close</button>
       </footer>
     `, 'modal-panel--wide'));
   } catch (e) {
@@ -1280,62 +1271,62 @@ async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
     if (sessionId) params.session_id = sessionId;
     const data = await api.workstreamResume(workstreamId, params);
     const listBlock = (title, items, ordered = false) => `
-      <section data-panel="default">
+      <section class="panel">
         <h4>${escHtml(title)}</h4>
         ${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}
       </section>
     `;
     openModal(modalShell(`
-      <header data-modal-header>
+      <header class="modal-head">
         <div>
           <h3>Workstream resume</h3>
           <p>${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</p>
         </div>
-        <button data-modal-close>×</button>
+        <button class="modal-close" type="button">×</button>
       </header>
-      <section data-modal-body>
-        <section data-panel="default">
+      <section class="modal-body">
+        <section class="panel">
           <h4>Goal</h4>
           <p>${escHtml(data.goal || '')}</p>
           <p>${escHtml(data.summary || '')}</p>
         </section>
-        <section data-metric-grid>
-          <article data-metric-card><strong>${escHtml(data.latest_entry_id || '')}</strong><small>Latest entry</small></article>
-          <article data-metric-card><strong>${escHtml((data.focus_entry_ids || []).join(', ') || 'none')}</strong><small>Focus entries</small></article>
-        </section>
+        ${renderMetrics([
+          [escHtml(data.latest_entry_id || ''), 'Latest entry'],
+          [escHtml((data.focus_entry_ids || []).join(', ') || 'none'), 'Focus entries'],
+        ])}
         ${listBlock('Current state', data.current_state)}
         ${listBlock('Open loops', data.open_loops)}
         ${listBlock('Next steps', data.next_steps, true)}
-        <section data-panel="default">
+        <section class="panel">
           <h4>Restore context</h4>
           <p>section=${escHtml(data.restore_context?.section || '')} query=${escHtml(data.restore_context?.query || '')} include_deleted=${data.restore_context?.include_deleted ? 'true' : 'false'}</p>
         </section>
-        <section data-panel="default">
+        <section class="panel">
           <h4>Compressed context</h4>
-          <div data-pill-row>
-            <span data-pill="mono">essential:${escHtml((data.compressed_context?.essential || []).length)}</span>
-            <span data-pill="mono">optional:${escHtml((data.compressed_context?.optional || []).length)}</span>
-            <span data-pill="mono">archived:${escHtml((data.compressed_context?.archived || []).length)}</span>
-            <span data-pill="mono">risky:${escHtml((data.compressed_context?.risky || []).length)}</span>
-            <span data-pill="mono">obsolete:${escHtml((data.compressed_context?.obsolete || []).length)}</span>
+          <div class="tags">
+            <span class="tag-mono">essential:${escHtml((data.compressed_context?.essential || []).length)}</span>
+            <span class="tag-mono">optional:${escHtml((data.compressed_context?.optional || []).length)}</span>
+            <span class="tag-mono">archived:${escHtml((data.compressed_context?.archived || []).length)}</span>
+            <span class="tag-mono">risky:${escHtml((data.compressed_context?.risky || []).length)}</span>
+            <span class="tag-mono">obsolete:${escHtml((data.compressed_context?.obsolete || []).length)}</span>
           </div>
         </section>
-        <section data-panel="default">
+        <section class="panel">
           <h4>Next execution package</h4>
           <p>${escHtml(data.next_execution?.goal || data.goal || '')}</p>
           <p>resume_mode=${escHtml(data.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((data.next_execution?.essential_context || []).length)} risky=${escHtml((data.next_execution?.risky_context || []).length)}</p>
         </section>
-        <section data-panel="default">
+        <section class="panel">
           <h4>What changed since the last anchor</h4>
           ${renderMarkdown((data.what_changed || []).map((item) => `- ${item.summary || item.id}`).join('\n') || '_none_')}
         </section>
-        <section data-panel="default">
+        <section class="panel">
           <h4>Related entries</h4>
-          <div data-pill-row>${(data.related_entry_ids || []).map((item) => `<span data-pill="mono">${escHtml(item)}</span>`).join('') || '<span data-note="muted">none</span>'}</div>
+          <div class="tags">${(data.related_entry_ids || []).map((item) => `<span class="tag-mono">${escHtml(item)}</span>`).join('') || '<span class="meta">none</span>'}</div>
         </section>
       </section>
-      <footer data-modal-footer>
-        <button data-variant="ghost" onclick="closeModal()">Close</button>
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" onclick="closeModal()">Close</button>
       </footer>
     `, 'modal-panel--wide'));
   } catch (e) {
@@ -1361,16 +1352,9 @@ function statsSummary(statsData) {
 function renderStats(statsData) {
   const s = statsSummary(statsData);
   if (!s) return;
-  document.getElementById('stat-total').textContent = s.total ?? '—';
-  document.getElementById('stat-sections').textContent = s.activeSections;
-  document.getElementById('stat-size').textContent = s.sizeKb != null ? `${Math.round(s.sizeKb)} KB` : '—';
-  const storageEl = document.getElementById('stat-storage');
-  if (storageEl) storageEl.textContent = s.storage;
-  document.getElementById('stat-deleted').textContent = s.deleted;
-  document.getElementById('count-all').textContent = s.total ?? '';
+  setText('count-all', s.total ?? '');
   for (const [sec, cnt] of Object.entries(s.sections)) {
-    const el = document.getElementById(`count-${sec}`);
-    if (el) el.textContent = cnt;
+    setText(`count-${sec}`, cnt);
   }
 }
 
@@ -1384,69 +1368,50 @@ function applyDashboardStats(statsData) {
   if (dashStorage) dashStorage.textContent = s.storage;
   document.getElementById('dash-oldest').textContent = s.oldest;
   document.getElementById('dash-newest').textContent = s.newest;
-  document.getElementById('dash-updated').textContent = `Updated ${relTime(new Date().toISOString())} · Deleted ${s.deleted}`;
+  setText('dash-updated', `Updated ${relTime(new Date().toISOString())} · ${s.deleted} deleted`);
   const sectionsList = state.config?.sections || [];
   const maxCount = Math.max(...Object.values(s.sections), 1);
   const barsHtml = sectionsList.map((sec) => {
     const count = s.sections[sec] || 0;
     const pct = Math.round((count / maxCount) * 100);
     const color = sectionColor(sec);
-    return `<article data-stat-bar>
+    return `<div class="bar-row">
       <span>${escHtml(sec)}</span>
-      <div style="flex:1;height:8px;border-radius:999px;background:#edf2f7;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
       <strong>${count}</strong>
-    </article>`;
+    </div>`;
   }).join('');
-  document.getElementById('dash-section-bars').innerHTML = barsHtml || '<span data-note="muted">No sections configured.</span>';
+  document.getElementById('dash-section-bars').innerHTML = barsHtml || '<p class="meta">No sections configured.</p>';
 }
 
 function renderEntryCard(entry) {
   const theme = sectionTheme(entry.section);
-  const themeStyle = themeVars(theme);
-  const allTags = entry.tags || [];
-  const visibleTags = allTags.slice(0, 3).map((t) =>
-    `<span data-pill="default" style="${themeStyle}">${escHtml(t)}</span>`
-  ).join('');
-  const hiddenCount = allTags.length - 3;
-  const overflowPill = hiddenCount > 0
-    ? `<span data-pill="default">+${hiddenCount}</span>`
-    : '';
-  const tagsRow = `<div data-pill-row>${visibleTags}${overflowPill}</div>`;
-  const scoreBadge = entry.score != null
-    ? `<span data-pill="mono" style="${themeStyle}">${(entry.score * 100).toFixed(0)}%</span>`
-    : '';
   const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
   const displayTime = isEdited ? relTime(entry.updated_at) : relTime(entry.created_at);
   const timeTitle = isEdited ? `Created: ${entry.created_at}\nEdited: ${entry.updated_at}` : (entry.created_at || '');
-  const accessBadge = (entry.access_count || 0) > 0
-    ? `<time title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</time>`
-    : '';
-  const deletedBadge = entry.deleted_at
-    ? `<span data-pill="default">Deleted ${escHtml(relTime(entry.deleted_at))}</span>`
-    : '';
+  const tags = (entry.tags || []).slice(0, 3).map((t) => `<span class="tag">${escHtml(t)}</span>`).join('');
+  const extraTags = (entry.tags || []).length > 3 ? `<span class="tag">+${entry.tags.length - 3}</span>` : '';
+  const preview = previewText(entry.content, 280);
 
   return `
-    <article data-panel="solid" data-id="${escHtml(entry.id)}" style="${themeStyle}">
-      <div style="background:linear-gradient(90deg, ${rgba(theme.color, 0.85)} 0%, ${rgba(theme.color, 0.18)} 100%);height:4px;border-radius:999px"></div>
-      <header data-row="space-between">
-        <div data-pill-row>
-          <span style="width:8px;height:8px;border-radius:999px;background:${theme.color};display:inline-block"></span>
-          ${escHtml(entry.section)}
-        </div>
-        <div data-pill-row>
-          ${deletedBadge}
-          ${scoreBadge}
-          <time title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</time>
-        </div>
-      </header>
-      <section>
-        ${renderMarkdown(entry.content)}
-        ${tagsRow}
-      </section>
-      <footer data-row="space-between">
-        ${accessBadge}
-        <span data-pill="mono">${escHtml(entry.id)}</span>
-      </footer>
+    <article class="card memory-card" data-id="${escHtml(entry.id)}" style="--section-color:${theme.color}">
+      <div class="memory-card-accent"></div>
+      <div class="card-body">
+        <header class="card-head">
+          <span class="tag">${escHtml(entry.section)}</span>
+          <span class="tags">
+            ${entry.deleted_at ? '<span class="tag">Deleted</span>' : ''}
+            ${entry.score != null ? `<span class="tag-mono">${(entry.score * 100).toFixed(0)}%</span>` : ''}
+            <time title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</time>
+          </span>
+        </header>
+        <div class="card-content">${escHtml(preview)}</div>
+        ${tags ? `<div class="tags">${tags}${extraTags}</div>` : ''}
+        <footer class="card-foot">
+          ${(entry.access_count || 0) > 0 ? `<time>↻ ${entry.access_count}</time>` : '<span></span>'}
+          <span class="tag-mono">${escHtml(entry.id)}</span>
+        </footer>
+      </div>
     </article>`;
 }
 
@@ -1456,11 +1421,10 @@ function renderCards(entries, append = false) {
 
   if (entries.length === 0 && !append) {
     grid.innerHTML = `
-      <article data-panel="empty" style="padding: 64px 20px; border-style: dashed; text-align:center;">
-        <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
-        <h3 style="font-size: 18px; font-weight: 500; color: var(--fg); margin: 0 0 8px 0;">${state.searchMode ? 'No results found' : 'No entries yet'}</h3>
-        <p style="font-size: 14px; color: var(--mute); margin: 0;">${state.searchMode ? 'Try a different search term.' : 'No agent memory recorded yet.'}</p>
-      </article>`;
+      <div class="state">
+        <h3>${state.searchMode ? 'No results' : 'No entries'}</h3>
+        <p>${state.searchMode ? 'Try another search term.' : 'The agent has not written any memory yet.'}</p>
+      </div>`;
     return;
   }
 
@@ -1475,7 +1439,9 @@ function renderCards(entries, append = false) {
 
 async function loadConfig() {
   try {
-    [state.config, { models: semanticModels }] = await Promise.all([api.config(), api.models()]);
+    const [config, modelsData] = await Promise.all([api.config(), api.models()]);
+    state.config = config;
+    semanticModels = modelsData.models || [];
     state.limit = state.config.entry_batch_size || 24;
     renderSections();
   } catch (e) {
@@ -1498,7 +1464,7 @@ async function loadEntries(append = false) {
   state.loading = true;
   const grid = document.getElementById('cards-grid');
   if (!append) {
-    grid.innerHTML = '<article data-panel="loading">Loading…</article>';
+    grid.innerHTML = '<article class="state state-loading">Loading…</article>';
   }
 
   const offset = append ? state.offset : 0;
@@ -1521,8 +1487,10 @@ async function loadEntries(append = false) {
     state.total = total;
     state.hasMore = data.has_more ?? false;
 
-    document.getElementById('section-title').textContent = state.section || 'Memory';
-    document.getElementById('total-badge').textContent = total ? `${total} entries` : '';
+    if (state.view === 'memories') {
+      const label = state.searchMode ? 'Search results' : (state.section ? `Section: ${state.section}` : VIEW_META.memories.title);
+      updatePageHeader('memories', total ? `${total} entries · ${label}` : label);
+    }
 
     renderCards(items, append);
     renderSections();
@@ -1545,11 +1513,10 @@ async function doSearch(query) {
   state.searchMode = true;
   state.searchQuery = query;
   const grid = document.getElementById('cards-grid');
-  grid.innerHTML = '<article data-panel="loading">Searching…</article>';
+  grid.innerHTML = '<article class="state state-loading">Searching…</article>';
   document.getElementById('load-more-wrap').hidden = true;
   document.getElementById('sort-select').hidden = true;
-  document.getElementById('section-title').textContent = 'Search results';
-  document.getElementById('total-badge').textContent = '';
+  updatePageHeader('memories', `Search: "${query}"`);
   document.getElementById('search-results-bar').hidden = false;
 
   try {
@@ -1590,33 +1557,27 @@ function closeModal() {
 
 function openModal(html) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `<div data-ui="modal-backdrop" data-modal-overlay="true">${html}</div>`;
-  stripClassesFromTree(root);
-  ui('modal-backdrop', root).addEventListener('click', (e) => {
+  root.innerHTML = `<div class="modal-backdrop">${html}</div>`;
+  root.querySelector('.modal-backdrop').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeModal();
   });
-  const closeButton = Array.from(root.querySelectorAll('button')).find((button) => {
-    const text = (button.textContent || '').trim();
-    return text === '×' || text === '✕' || text.toLowerCase() === 'x';
-  });
-  closeButton?.addEventListener('click', closeModal);
+  root.querySelector('.modal-close')?.addEventListener('click', closeModal);
   document.addEventListener('keydown', handleEsc);
+}
+
+function modalShell(inner, size = '') {
+  const sizes = {
+    'modal-panel--wide': 'modal-wide',
+    'modal-panel--xl': 'modal-xl',
+    'modal-panel--compact': 'modal-compact',
+    'modal-panel--reading': '',
+  };
+  const extra = sizes[size] || '';
+  return `<div class="modal ${extra}">${inner}</div>`;
 }
 
 function handleEsc(e) {
   if (e.key === 'Escape') closeModal();
-}
-
-function buildSectionOptions(selected) {
-  if (!state.config) return '';
-  return (state.config.sections || []).map((s) =>
-    `<option value="${escHtml(s)}" ${s === selected ? 'selected' : ''}>${escHtml(s)}</option>`
-  ).join('');
-}
-
-function modalShell(inner, extraClasses = '') {
-  const shell = extraClasses ? String(extraClasses).trim() : 'default';
-  return `<article data-modal-panel="${escHtml(shell)}">${inner}</article>`;
 }
 
 function openViewModal(entry) {
@@ -1624,37 +1585,36 @@ function openViewModal(entry) {
   const themeStyle = themeVars(theme);
   const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
   const timeLabel = isEdited ? `Edited ${relTime(entry.updated_at)} · Created ${relTime(entry.created_at)}` : `Created ${relTime(entry.created_at)}`;
-  const tags = (entry.tags || []).map((t) => `<span data-pill="default" style="${themeStyle}">${escHtml(t)}</span>`).join('');
-  const scoreBadge = entry.score != null ? `<span data-pill="mono" style="${themeStyle}">${(entry.score * 100).toFixed(0)}%</span>` : '';
+  const tags = (entry.tags || []).map((t) => `<span class="tag" style="${themeStyle}">${escHtml(t)}</span>`).join('');
+  const scoreBadge = entry.score != null ? `<span class="tag-mono" style="${themeStyle}">${(entry.score * 100).toFixed(0)}%</span>` : '';
   const accessBadge = (entry.access_count || 0) > 0 ? `<time title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</time>` : '';
   const deletedNotice = entry.deleted_at
-    ? `<article data-panel="danger">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available for inspection.</article>`
+    ? `<article class="state state-error">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available for inspection.</article>`
     : '';
 
   openModal(modalShell(`
-    <div style="${themeStyle}"></div>
-    <header data-modal-header style="${themeStyle}">
-      <div data-pill-row>
-        <div data-pill="default" style="${themeStyle}">
+    <header class="modal-head" style="${themeStyle}">
+      <div class="tags">
+        <div class="tag" style="${themeStyle}">
           <span></span>
           ${escHtml(entry.section)}
         </div>
         ${scoreBadge}
         <time>${escHtml(timeLabel)}</time>
       </div>
-      <button data-modal-close>×</button>
+      <button class="modal-close" type="button">×</button>
     </header>
-    <section data-modal-body>
+    <section class="modal-body prose">
       ${deletedNotice}
       ${renderMarkdown(entry.content)}
-      ${tags ? `<div data-pill-row>${tags}</div>` : ''}
-      <footer data-pill-row>
+      ${tags ? `<div class="tags">${tags}</div>` : ''}
+      <footer class="tags">
         ${accessBadge}
-        <span data-pill="mono">${escHtml(entry.id)}</span>
+        <span class="tag-mono">${escHtml(entry.id)}</span>
       </footer>
     </section>
-    <footer data-modal-footer>
-      <button data-variant="ghost" data-ui="btn-view-history">History</button>
+    <footer class="modal-foot">
+      <button class="btn btn-ghost" id="btn-view-history" type="button">History</button>
     </footer>
   `, 'modal-panel--reading'));
   document.getElementById('btn-view-history').addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
@@ -1665,14 +1625,14 @@ async function openDiffModal(entry, fromVersion, toVersion) {
     const data = await api.diffVersions(entry.id, { from_version: String(fromVersion), to_version: String(toVersion) });
     const diffText = data.diff || '(no content changes)';
     openModal(modalShell(`
-      <header data-modal-header>
+      <header class="modal-head">
         <div>
           <h3>Diff for ${escHtml(entry.id)}</h3>
           <p>v${fromVersion} → v${toVersion}</p>
         </div>
-        <button data-modal-close>×</button>
+        <button class="modal-close" type="button">×</button>
       </header>
-      <section data-modal-body>
+      <section class="modal-body">
         <section>
           <h4>Side-by-side diff</h4>
           ${renderSideBySideDiff(diffText)}
@@ -1696,20 +1656,20 @@ async function openVersionsModal(entry) {
     const previousVersion = versions.length > 1 ? versions[versions.length - 2]?.version : currentVersion;
 
     openModal(modalShell(`
-      <header data-modal-header>
+      <header class="modal-head">
         <div>
           <h3>Version history</h3>
           <p>${escHtml(entry.id)} · ${versions.length} revision(s)</p>
         </div>
-        <button data-modal-close>×</button>
+        <button class="modal-close" type="button">×</button>
       </header>
-      <section data-modal-body>
-        <article data-panel="soft">
+      <section class="modal-body">
+        <article class="panel panel-soft">
           <h4>Compare revisions</h4>
           <p>Timeline stays focused on current vs previous for quick inspection. Older revisions can still be diffed against the current state directly from the timeline.</p>
         </article>
         <h4>Timeline</h4>
-        <section data-timeline data-ui="timeline-root"></section>
+        <section class="timeline" id="timeline-root"></section>
       </section>
     `, 'modal-panel--wide'));
 
@@ -1725,23 +1685,22 @@ async function openVersionsModal(entry) {
         const preview = previewText(revision.content, 120);
         const activeBorder = isSelectedFrom || isSelectedTo ? `border-color:${theme.color}; box-shadow:0 0 0 1px ${theme.color}, 0 8px 24px ${theme.glow};` : '';
         return `
-          <article data-timeline-item data-timeline-card="${revision.version}">
-            ${!isLast ? '<span style="height:1px"></span>' : ''}
-            <div style="${activeBorder}">
-              <header data-pill-row style="background:${theme.faint};padding:8px;border-radius:10px;">
-                <span data-pill="mono">v${revision.version}</span>
-                <span data-pill="default">${escHtml(revision.section || '')}</span>
-                ${revision.deleted_at ? '<span data-pill="default">deleted</span>' : ''}
-                ${isCurrent ? '<span data-pill="default">current</span>' : ''}
-                ${isSelectedFrom ? '<span data-pill="default">from</span>' : ''}
-                ${isSelectedTo ? '<span data-pill="default">to</span>' : ''}
+          <article class="version-item">
+            <div class="version-item-inner" style="${activeBorder}">
+              <header class="tags" style="background:${theme.faint};padding:8px;border-radius:10px;">
+                <span class="tag-mono">v${revision.version}</span>
+                <span class="tag">${escHtml(revision.section || '')}</span>
+                ${revision.deleted_at ? '<span class="tag">deleted</span>' : ''}
+                ${isCurrent ? '<span class="tag">current</span>' : ''}
+                ${isSelectedFrom ? '<span class="tag">from</span>' : ''}
+                ${isSelectedTo ? '<span class="tag">to</span>' : ''}
                 <time>${escHtml(relTime(revision.updated_at || revision.created_at))}</time>
               </header>
               <p>${escHtml(preview)}</p>
-              <footer data-pill-row>
-                <span data-pill="mono">Created ${escHtml(relTime(revision.created_at))}</span>
-                <span data-pill="mono">Updated ${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
-                ${!isCurrent ? `<button data-variant="ghost" data-size="small" data-diff-version="${revision.version}">Diff to current</button>` : ''}
+              <footer class="tags">
+                <span class="tag-mono">Created ${escHtml(relTime(revision.created_at))}</span>
+                <span class="tag-mono">Updated ${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
+                ${!isCurrent ? `<button class="btn btn-ghost btn-sm" type="button" data-diff-version="${revision.version}">Diff to current</button>` : ''}
               </footer>
             </div>
           </article>`;
@@ -1762,34 +1721,31 @@ function openConsolidateModal() {
   const sections = state.config?.sections || [];
   const opts = sections.map((s) => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
   openModal(modalShell(`
-    <header data-modal-header>
+    <header class="modal-head">
       <h3>Consolidate duplicates</h3>
-      <button data-modal-close>×</button>
+      <button class="modal-close" type="button">×</button>
     </header>
-    <section data-modal-body>
-      <section>
-        <label>Section <small>(optional)</small></label>
-        <select data-ui="f-cons-section">
+    <section class="modal-body">
+      <label class="field">Section <small>(optional)</small>
+        <select id="f-cons-section" class="select">
           <option value="">All sections</option>
           ${opts}
         </select>
-      </section>
-      <section>
-        <label>Mode</label>
-        <select data-ui="f-cons-mode">
+      </label>
+      <label class="field">Mode
+        <select id="f-cons-mode" class="select">
           <option value="exact">Exact (normalized content match)</option>
           <option value="semantic">Semantic (similarity threshold)</option>
         </select>
-      </section>
-      <section data-ui="threshold-group" hidden>
-        <label>Similarity threshold</label>
-        <input type="number" data-ui="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
-        <p>Higher = stricter (less aggressive). Range: 0.5 – 1.0</p>
-      </section>
+      </label>
+      <label class="field" id="threshold-group" hidden>Similarity threshold
+        <input type="number" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
+        <span class="meta">Higher = stricter (less aggressive). Range: 0.5 – 1.0</span>
+      </label>
     </section>
-    <footer data-modal-footer>
-      <button data-variant="ghost" onclick="closeModal()">Cancel</button>
-      <button data-variant="primary" data-ui="btn-run-consolidate">Run</button>
+    <footer class="modal-foot">
+      <button class="btn btn-ghost" type="button" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" id="btn-run-consolidate">Run</button>
     </footer>
   `, 'modal-panel--compact'));
 
@@ -1822,16 +1778,18 @@ function switchView(name) {
     name = 'workstreams';
   }
   state.view = name;
-  document.querySelectorAll('[data-view-panel]').forEach((view) => {
+  document.querySelectorAll('.view').forEach((view) => {
     view.hidden = true;
   });
   document.getElementById(`view-${name}`).hidden = false;
-  document.querySelectorAll('nav button[data-nav-view]').forEach((tab) => {
+  document.querySelectorAll('[data-nav-view]').forEach((tab) => {
     const active = tab.dataset.view === name;
     if (active) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   });
-  // search always visible in sidebar
+  const badge = document.querySelector('.topbar .badge');
+  if (badge) badge.hidden = name === 'settings';
+  updatePageHeader(name);
   if (name === 'dashboard') renderDashboardView();
   else if (name === 'stats') renderStatsView();
   else if (name === 'skills') renderSkillsView();
@@ -1847,13 +1805,13 @@ async function renderStatsView() {
     const items = recent.items || [];
     const recentHtml = items.map((e) => {
       const color = sectionColor(e.section);
-      return `<article data-row="space-between">
-        <span style="width:8px;height:8px;border-radius:999px;background:${color};display:inline-block"></span>
-        <span>${escHtml(e.content)}</span>
+      return `<article class="row">
+        <span class="swatch" style="background:${color}"></span>
+        <span class="row-main">${escHtml(previewText(e.content, 80))}</span>
         <time>${relTime(e.updated_at || e.created_at)}</time>
       </article>`;
     }).join('');
-    document.getElementById('dash-recent-list').innerHTML = recentHtml || '<span data-note="muted">No entries yet.</span>';
+    document.getElementById('dash-recent-list').innerHTML = recentHtml || '<p class="meta">No entries yet.</p>';
   } catch (e) {
     toast('Stats error: ' + e.message, 'error');
   }
@@ -1866,14 +1824,14 @@ async function openSkillModal(skillId) {
     const parsed = parseFrontmatter(skill?.content || '');
     const body = parsed.body || '';
     openModal(modalShell(`
-      <header data-modal-header>
+      <header class="modal-head">
         <div>
           <h3>${escHtml(skill.name || skill.id || 'Skill')}</h3>
           <p>${escHtml(skill.path || '')}</p>
         </div>
-        <button data-modal-close>✕</button>
+        <button class="modal-close" type="button">✕</button>
       </header>
-      <section data-modal-body>
+      <section class="modal-body prose">
         <p>${escHtml(skill.description || '')}</p>
         ${renderSkillFrontmatter(parsed.attributes)}
         ${renderMarkdown(body)}
@@ -1886,16 +1844,16 @@ async function openSkillModal(skillId) {
 
 function renderSkillsCards(skills) {
   if (!skills.length) {
-    return '<article data-panel="empty">No bundled skills found.</article>';
+    return '<article class="state">No bundled skills found.</article>';
   }
 
-  return `<section data-metric-grid>${skills.map((skill) => `
-    <article data-panel="shell" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
+  return skills.map((skill) => `
+    <article class="card skill-card" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
       <h4>${escHtml(skill.name || skill.id)}</h4>
       <p>${escHtml(skill.description || 'No description.')}</p>
-      <small title="${escHtml(skill.path || '')}">${escHtml(skill.path || '')}</small>
+      <small class="meta" title="${escHtml(skill.path || '')}">${escHtml(skill.path || '')}</small>
     </article>
-  `).join('')}</section>`;
+  `).join('');
 }
 
 function renderSkillsPackageBanner(info) {
@@ -1914,7 +1872,7 @@ function renderSkillsPackageBanner(info) {
 
 async function renderSkillsView() {
   const root = document.getElementById('skills-root');
-  root.innerHTML = '<article data-panel="loading">Loading…</article>';
+  root.innerHTML = '<article class="state state-loading">Loading…</article>';
   try {
     const [data, info] = await Promise.all([
       api.skills(),
@@ -1925,9 +1883,9 @@ async function renderSkillsView() {
     const skills = data.skills || [];
     state.skills = skills;
     if (!skills.length && !info?.skills_installed) {
-      root.innerHTML = '<article data-panel="empty">No skills available. Install the rememb-skills package to browse bundled agent skills.</article>';
+      root.innerHTML = '<article class="state">No skills available. Install the rememb-skills package to browse bundled agent skills.</article>';
     } else if (!skills.length) {
-      root.innerHTML = '<article data-panel="empty">No bundled skills found.</article>';
+      root.innerHTML = '<article class="state">No bundled skills found.</article>';
     } else {
       root.innerHTML = renderSkillsCards(skills);
     }
@@ -1942,88 +1900,85 @@ async function renderSkillsView() {
       });
     });
   } catch (e) {
-    root.innerHTML = '<article data-panel="danger">Failed to load bundled skills.</article>';
+    root.innerHTML = '<article class="state state-error">Failed to load bundled skills.</article>';
     toast('Skills error: ' + e.message, 'error');
   }
 }
 
 function settingsSectionTitle(title) {
-  return `<header data-row="space-between"><h4>${title}</h4><span style="flex:1;height:1px;background:var(--line)"></span></header>`;
+  return `<h3 class="settings-heading">${escHtml(title)}</h3>`;
 }
 
 function renderSettingsPage() {
   if (!state.config) {
-    document.getElementById('settings-form-root').innerHTML = '<article data-panel="empty">Config not loaded.</article>';
+    document.getElementById('settings-form-root').innerHTML = '<article class="state">Config not loaded.</article>';
     return;
   }
 
   const cfg = state.config;
   const sectionRows = (cfg.sections || []).map((s) => `
     <tr data-section="${escHtml(s)}">
-      <td><span style="display:inline-flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:999px;background:${sectionColor(s)}"></span><span>${escHtml(s)}</span></span></td>
-      <td><input type="color" data-field="color" value="${escHtml((cfg.section_colors || {})[s] || '#888888')}"></td>
-      <td><button data-remove="${escHtml(s)}" title="Remove">⨯</button></td>
+      <td><span class="swatch" style="background:${sectionColor(s)}"></span>${escHtml(s)}</td>
+      <td><input type="color" class="field-color" data-field="color" value="${escHtml((cfg.section_colors || {})[s] || '#888888')}"></td>
+      <td><button class="btn btn-ghost btn-sm" type="button" data-remove="${escHtml(s)}" title="Remove">×</button></td>
     </tr>`).join('');
 
   document.getElementById('settings-form-root').innerHTML = `
-    ${settingsSectionTitle('Limits')}
-    <section data-panel="tight" data-metric-grid>
-      <label>Max content length<input type="number" data-ui="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"></label>
-      <label>Max entries<input type="number" data-ui="cfg-max-entries" value="${escHtml(String(cfg.max_entries))}"></label>
-      <label>Max tags per entry<input type="number" data-ui="cfg-max-tags" value="${escHtml(String(cfg.max_tags_per_entry))}"></label>
-      <label>Max tag length<input type="number" data-ui="cfg-max-tag-len" value="${escHtml(String(cfg.max_tag_length))}"></label>
-      <label>Entry batch size<input type="number" data-ui="cfg-batch-size" min="1" value="${escHtml(String(cfg.entry_batch_size))}"></label>
-      <label>Entry load threshold<input type="number" data-ui="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}"></label>
-    </section>
-    ${settingsSectionTitle('Storage')}
-    <section data-panel="tight" data-metric-grid>
-      <label>Backend
-        <select data-ui="cfg-storage-backend">
-          <option value="json"${(cfg.storage_backend || 'json') === 'json' ? ' selected' : ''}>JSON (.rememb/entries.json)</option>
-          <option value="sqlite"${cfg.storage_backend === 'sqlite' ? ' selected' : ''}>SQLite (.rememb/entries.db)</option>
-        </select>
-      </label>
-      <div data-panel="default">
-        <p>SQLite scales better for large entry volumes. Switching to SQLite migrates existing JSON entries automatically.</p>
-        ${state.systemInfo?.storage_files?.length ? `<p><small>Active files: ${escHtml(state.systemInfo.storage_files.join(', '))}</small></p>` : ''}
+    <div class="settings-form">
+      <div class="panel-grid">
+        <section class="panel panel-tight">
+          ${settingsSectionTitle('Limits')}
+          <div class="form-grid">
+            <label class="field">Max content length<input type="number" id="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"></label>
+            <label class="field">Max entries<input type="number" id="cfg-max-entries" value="${escHtml(String(cfg.max_entries))}"></label>
+            <label class="field">Max tags per entry<input type="number" id="cfg-max-tags" value="${escHtml(String(cfg.max_tags_per_entry))}"></label>
+            <label class="field">Max tag length<input type="number" id="cfg-max-tag-len" value="${escHtml(String(cfg.max_tag_length))}"></label>
+            <label class="field">Entry batch size<input type="number" id="cfg-batch-size" min="1" value="${escHtml(String(cfg.entry_batch_size))}"></label>
+            <label class="field">Entry load threshold<input type="number" id="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}"></label>
+          </div>
+        </section>
+        <section class="panel panel-tight">
+          ${settingsSectionTitle('Storage backend')}
+          <label class="field">Backend
+            <select id="cfg-storage-backend" class="select">
+              <option value="json"${(cfg.storage_backend || 'json') === 'json' ? ' selected' : ''}>JSON (.rememb/entries.json)</option>
+              <option value="sqlite"${cfg.storage_backend === 'sqlite' ? ' selected' : ''}>SQLite (.rememb/entries.db)</option>
+            </select>
+          </label>
+          <p class="meta">SQLite scales better for large entry volumes. Switching migrates existing JSON entries automatically.</p>
+          ${state.systemInfo?.storage_files?.length ? `<p class="meta">Active files: ${escHtml(state.systemInfo.storage_files.join(', '))}</p>` : ''}
+        </section>
+        <section class="panel panel-tight">
+          ${settingsSectionTitle('Semantic search')}
+          <div class="form-grid">
+            <label class="field">Model${renderModelSelect(cfg.semantic_model_name || '')}</label>
+            <label class="field">Conflict threshold<input type="number" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></label>
+            <label class="field">Model idle TTL (s)<input type="number" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></label>
+          </div>
+        </section>
+        <section class="panel panel-tight">
+          ${settingsSectionTitle('Sections')}
+          <table class="config-table">
+            <thead><tr><th>Name</th><th>Color</th><th></th></tr></thead>
+            <tbody id="cfg-sections-tbody-page">${sectionRows}</tbody>
+          </table>
+          <div class="actions">
+            <input type="text" id="cfg-new-section-page" class="select" placeholder="New section name">
+            <button class="btn btn-ghost btn-sm" type="button" id="cfg-add-section-page">+ Add</button>
+          </div>
+        </section>
       </div>
-    </section>
-    ${settingsSectionTitle('Semantic search')}
-    <section data-panel="tight" data-metric-grid>
-      <label>Model${renderModelSelect(cfg.semantic_model_name || '')}</label>
-      <label>Conflict threshold<input type="number" data-ui="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></label>
-      <label>Model idle TTL (s)<input type="number" data-ui="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></label>
-    </section>
-    ${settingsSectionTitle('Sections')}
-    <section data-panel="tight">
-      <div>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Color</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody data-ui="cfg-sections-tbody-page">${sectionRows}</tbody>
-        </table>
-      </div>
-      <div data-actions>
-        <input type="text" data-ui="cfg-new-section-page" placeholder="New section name">
-        <button data-variant="ghost" data-size="small" data-ui="cfg-add-section-page">+ Add</button>
-      </div>
-    </section>
-    ${settingsSectionTitle('Maintenance')}
-    <section data-panel="default" data-row="space-between">
-      <div>
-        <h4>Consolidate duplicates</h4>
-        <p>Remove semantically duplicate entries</p>
-      </div>
-      <button data-variant="ghost" data-size="small" data-ui="btn-consolidate-page">Run consolidate</button>
-    </section>
-    <footer data-actions>
-      <button data-variant="primary" data-ui="btn-save-config-page">Save settings</button>
-    </footer>`;
+      <section class="panel row">
+        <div class="row-main">
+          <h4>Consolidate duplicates</h4>
+          <p class="meta">Remove semantically duplicate entries from the store.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-consolidate-page">Run consolidate</button>
+      </section>
+      <footer class="actions settings-actions">
+        <button class="btn btn-primary" type="button" id="btn-save-config-page">Save settings</button>
+      </footer>
+    </div>`;
 
   document.getElementById('cfg-sections-tbody-page').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-remove]');
@@ -2042,9 +1997,9 @@ function renderSettingsPage() {
     const tr = document.createElement('tr');
     tr.dataset.section = name;
     tr.innerHTML = `
-      <td><span style="display:inline-flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:999px;background:#888888"></span><span>${escHtml(name)}</span></span></td>
-      <td><input type="color" data-field="color" value="#888888"></td>
-      <td><button data-remove="${escHtml(name)}" title="Remove">⨯</button></td>`;
+      <td><span class="swatch" style="background:#888888"></span>${escHtml(name)}</td>
+      <td><input type="color" class="field-color" data-field="color" value="#888888"></td>
+      <td><button class="btn btn-ghost btn-sm" type="button" data-remove="${escHtml(name)}" title="Remove">×</button></td>`;
     tbody.appendChild(tr);
     inp.value = '';
   });
@@ -2121,7 +2076,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 
-document.getElementById('btn-consolidate').addEventListener('click', openConsolidateModal);
 document.getElementById('btn-load-more').addEventListener('click', () => loadEntries(true));
 document.getElementById('clear-search').addEventListener('click', clearSearch);
 
@@ -2173,7 +2127,7 @@ document.querySelectorAll('[data-workstream-surface]').forEach((button) => {
 async function loadSystemInfo() {
   try {
     state.systemInfo = await api.systemInfo();
-    const versionEl = document.querySelector('[data-ui="logo-version"]');
+    const versionEl = document.getElementById('logo-version');
     if (versionEl && state.systemInfo?.version) {
       versionEl.textContent = `v${state.systemInfo.version}`;
     }
@@ -2183,19 +2137,12 @@ async function loadSystemInfo() {
 }
 
 async function boot() {
-  classlessObserver.observe(document.documentElement, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    attributeFilter: ['class'],
-  });
-  stripClassesFromTree(document.documentElement);
   await Promise.all([loadConfig(), loadSystemInfo()]);
   document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
   document.getElementById('toggle-workstreams-include-deleted').checked = state.workstreamsIncludeDeleted;
   await loadStats();
   await loadEntries();
-  switchView('memories');
+  switchView('dashboard');
 }
 
 boot();

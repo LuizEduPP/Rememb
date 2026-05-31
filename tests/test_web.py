@@ -17,14 +17,12 @@ def test_index_exposes_deleted_and_history_controls():
     assert response.status_code == 200
     assert "Show deleted" in response.text
     assert "Workstreams" in response.text
-    assert "Handoffs" in response.text
     assert "/static/app.js" in response.text
-    assert "Storage backend" in response.text
-    assert "rememb-skills" in response.text
 
     app_js = client.get("/static/app.js")
     assert app_js.status_code == 200
     script = app_js.text
+    assert "Handoffs" in script
     assert "Version history" in script
     assert "Timeline" in script
     assert "Side-by-side diff" in script
@@ -33,7 +31,6 @@ def test_index_exposes_deleted_and_history_controls():
     assert "/api/workstreams/" in script
     assert "Workstream state" in script
     assert "Workstream resume" in script
-    assert "Workstream timeline" in script
     assert "workstream detail" in script
     assert "Review" in script
     assert "/api/review" in script
@@ -42,13 +39,15 @@ def test_index_exposes_deleted_and_history_controls():
     assert "/api/workstreams/queue" in script
     assert "/api/workstreams/compare" in script
     assert "/api/workstreams/switch-package" in script
-    assert "Next execution package" in script
-    assert "Agent Flow" in response.text
-    assert "Runtime Controls" in response.text
+    assert "Next execution" in script
+    assert "Views" in response.text
+    assert "System" in response.text
     assert "Overview" in response.text
-    assert "Workstream registry" in response.text
-    assert "Open workstreams" in response.text
-    assert "operational workstream" in script
+    assert "Registry" in response.text
+    assert "View all" in response.text
+    assert "Storage backend" in response.text
+    assert "Save settings" in script
+    assert "rememb-skills" in response.text
     assert "Skills" in response.text
 
 

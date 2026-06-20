@@ -11,4 +11,6 @@ venv/
 .pytest_cache
 .rememb/embeddings.npy
 .rememb/embeddings.hash
+.asset-workspace/
 .mcpregistry_*_token
+scripts/capture_web_ui_assets.py

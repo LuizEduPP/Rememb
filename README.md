@@ -1,12 +1,12 @@
 <!-- mcp-name: io.github.LuizEduPP/rememb -->
-![rememb cover](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/cover.png)
+![rememb cover](assets/cover.png)
 
 [![Rememb MCP server](https://glama.ai/mcp/servers/LuizEduPP/Rememb/badges/score.svg)](https://glama.ai/mcp/servers/LuizEduPP/Rememb)
 [![MCP Badge](https://lobehub.com/badge/mcp/luizedupp-rememb)](https://lobehub.com/mcp/luizedupp-rememb)
 
 Operate AI agents without losing context between sessions. `rememb` is a local-first persistent memory layer: structured entries, semantic search, versioning, diff, restore, and audit trail — no cloud service required.
 
-![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
+![rememb chat demo](assets/rememb-chat.gif)
 ---
 
 ## The problem
@@ -108,9 +108,9 @@ rememb fetch-model        # Download the local embedding model for semantic sear
 
 ```
 .rememb/
-  entries.json   ← structured memory (project, actions, systems, user, context)
+  entries.json   ← default JSON store (or entries.db with SQLite backend)
   meta.json      ← project metadata
-  config.json    ← limits, sections, web UI behavior, semantic model settings
+  config.json    ← limits, sections, storage backend, semantic model settings
 ```
 
 A local JSON-backed store in your project. Your agent can read prior decisions, search by meaning, update entries without losing history, and restore previous versions without depending on a cloud memory service.
@@ -144,9 +144,12 @@ rememb now writes the full configuration set to .rememb/config.json during initi
   "entry_load_threshold": 6,
   "semantic_model_idle_ttl_seconds": 15,
   "semantic_model_name": "paraphrase-multilingual-MiniLM-L12-v2",
-  "semantic_conflict_threshold": 0.88
+  "semantic_conflict_threshold": 0.88,
+  "storage_backend": "json"
 }
 ```
+
+Set `storage_backend` to `sqlite` for larger stores. The Web UI and MCP migrate existing JSON entries automatically when you switch backends.
 
 Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as intfloat/multilingual-e5-small or all-MiniLM-L6-v2.
 
@@ -173,7 +176,7 @@ Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS
 
 ## Web UI
 
-`rememb` includes a local web interface for browsing and maintaining project memory.
+`rememb` includes a local web interface for **supervision** — browse memory, inspect history, and tune runtime settings. The agent writes memory through MCP; the web UI is read-only for entries.
 
 ```bash
 rememb                       # Open the web UI (http://localhost:8080)
@@ -182,29 +185,30 @@ rememb --port 9000           # Custom port
 rememb --no-browser          # Start server without opening the browser
 ```
 
-![rememb web UI](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui.png)
+![rememb web UI](assets/web-ui.png)
 
-The screenshot above shows the actual local web UI running with demo data.
+Overview with entry totals and recent memory activity.
 
-![rememb stats view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-stats.png)
+![rememb stats view](assets/web-ui-stats.png)
 
-Stats view with totals, section breakdown, date range, and recent entries.
+Stats with totals, section breakdown, date range, and recent entries.
 
-![rememb settings view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-settings.png)
+![rememb settings view](assets/web-ui-settings.png)
 
-Settings view with limits, semantic search controls, section colors, and maintenance actions.
+Settings for limits, storage backend, semantic search, section colors, and maintenance actions.
 
-![rememb skills view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-skills.png)
+![rememb skills view](assets/web-ui-skills.png)
 
-Skills view listing all bundled skills available in the installed rememb package.
+Skills browser for the optional `rememb-skills` package (`pip install rememb-skills` or `pip install rememb[skills]`).
 
-Features:
-- **Overview dashboard** — entry totals, recent activity, and quick links to memory sections
-- **Memory browser** — browse, filter, create, edit, and delete entries by section or tag
-- **Version history** — inspect revisions, diff changes, and restore prior versions from the UI
-- **Stats page** — totals, section breakdown, date range, and recent entries
-- **Settings page** — edit limits, semantic search options, section colors, and maintenance actions
-- **Skills page** — browse all bundled skills available in the installed rememb package
+Views:
+- **Overview** — entry totals, deleted count, store size, and recent memory
+- **Memory** — browse, search, filter by section, sort, and include deleted entries
+- **Stats** — totals, backend, section bars, oldest/newest timestamps, and recent entries
+- **Settings** — edit limits, storage backend, semantic search, section colors, consolidate duplicates, and save runtime config
+- **Skills** — browse bundled agent skills when `rememb-skills` is installed
+
+Entry inspection from the UI includes version history, side-by-side diff, and restore actions. Writes and edits stay on the MCP side.
 
 The semantic search MCP tool also accepts an optional exact `tag` filter, so IDE clients can restrict semantic matches before ranking.
 
@@ -251,8 +255,8 @@ Core capabilities:
 - semantic search with local embeddings
 - non-destructive versioning, diff, restore, and soft delete
 - duplicate consolidation and store stats
-- config and maintenance via Web UI
-- bundled skills via MCP
+- config and maintenance via Web UI (settings only; entry writes via MCP)
+- optional bundled skills via `rememb-skills` and MCP
 
 ---
 

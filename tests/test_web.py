@@ -14,6 +14,11 @@ def test_index_exposes_deleted_and_history_controls():
     response = client.get("/")
 
     assert response.status_code == 200
+    assert "{{STYLE_VERSION}}" not in response.text
+    assert "{{APP_VERSION}}" not in response.text
+    assert "style.css?v=" in response.text
+    assert "app.js?v=" in response.text
+    assert response.headers.get("cache-control") == "no-cache, no-store, must-revalidate"
     assert "Show deleted" in response.text
     assert "/static/app.js" in response.text
 
@@ -22,16 +27,13 @@ def test_index_exposes_deleted_and_history_controls():
     script = app_js.text
     assert "Version history" in script
     assert "Side-by-side diff" in script
-    assert "current vs previous" in script
     assert "/api/entries/" in script
-    assert "Views" in response.text
-    assert "System" in response.text
     assert "Overview" in response.text
     assert "Recent memory" in response.text
     assert "View all" in response.text
-    assert "Storage backend" in response.text
+    assert "Storage backend" in script
     assert "Save settings" in script
-    assert "rememb-skills" in response.text
+    assert "rememb-skills" in script
     assert "Skills" in response.text
 
 

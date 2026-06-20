@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>rememb</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{STYLE_VERSION}}">
 </head>
 <body>
-<div class="shell">
+<div class="app">
   <aside class="sidebar">
     <a class="brand" href="/">
       <img src="/static/logo.png" alt="">
@@ -21,59 +21,51 @@
       <input id="search-input" type="search" placeholder="Search memory…" autocomplete="off">
     </label>
     <nav class="nav">
-      <p class="nav-label">Views</p>
       <button class="nav-item" data-view="dashboard" data-nav-view aria-current="page">Overview</button>
       <button class="nav-item" data-view="memories" data-nav-view>Memory</button>
-      <p class="nav-label">System</p>
       <button class="nav-item" data-view="stats" data-nav-view>Stats</button>
       <button class="nav-item" data-view="settings" data-nav-view>Settings</button>
       <button class="nav-item" data-view="skills" data-nav-view>Skills</button>
     </nav>
-    <p class="sidebar-foot">Supervision only · agent writes via MCP</p>
+    <p class="sidebar-foot">Supervision · agent writes via MCP</p>
   </aside>
 
-  <div class="workspace">
-    <header class="topbar">
+  <main class="main">
+    <header class="header">
       <div>
         <h1 id="page-title">Overview</h1>
-        <p id="page-subtitle">What the agent is doing right now</p>
+        <p id="page-subtitle">Memory store at a glance</p>
       </div>
-      <span class="badge">Read-only</span>
+      <span id="topbar-badge" class="badge">Read-only</span>
     </header>
 
-    <div class="content">
+    <div class="page">
       <section id="view-dashboard" class="view">
-        <div class="kpi-row">
-          <article class="kpi"><strong id="dashboard-entries-count">—</strong><span>Entries</span><small id="dashboard-entries-caption">…</small></article>
-          <article class="kpi"><strong id="dashboard-sections-count">—</strong><span>Sections</span><small id="dashboard-sections-caption">…</small></article>
-          <article class="kpi"><strong id="dashboard-deleted-count">—</strong><span>Deleted</span><small id="dashboard-deleted-caption">…</small></article>
-          <article class="kpi"><strong id="dashboard-size-count">—</strong><span>Size (KB)</span><small id="dashboard-size-caption">…</small></article>
-        </div>
-        <div class="split">
-          <section class="panel">
-            <header class="panel-head"><h2>Recent memory</h2><button class="btn btn-ghost btn-sm" data-shortcut-view="memories">View all</button></header>
-            <div id="dashboard-recent-list" class="feed"></div>
-          </section>
-          <section class="panel">
-            <header class="panel-head"><h2>Quick links</h2></header>
-            <div id="dashboard-links-list" class="feed"></div>
-          </section>
-        </div>
+        <dl class="stats">
+          <div><dt>Entries</dt><dd id="dashboard-entries-count">—</dd></div>
+          <div><dt>Sections</dt><dd id="dashboard-sections-count">—</dd></div>
+          <div><dt>Deleted</dt><dd id="dashboard-deleted-count">—</dd></div>
+          <div><dt>Size (KB)</dt><dd id="dashboard-size-count">—</dd></div>
+        </dl>
+        <section class="surface">
+          <header class="surface-head">
+            <h2>Recent memory</h2>
+            <button class="btn btn-ghost btn-sm" data-shortcut-view="memories">View all</button>
+          </header>
+          <div id="dashboard-recent-list" class="rows"></div>
+        </section>
       </section>
 
       <section id="view-memories" class="view" hidden>
-        <div id="search-results-bar" class="banner" hidden>
+        <div id="search-results-bar" class="notice" hidden>
           <span id="search-results-label"></span>
           <button id="clear-search" class="btn btn-ghost btn-sm">Clear</button>
         </div>
-        <div class="toolbar">
-          <fieldset class="chips-field">
-            <legend>Section</legend>
-            <nav id="sections-list" class="chips"></nav>
-          </fieldset>
-          <div class="toolbar-actions">
+        <div class="filters">
+          <nav id="sections-list" class="chips"></nav>
+          <div class="filters-actions">
             <label class="check"><input id="toggle-include-deleted" type="checkbox"><span>Show deleted</span></label>
-            <select id="sort-select" class="select">
+            <select id="sort-select" class="input">
               <option value="recent-desc">Newest</option>
               <option value="recent-asc">Oldest</option>
               <option value="storage-asc">Storage ↑</option>
@@ -81,45 +73,50 @@
             </select>
           </div>
         </div>
-        <div id="cards-grid" class="card-grid"></div>
-        <div id="load-more-wrap" class="load-more" hidden><button id="btn-load-more" class="btn">Load more</button></div>
+        <div id="cards-grid" class="grid"></div>
+        <div id="load-more-wrap" class="pager" hidden><button id="btn-load-more" class="btn">Load more</button></div>
       </section>
 
       <section id="view-stats" class="view" hidden>
-        <p class="meta" id="dash-updated"></p>
-        <div class="kpi-row">
-          <article class="kpi"><strong id="dash-total">—</strong><span>Entries</span></article>
-          <article class="kpi"><strong id="dash-active-sec">—</strong><span>Sections</span></article>
-          <article class="kpi"><strong id="dash-size">—</strong><span>Size (KB)</span></article>
-          <article class="kpi"><strong id="dash-storage">—</strong><span>Backend</span></article>
-          <article class="kpi"><strong id="dash-oldest">—</strong><span>Oldest</span></article>
-          <article class="kpi"><strong id="dash-newest">—</strong><span>Newest</span></article>
-        </div>
-        <div class="split">
-          <section class="panel"><h2>By section</h2><div id="dash-section-bars" class="bars"></div></section>
-          <section class="panel"><h2>Recent</h2><div id="dash-recent-list" class="feed feed-compact"></div></section>
+        <p class="lede" id="dash-updated"></p>
+        <dl class="stats">
+          <div><dt>Entries</dt><dd id="dash-total">—</dd></div>
+          <div><dt>Sections</dt><dd id="dash-active-sec">—</dd></div>
+          <div><dt>Size (KB)</dt><dd id="dash-size">—</dd></div>
+          <div><dt>Backend</dt><dd id="dash-storage">—</dd></div>
+          <div><dt>Oldest</dt><dd id="dash-oldest">—</dd></div>
+          <div><dt>Newest</dt><dd id="dash-newest">—</dd></div>
+        </dl>
+        <div class="columns">
+          <section class="surface">
+            <header class="surface-head"><h2>By section</h2></header>
+            <div id="dash-section-bars" class="bars"></div>
+          </section>
+          <section class="surface">
+            <header class="surface-head"><h2>Recent</h2></header>
+            <div id="dash-recent-list" class="rows"></div>
+          </section>
         </div>
       </section>
 
       <section id="view-skills" class="view" hidden>
-        <p class="meta" id="skills-updated"></p>
-        <aside id="skills-package-banner" class="banner banner-info" hidden>
-          <p>Install optional skills with <code>pip install rememb-skills</code> or <code>pip install rememb[skills]</code>.</p>
-        </aside>
-        <div id="skills-root" class="card-grid card-grid-skills"><div class="state state-loading">Loading…</div></div>
+        <p class="lede" id="skills-updated"></p>
+        <aside id="skills-package-banner" class="notice notice-info" hidden></aside>
+        <section class="surface surface--flush">
+          <div id="skills-root" class="grid grid-skills"><div class="empty empty-loading">Loading…</div></div>
+        </section>
       </section>
 
       <section id="view-settings" class="view" hidden>
-        <p class="meta">Runtime configuration for this workspace. Storage backend, limits and sections can be changed here.</p>
-        <div id="settings-form-root"><div class="state state-loading">Loading…</div></div>
+        <div id="settings-form-root"><div class="empty empty-loading">Loading…</div></div>
       </section>
     </div>
-  </div>
+  </main>
 </div>
 
 <div id="toast-container" class="toasts"></div>
 <div id="modal-root" class="modal-host"></div>
 
-<script src="/static/app.js?v=2"></script>
+<script src="/static/app.js?v={{APP_VERSION}}"></script>
 </body>
 </html>

@@ -17,7 +17,6 @@ const state = {
   systemInfo: null,
 };
 
-let dashboardRecentEntries = [];
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(path, {
@@ -99,56 +98,10 @@ function updatePageHeader(view, subtitle) {
   setText('page-subtitle', subtitle || meta.subtitle);
 }
 
-function hexToRgb(hex) {
-  const clean = String(hex || '').trim().replace('#', '');
-  const normalized = clean.length === 3 ? clean.split('').map((char) => char + char).join('') : clean;
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
-    return { r: 136, g: 136, b: 136 };
-  }
-  return {
-    r: parseInt(normalized.slice(0, 2), 16),
-    g: parseInt(normalized.slice(2, 4), 16),
-    b: parseInt(normalized.slice(4, 6), 16),
-  };
-}
-
-function rgba(hex, alpha) {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 function sectionColor(name) {
   if (!state.config) return '#888888';
   return (state.config.section_colors || {})[name] || '#888888';
 }
-
-function sectionTheme(name) {
-  const color = sectionColor(name);
-  return {
-    color,
-    headerBg: rgba(color, 0.11),
-    headerBorder: rgba(color, 0.2),
-    softBg: rgba(color, 0.1),
-    softBorder: rgba(color, 0.24),
-    glow: rgba(color, 0.14),
-    faint: rgba(color, 0.06),
-  };
-}
-
-function themeVars(theme) {
-  const { r, g, b } = hexToRgb(theme.color);
-  return [
-    `--theme-color:${theme.color}`,
-    `--theme-soft-bg:${theme.softBg}`,
-    `--theme-soft-border:${theme.softBorder}`,
-    `--theme-header-bg:${theme.headerBg}`,
-    `--theme-header-border:${theme.headerBorder}`,
-    `--theme-faint:${theme.faint}`,
-    `--theme-color-rgb:${r}, ${g}, ${b}`,
-  ].join(';');
-}
-
-
 
 function relTime(isoStr) {
   if (!isoStr) return '';
@@ -184,7 +137,7 @@ function renderModelSelect(currentValue) {
   const opts = semanticModels.map((m) =>
     `<option value="${escHtml(m.name)}" ${m.name === currentValue ? 'selected' : ''} title="${escHtml(m.description)}">${escHtml(m.label)}</option>`
   ).join('');
-  return `<select id="cfg-model" class="select">${opts}</select>`;
+  return `<select id="cfg-model" class="input">${opts}</select>`;
 }
 
 function parseUnifiedDiff(diffText) {
@@ -276,18 +229,18 @@ function renderDiffCell(row, side) {
 function renderSideBySideDiff(diffText) {
   const rows = parseUnifiedDiff(diffText);
   if (!rows.length) {
-    return '<article class="panel panel-soft" data-empty="true">No content changes.</article>';
+    return '<article class="surface surface--muted" data-empty="true">No content changes.</article>';
   }
 
   return `
-    <article class="panel panel-shell">
+    <article class="surface surface--flush">
       <header class="diff-head">
         <div>From</div>
         <div>To</div>
       </header>
       <section class="diff-scroll">
         ${rows.map((row) => `
-          <div class="diff-row ${escHtml(row.type || 'context')}">
+          <div class="diff-line ${escHtml(row.type || 'context')}">
             <div>${renderDiffCell(row, 'left')}</div>
             <div>${renderDiffCell(row, 'right')}</div>
           </div>
@@ -488,9 +441,9 @@ function parseFrontmatter(text) {
 function renderSkillFrontmatter(attributes) {
   if (!attributes.length) return '';
   return `
-    <section class="panel">
+    <section class="surface">
       <h4>Frontmatter</h4>
-      <dl>
+      <dl class="facts">
         ${attributes.map(({ key, value }) => `
           <div>
             <dt>${escHtml(key || 'field')}</dt>
@@ -504,8 +457,9 @@ function renderSkillFrontmatter(attributes) {
 
 function renderSections() {
   if (!state.config) return;
-  const sections = state.config.sections || [];
   const list = document.getElementById('sections-list');
+  if (!list) return;
+  const sections = state.config.sections || [];
   const allActive = state.section === null && !state.searchMode;
 
   let html = `
@@ -531,41 +485,33 @@ function renderSections() {
   });
 }
 
-function renderDashboardList(rootId, items, emptyMessage) {
+function renderEntryRows(rootId, entries, emptyMessage) {
   const root = document.getElementById(rootId);
   if (!root) return;
-  if (!items.length) {
-    root.innerHTML = `<p class="meta">${escHtml(emptyMessage)}</p>`;
+  if (!entries.length) {
+    root.innerHTML = `<p class="lede">${escHtml(emptyMessage)}</p>`;
     return;
   }
-  root.innerHTML = items.map((item) => `
-    <article class="card card-compact">
-      <div class="row">
-        <div class="row-main">
-          <h4>${escHtml(item.title || '')}</h4>
-          <p>${escHtml(item.body || '')}</p>
-        </div>
-        ${item.meta ? `<span class="tag-mono">${escHtml(item.meta)}</span>` : ''}
+  root.innerHTML = entries.map((entry) => `
+    <article class="row row--clickable" data-entry-id="${escHtml(entry.id)}" tabindex="0" role="button">
+      <div>
+        <p class="row-title"><span class="dot" style="--dot-color:${escHtml(entry.color)}"></span>${escHtml(entry.title)}</p>
+        <p class="row-meta">${escHtml(entry.meta)}</p>
       </div>
-      ${item.action ? `<footer class="actions"><button class="btn btn-ghost btn-sm" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></footer>` : ''}
+      ${entry.idLabel ? `<span class="mono">${escHtml(entry.idLabel)}</span>` : `<time>${escHtml(entry.time || '')}</time>`}
     </article>
   `).join('');
-  root.querySelectorAll('[data-dashboard-action]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const action = button.dataset.dashboardAction;
-      const value = button.dataset.dashboardValue;
-      if (action === 'open-entry') {
-        const entryId = button.dataset.dashboardEntryId;
-        const entry = dashboardRecentEntries.find((item) => item.id === entryId);
-        if (entry) openViewModal(entry);
-        return;
-      }
-      if (action === 'open-memory-admin') {
-        switchView('memories');
-        return;
-      }
-      if (action === 'open-runtime-controls') {
-        switchView(value || 'settings');
+
+  root.querySelectorAll('[data-entry-id]').forEach((row) => {
+    const open = () => {
+      const entry = entries.find((item) => item.id === row.dataset.entryId);
+      if (entry?.source) openViewModal(entry.source);
+    };
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
       }
     });
   });
@@ -579,60 +525,26 @@ async function renderDashboardView() {
     ]);
     const summary = statsSummary(statsData);
     const recentEntries = recentData.items || [];
-    dashboardRecentEntries = recentEntries;
 
     setText('dashboard-entries-count', String(summary?.total ?? 0));
-    setText('dashboard-entries-caption', summary?.newest && summary.newest !== '—'
-      ? `newest ${relTime(summary.newest)}`
-      : 'no entries yet');
     setText('dashboard-sections-count', String(summary?.activeSections ?? 0));
-    setText('dashboard-sections-caption', summary?.storage
-      ? `${summary.storage} backend`
-      : 'storage backend unknown');
     setText('dashboard-deleted-count', String(summary?.deleted ?? 0));
-    setText('dashboard-deleted-caption', summary?.oldest && summary.oldest !== '—'
-      ? `oldest ${relTime(summary.oldest)}`
-      : 'no deleted entries');
     setText('dashboard-size-count', summary?.sizeKb != null ? String(Math.round(summary.sizeKb)) : '—');
-    setText('dashboard-size-caption', summary?.activeSections
-      ? `${summary.activeSections} active section${summary.activeSections === 1 ? '' : 's'}`
-      : 'no section data');
 
-    renderDashboardList(
+    renderEntryRows(
       'dashboard-recent-list',
       recentEntries.map((entry) => ({
-        title: truncateContent(entry.content, 68),
-        body: `${entry.section} · ${relTime(entry.updated_at || entry.created_at)}${entry.deleted_at ? ' · deleted' : ''}`,
-        meta: entry.id,
-        action: { name: 'open-entry', entryId: entry.id, label: 'View entry' },
+        id: entry.id,
+        source: entry,
+        title: truncateContent(entry.content, 72),
+        meta: `${entry.section} · ${relTime(entry.updated_at || entry.created_at)}${entry.deleted_at ? ' · deleted' : ''}`,
+        idLabel: entry.id,
+        color: sectionColor(entry.section),
       })),
       'No memory entries yet. The agent will persist context here via MCP.'
     );
-
-    renderDashboardList(
-      'dashboard-links-list',
-      [
-        {
-          title: 'Stats',
-          body: 'Store size, section distribution, and recent activity.',
-          action: { name: 'open-runtime-controls', value: 'stats', label: 'Open stats' },
-        },
-        {
-          title: 'Settings',
-          body: 'Runtime configuration, storage backend, and sections.',
-          action: { name: 'open-runtime-controls', value: 'settings', label: 'Open settings' },
-        },
-        {
-          title: 'Skills',
-          body: 'Optional bundled agent skills installed with rememb-skills.',
-          action: { name: 'open-runtime-controls', value: 'skills', label: 'Browse skills' },
-        },
-      ],
-      'No quick links available.'
-    );
   } catch (e) {
-    renderDashboardList('dashboard-recent-list', [], `Failed to load dashboard: ${e.message}`);
-    renderDashboardList('dashboard-links-list', [], 'Dashboard could not load quick links.');
+    renderEntryRows('dashboard-recent-list', [], `Failed to load dashboard: ${e.message}`);
   }
 }
 
@@ -663,13 +575,12 @@ function renderStats(statsData) {
 function applyDashboardStats(statsData) {
   const s = statsSummary(statsData);
   if (!s) return;
-  document.getElementById('dash-total').textContent = s.total;
-  document.getElementById('dash-active-sec').textContent = s.activeSections;
-  document.getElementById('dash-size').textContent = s.sizeKb != null ? Math.round(s.sizeKb) : '—';
-  const dashStorage = document.getElementById('dash-storage');
-  if (dashStorage) dashStorage.textContent = s.storage;
-  document.getElementById('dash-oldest').textContent = s.oldest;
-  document.getElementById('dash-newest').textContent = s.newest;
+  setText('dash-total', String(s.total));
+  setText('dash-active-sec', String(s.activeSections));
+  setText('dash-size', s.sizeKb != null ? String(Math.round(s.sizeKb)) : '—');
+  setText('dash-storage', s.storage);
+  setText('dash-oldest', s.oldest);
+  setText('dash-newest', s.newest);
   setText('dash-updated', `Updated ${relTime(new Date().toISOString())} · ${s.deleted} deleted`);
   const sectionsList = state.config?.sections || [];
   const maxCount = Math.max(...Object.values(s.sections), 1);
@@ -677,53 +588,52 @@ function applyDashboardStats(statsData) {
     const count = s.sections[sec] || 0;
     const pct = Math.round((count / maxCount) * 100);
     const color = sectionColor(sec);
-    return `<div class="bar-row">
+    return `<div class="bar">
       <span>${escHtml(sec)}</span>
-      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="bar-track"><div class="bar-fill" style="--bar-width:${pct}%;--bar-color:${color}"></div></div>
       <strong>${count}</strong>
     </div>`;
   }).join('');
-  document.getElementById('dash-section-bars').innerHTML = barsHtml || '<p class="meta">No sections configured.</p>';
+  const barsRoot = document.getElementById('dash-section-bars');
+  if (barsRoot) barsRoot.innerHTML = barsHtml || '<p class="lede">No sections configured.</p>';
 }
 
 function renderEntryCard(entry) {
-  const theme = sectionTheme(entry.section);
+  const color = sectionColor(entry.section);
   const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
   const displayTime = isEdited ? relTime(entry.updated_at) : relTime(entry.created_at);
   const timeTitle = isEdited ? `Created: ${entry.created_at}\nEdited: ${entry.updated_at}` : (entry.created_at || '');
   const tags = (entry.tags || []).slice(0, 3).map((t) => `<span class="tag">${escHtml(t)}</span>`).join('');
   const extraTags = (entry.tags || []).length > 3 ? `<span class="tag">+${entry.tags.length - 3}</span>` : '';
-  const preview = truncateContent(entry.content, 280);
+  const preview = truncateContent(entry.content, 240);
 
   return `
-    <article class="card memory-card" data-id="${escHtml(entry.id)}" style="--section-color:${theme.color}">
-      <div class="memory-card-accent"></div>
-      <div class="card-body">
-        <header class="card-head">
-          <span class="tag">${escHtml(entry.section)}</span>
-          <span class="tags">
-            ${entry.deleted_at ? '<span class="tag">Deleted</span>' : ''}
-            ${entry.score != null ? `<span class="tag-mono">${(entry.score * 100).toFixed(0)}%</span>` : ''}
-            <time title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</time>
-          </span>
-        </header>
-        <div class="card-content">${escHtml(preview)}</div>
-        ${tags ? `<div class="tags">${tags}${extraTags}</div>` : ''}
-        <footer class="card-foot">
-          ${(entry.access_count || 0) > 0 ? `<time>↻ ${entry.access_count}</time>` : '<span></span>'}
-          <span class="tag-mono">${escHtml(entry.id)}</span>
-        </footer>
-      </div>
+    <article class="entry${entry.deleted_at ? ' is-deleted' : ''}" data-id="${escHtml(entry.id)}" tabindex="0" role="button" style="--section-color:${color}">
+      <header class="entry-head">
+        <span class="entry-section"><span class="dot" style="--dot-color:${color}"></span>${escHtml(entry.section)}</span>
+        <span class="tags">
+          ${entry.deleted_at ? '<span class="tag">Deleted</span>' : ''}
+          ${entry.score != null ? `<span class="mono">${(entry.score * 100).toFixed(0)}%</span>` : ''}
+          <time title="${escHtml(timeTitle)}">${isEdited ? '✎ ' : ''}${displayTime}</time>
+        </span>
+      </header>
+      <div class="entry-body">${escHtml(preview)}</div>
+      ${tags ? `<div class="tags">${tags}${extraTags}</div>` : ''}
+      <footer class="entry-foot">
+        ${(entry.access_count || 0) > 0 ? `<time>↻ ${entry.access_count}</time>` : '<span></span>'}
+        <span class="mono">${escHtml(entry.id)}</span>
+      </footer>
     </article>`;
 }
 
 function renderCards(entries, append = false) {
   const grid = document.getElementById('cards-grid');
+  if (!grid) return;
   if (!append) grid.innerHTML = '';
 
   if (entries.length === 0 && !append) {
     grid.innerHTML = `
-      <div class="state">
+      <div class="empty">
         <h3>${state.searchMode ? 'No results' : 'No entries'}</h3>
         <p>${state.searchMode ? 'Try another search term.' : 'The agent has not written any memory yet.'}</p>
       </div>`;
@@ -735,6 +645,12 @@ function renderCards(entries, append = false) {
     div.innerHTML = renderEntryCard(entry).trim();
     const card = div.firstChild;
     card.addEventListener('click', () => openViewModal(entry));
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openViewModal(entry);
+      }
+    });
     grid.appendChild(card);
   }
 }
@@ -765,8 +681,13 @@ async function loadEntries(append = false) {
   if (state.loading) return;
   state.loading = true;
   const grid = document.getElementById('cards-grid');
+  if (!grid) {
+    state.loading = false;
+    return;
+  }
+
   if (!append) {
-    grid.innerHTML = '<article class="state state-loading">Loading…</article>';
+    grid.innerHTML = '<article class="empty empty-loading">Loading…</article>';
   }
 
   const offset = append ? state.offset : 0;
@@ -796,7 +717,8 @@ async function loadEntries(append = false) {
 
     renderCards(items, append);
     renderSections();
-    document.getElementById('load-more-wrap').hidden = !state.hasMore;
+    const loadMore = document.getElementById('load-more-wrap');
+    if (loadMore) loadMore.hidden = !state.hasMore;
     await loadStats();
   } catch (e) {
     toast('Failed to load entries: ' + e.message, 'error');
@@ -815,11 +737,15 @@ async function doSearch(query) {
   state.searchMode = true;
   state.searchQuery = query;
   const grid = document.getElementById('cards-grid');
-  grid.innerHTML = '<article class="state state-loading">Searching…</article>';
-  document.getElementById('load-more-wrap').hidden = true;
-  document.getElementById('sort-select').hidden = true;
+  if (!grid) return;
+  grid.innerHTML = '<article class="empty empty-loading">Searching…</article>';
+  const loadMore = document.getElementById('load-more-wrap');
+  const sortSelect = document.getElementById('sort-select');
+  const searchBar = document.getElementById('search-results-bar');
+  if (loadMore) loadMore.hidden = true;
+  if (sortSelect) sortSelect.hidden = true;
   updatePageHeader('memories', `Search: "${query}"`);
-  document.getElementById('search-results-bar').hidden = false;
+  if (searchBar) searchBar.hidden = false;
 
   try {
     const params = { q: query, top_k: 40 };
@@ -827,7 +753,8 @@ async function doSearch(query) {
     if (state.includeDeleted) params.include_deleted = 'true';
     const data = await api.search(params);
     const results = data.results || [];
-    document.getElementById('search-results-label').textContent = `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`;
+    const label = document.getElementById('search-results-label');
+    if (label) label.textContent = `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`;
     renderCards(results, false);
     renderSections();
   } catch (e) {
@@ -839,10 +766,13 @@ async function doSearch(query) {
 function clearSearch(silent = false) {
   state.searchMode = false;
   state.searchQuery = '';
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-results-bar').hidden = true;
-  document.getElementById('sort-select').hidden = false;
-  if (!silent && state.config) loadEntries();
+  const searchInput = document.getElementById('search-input');
+  const searchBar = document.getElementById('search-results-bar');
+  const sortSelect = document.getElementById('sort-select');
+  if (searchInput) searchInput.value = '';
+  if (searchBar) searchBar.hidden = true;
+  if (sortSelect) sortSelect.hidden = false;
+  if (!silent && state.config && state.view === 'memories') loadEntries();
 }
 
 function selectSection(section) {
@@ -868,43 +798,45 @@ function openModal(html) {
 }
 
 function modalShell(inner, size = '') {
-  const sizes = {
-    'modal-panel--wide': 'modal-wide',
-    'modal-panel--xl': 'modal-xl',
-    'modal-panel--compact': 'modal-compact',
-    'modal-panel--reading': '',
-  };
-  const extra = sizes[size] || '';
-  return `<div class="modal ${extra}">${inner}</div>`;
+  const extra = size ? ` ${size}` : '';
+  return `<div class="modal${extra}">${inner}</div>`;
 }
 
 function handleEsc(e) {
   if (e.key === 'Escape') closeModal();
 }
 
+function updateTopbarBadge(view) {
+  const badge = document.getElementById('topbar-badge');
+  if (!badge) return;
+  if (view === 'settings') {
+    badge.textContent = 'Editable';
+    badge.classList.add('badge--editable');
+    return;
+  }
+  badge.textContent = 'Read-only';
+  badge.classList.remove('badge--editable');
+}
+
 function openViewModal(entry) {
-  const theme = sectionTheme(entry.section);
-  const themeStyle = themeVars(theme);
+  const color = sectionColor(entry.section);
   const isEdited = entry.updated_at && entry.updated_at !== entry.created_at;
   const timeLabel = isEdited ? `Edited ${relTime(entry.updated_at)} · Created ${relTime(entry.created_at)}` : `Created ${relTime(entry.created_at)}`;
-  const tags = (entry.tags || []).map((t) => `<span class="tag" style="${themeStyle}">${escHtml(t)}</span>`).join('');
-  const scoreBadge = entry.score != null ? `<span class="tag-mono" style="${themeStyle}">${(entry.score * 100).toFixed(0)}%</span>` : '';
-  const accessBadge = (entry.access_count || 0) > 0 ? `<time title="Accessed ${entry.access_count} time${entry.access_count === 1 ? '' : 's'}">↻ ${entry.access_count}</time>` : '';
+  const tags = (entry.tags || []).map((t) => `<span class="tag">${escHtml(t)}</span>`).join('');
+  const scoreBadge = entry.score != null ? `<span class="mono">${(entry.score * 100).toFixed(0)}%</span>` : '';
+  const accessBadge = (entry.access_count || 0) > 0 ? `<time>↻ ${entry.access_count}</time>` : '';
   const deletedNotice = entry.deleted_at
-    ? `<article class="state state-error">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available for inspection.</article>`
+    ? `<article class="empty empty-error">Deleted ${escHtml(relTime(entry.deleted_at))}. History remains available.</article>`
     : '';
 
   openModal(modalShell(`
-    <header class="modal-head" style="${themeStyle}">
+    <header class="modal-head">
       <div class="tags">
-        <div class="tag" style="${themeStyle}">
-          <span></span>
-          ${escHtml(entry.section)}
-        </div>
+        <span class="tag"><span class="dot" style="--dot-color:${color}"></span>${escHtml(entry.section)}</span>
         ${scoreBadge}
         <time>${escHtml(timeLabel)}</time>
       </div>
-      <button class="modal-close" type="button">×</button>
+      <button class="modal-close" type="button" aria-label="Close">×</button>
     </header>
     <section class="modal-body prose">
       ${deletedNotice}
@@ -912,14 +844,17 @@ function openViewModal(entry) {
       ${tags ? `<div class="tags">${tags}</div>` : ''}
       <footer class="tags">
         ${accessBadge}
-        <span class="tag-mono">${escHtml(entry.id)}</span>
+        <span class="mono">${escHtml(entry.id)}</span>
       </footer>
     </section>
     <footer class="modal-foot">
-      <button class="btn btn-ghost" id="btn-view-history" type="button">History</button>
+      <button class="btn btn-ghost" id="btn-view-history" type="button">Version history</button>
     </footer>
-  `, 'modal-panel--reading'));
-  document.getElementById('btn-view-history').addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
+  `));
+  const historyBtn = document.getElementById('btn-view-history');
+  if (historyBtn) {
+    historyBtn.addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
+  }
 }
 
 async function openDiffModal(entry, fromVersion, toVersion) {
@@ -944,7 +879,7 @@ async function openDiffModal(entry, fromVersion, toVersion) {
           <pre>${escHtml(diffText)}</pre>
         </section>
       </section>
-    `, 'modal-panel--wide'));
+    `, 'modal-wide'));
   } catch (e) {
     toast('Error: ' + e.message, 'error');
   }
@@ -966,14 +901,10 @@ async function openVersionsModal(entry) {
         <button class="modal-close" type="button">×</button>
       </header>
       <section class="modal-body">
-        <article class="panel panel-soft">
-          <h4>Compare revisions</h4>
-          <p>Timeline stays focused on current vs previous for quick inspection. Older revisions can still be diffed against the current state directly from the timeline.</p>
-        </article>
         <h4>Timeline</h4>
         <section class="timeline" id="timeline-root"></section>
       </section>
-    `, 'modal-panel--wide'));
+    `, 'modal-wide'));
 
     const timelineRoot = document.getElementById('timeline-root');
 
@@ -983,14 +914,14 @@ async function openVersionsModal(entry) {
         const isLast = index === versions.length - 1;
         const isSelectedFrom = revision.version === previousVersion && previousVersion !== currentVersion;
         const isSelectedTo = revision.version === currentVersion;
-        const theme = sectionTheme(revision.section || entry.section);
+        const color = sectionColor(revision.section || entry.section);
         const preview = truncateContent(revision.content, 120);
-        const activeBorder = isSelectedFrom || isSelectedTo ? `border-color:${theme.color}; box-shadow:0 0 0 1px ${theme.color}, 0 8px 24px ${theme.glow};` : '';
+        const activeClass = isSelectedFrom || isSelectedTo ? ' is-active' : '';
         return `
-          <article class="version-item">
-            <div class="version-item-inner" style="${activeBorder}">
-              <header class="tags" style="background:${theme.faint};padding:8px;border-radius:10px;">
-                <span class="tag-mono">v${revision.version}</span>
+          <article class="version">
+            <div class="version-inner${activeClass}" style="--section-color:${color}">
+              <header class="tags">
+                <span class="mono">v${revision.version}</span>
                 <span class="tag">${escHtml(revision.section || '')}</span>
                 ${revision.deleted_at ? '<span class="tag">deleted</span>' : ''}
                 ${isCurrent ? '<span class="tag">current</span>' : ''}
@@ -1000,8 +931,8 @@ async function openVersionsModal(entry) {
               </header>
               <p>${escHtml(preview)}</p>
               <footer class="tags">
-                <span class="tag-mono">Created ${escHtml(relTime(revision.created_at))}</span>
-                <span class="tag-mono">Updated ${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
+                <span class="mono">Created ${escHtml(relTime(revision.created_at))}</span>
+                <span class="mono">Updated ${escHtml(relTime(revision.updated_at || revision.created_at))}</span>
                 ${!isCurrent ? `<button class="btn btn-ghost btn-sm" type="button" data-diff-version="${revision.version}">Diff to current</button>` : ''}
               </footer>
             </div>
@@ -1029,35 +960,38 @@ function openConsolidateModal() {
     </header>
     <section class="modal-body">
       <label class="field">Section <small>(optional)</small>
-        <select id="f-cons-section" class="select">
+        <select id="f-cons-section" class="input">
           <option value="">All sections</option>
           ${opts}
         </select>
       </label>
       <label class="field">Mode
-        <select id="f-cons-mode" class="select">
+        <select id="f-cons-mode" class="input">
           <option value="exact">Exact (normalized content match)</option>
           <option value="semantic">Semantic (similarity threshold)</option>
         </select>
       </label>
       <label class="field" id="threshold-group" hidden>Similarity threshold
         <input type="number" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
-        <span class="meta">Higher = stricter (less aggressive). Range: 0.5 – 1.0</span>
+        <span class="lede">Higher = stricter (less aggressive). Range: 0.5 – 1.0</span>
       </label>
     </section>
     <footer class="modal-foot">
-      <button class="btn btn-ghost" type="button" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-ghost" type="button" id="btn-cancel-consolidate">Cancel</button>
       <button class="btn btn-primary" type="button" id="btn-run-consolidate">Run</button>
     </footer>
-  `, 'modal-panel--compact'));
+  `, 'modal-compact'));
 
   const modeSelect = document.getElementById('f-cons-mode');
   const thresholdGroup = document.getElementById('threshold-group');
-  modeSelect.addEventListener('change', () => {
-    thresholdGroup.hidden = modeSelect.value !== 'semantic';
-  });
+  if (modeSelect && thresholdGroup) {
+    modeSelect.addEventListener('change', () => {
+      thresholdGroup.hidden = modeSelect.value !== 'semantic';
+    });
+  }
 
-  document.getElementById('btn-run-consolidate').addEventListener('click', async () => {
+  bindEvent('btn-cancel-consolidate', 'click', closeModal);
+  bindEvent('btn-run-consolidate', 'click', async () => {
     const section = document.getElementById('f-cons-section').value || null;
     const mode = modeSelect.value;
     const threshold = parseFloat(document.getElementById('f-threshold').value) || 0.88;
@@ -1079,16 +1013,17 @@ function switchView(name) {
   document.querySelectorAll('.view').forEach((view) => {
     view.hidden = true;
   });
-  document.getElementById(`view-${name}`).hidden = false;
+  const activeView = document.getElementById(`view-${name}`);
+  if (activeView) activeView.hidden = false;
   document.querySelectorAll('[data-nav-view]').forEach((tab) => {
     const active = tab.dataset.view === name;
     if (active) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   });
-  const badge = document.querySelector('.topbar .badge');
-  if (badge) badge.hidden = name === 'settings';
+  updateTopbarBadge(name);
   updatePageHeader(name);
   if (name === 'dashboard') renderDashboardView();
+  else if (name === 'memories') loadEntries();
   else if (name === 'stats') renderStatsView();
   else if (name === 'skills') renderSkillsView();
   else if (name === 'settings') renderSettingsPage();
@@ -1100,15 +1035,18 @@ async function renderStatsView() {
     applyDashboardStats(stats);
     const recent = await api.entries({ offset: 0, limit: 8, sort_by: 'recent', descending: true });
     const items = recent.items || [];
-    const recentHtml = items.map((e) => {
-      const color = sectionColor(e.section);
-      return `<article class="row">
-        <span class="swatch" style="background:${color}"></span>
-        <span class="row-main">${escHtml(truncateContent(e.content, 80))}</span>
-        <time>${relTime(e.updated_at || e.created_at)}</time>
-      </article>`;
-    }).join('');
-    document.getElementById('dash-recent-list').innerHTML = recentHtml || '<p class="meta">No entries yet.</p>';
+    renderEntryRows(
+      'dash-recent-list',
+      items.map((e) => ({
+        id: e.id,
+        source: e,
+        title: truncateContent(e.content, 80),
+        meta: `${e.section} · ${relTime(e.updated_at || e.created_at)}`,
+        time: relTime(e.updated_at || e.created_at),
+        color: sectionColor(e.section),
+      })),
+      'No entries yet.'
+    );
   } catch (e) {
     toast('Stats error: ' + e.message, 'error');
   }
@@ -1133,7 +1071,7 @@ async function openSkillModal(skillId) {
         ${renderSkillFrontmatter(parsed.attributes)}
         ${renderMarkdown(body)}
       </section>
-    `, 'modal-panel--xl'));
+    `, 'modal-xl'));
   } catch (e) {
     toast('Skills error: ' + e.message, 'error');
   }
@@ -1141,14 +1079,14 @@ async function openSkillModal(skillId) {
 
 function renderSkillsCards(skills) {
   if (!skills.length) {
-    return '<article class="state">No bundled skills found.</article>';
+    return '<article class="empty">No bundled skills found.</article>';
   }
 
   return skills.map((skill) => `
-    <article class="card skill-card" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
-      <h4>${escHtml(skill.name || skill.id)}</h4>
+    <article class="entry entry--skill" data-open-skill="${escHtml(skill.id || '')}" role="button" tabindex="0" aria-label="View skill ${escHtml(skill.name || skill.id || 'skill')}">
+      <h3>${escHtml(skill.name || skill.id)}</h3>
       <p>${escHtml(skill.description || 'No description.')}</p>
-      <small class="meta" title="${escHtml(skill.path || '')}">${escHtml(skill.path || '')}</small>
+      <small class="lede" title="${escHtml(skill.path || '')}">${escHtml(skill.path || '')}</small>
     </article>
   `).join('');
 }
@@ -1169,7 +1107,7 @@ function renderSkillsPackageBanner(info) {
 
 async function renderSkillsView() {
   const root = document.getElementById('skills-root');
-  root.innerHTML = '<article class="state state-loading">Loading…</article>';
+  root.innerHTML = '<article class="empty empty-loading">Loading…</article>';
   try {
     const [data, info] = await Promise.all([
       api.skills(),
@@ -1180,9 +1118,9 @@ async function renderSkillsView() {
     const skills = data.skills || [];
     state.skills = skills;
     if (!skills.length && !info?.skills_installed) {
-      root.innerHTML = '<article class="state">No skills available. Install the rememb-skills package to browse bundled agent skills.</article>';
+      root.innerHTML = '<article class="empty">No skills available. Install the rememb-skills package to browse bundled agent skills.</article>';
     } else if (!skills.length) {
-      root.innerHTML = '<article class="state">No bundled skills found.</article>';
+      root.innerHTML = '<article class="empty">No bundled skills found.</article>';
     } else {
       root.innerHTML = renderSkillsCards(skills);
     }
@@ -1197,33 +1135,33 @@ async function renderSkillsView() {
       });
     });
   } catch (e) {
-    root.innerHTML = '<article class="state state-error">Failed to load bundled skills.</article>';
+    root.innerHTML = '<article class="empty empty-error">Failed to load bundled skills.</article>';
     toast('Skills error: ' + e.message, 'error');
   }
 }
 
 function settingsSectionTitle(title) {
-  return `<h3 class="settings-heading">${escHtml(title)}</h3>`;
+  return `<h3 class="settings-title">${escHtml(title)}</h3>`;
 }
 
 function renderSettingsPage() {
   if (!state.config) {
-    document.getElementById('settings-form-root').innerHTML = '<article class="state">Config not loaded.</article>';
+    document.getElementById('settings-form-root').innerHTML = '<article class="empty">Config not loaded.</article>';
     return;
   }
 
   const cfg = state.config;
   const sectionRows = (cfg.sections || []).map((s) => `
     <tr data-section="${escHtml(s)}">
-      <td><span class="swatch" style="background:${sectionColor(s)}"></span>${escHtml(s)}</td>
+      <td><span class="dot" style="--dot-color:${sectionColor(s)}"></span>${escHtml(s)}</td>
       <td><input type="color" class="field-color" data-field="color" value="${escHtml((cfg.section_colors || {})[s] || '#888888')}"></td>
       <td><button class="btn btn-ghost btn-sm" type="button" data-remove="${escHtml(s)}" title="Remove">×</button></td>
     </tr>`).join('');
 
   document.getElementById('settings-form-root').innerHTML = `
-    <div class="settings-form">
-      <div class="panel-grid">
-        <section class="panel panel-tight">
+    <div class="settings">
+      <div class="settings-grid">
+        <section class="surface">
           ${settingsSectionTitle('Limits')}
           <div class="form-grid">
             <label class="field">Max content length<input type="number" id="cfg-max-content" value="${escHtml(String(cfg.max_content_length))}"></label>
@@ -1234,45 +1172,47 @@ function renderSettingsPage() {
             <label class="field">Entry load threshold<input type="number" id="cfg-load-threshold" min="0" value="${escHtml(String(cfg.entry_load_threshold))}"></label>
           </div>
         </section>
-        <section class="panel panel-tight">
+        <section class="surface">
           ${settingsSectionTitle('Storage backend')}
           <label class="field">Backend
-            <select id="cfg-storage-backend" class="select">
+            <select id="cfg-storage-backend" class="input">
               <option value="json"${(cfg.storage_backend || 'json') === 'json' ? ' selected' : ''}>JSON (.rememb/entries.json)</option>
               <option value="sqlite"${cfg.storage_backend === 'sqlite' ? ' selected' : ''}>SQLite (.rememb/entries.db)</option>
             </select>
           </label>
-          <p class="meta">SQLite scales better for large entry volumes. Switching migrates existing JSON entries automatically.</p>
-          ${state.systemInfo?.storage_files?.length ? `<p class="meta">Active files: ${escHtml(state.systemInfo.storage_files.join(', '))}</p>` : ''}
+          <p class="lede">SQLite scales better for large entry volumes. Switching migrates existing JSON entries automatically.</p>
+          ${state.systemInfo?.storage_files?.length ? `<p class="lede">Active files: ${escHtml(state.systemInfo.storage_files.join(', '))}</p>` : ''}
         </section>
-        <section class="panel panel-tight">
+        <section class="surface">
           ${settingsSectionTitle('Semantic search')}
           <div class="form-grid">
-            <label class="field">Model${renderModelSelect(cfg.semantic_model_name || '')}</label>
+            <label class="field">Model
+              ${renderModelSelect(cfg.semantic_model_name || '')}
+            </label>
             <label class="field">Conflict threshold<input type="number" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></label>
             <label class="field">Model idle TTL (s)<input type="number" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></label>
           </div>
         </section>
-        <section class="panel panel-tight">
+        <section class="surface">
           ${settingsSectionTitle('Sections')}
-          <table class="config-table">
+          <table class="table">
             <thead><tr><th>Name</th><th>Color</th><th></th></tr></thead>
             <tbody id="cfg-sections-tbody-page">${sectionRows}</tbody>
           </table>
           <div class="actions">
-            <input type="text" id="cfg-new-section-page" class="select" placeholder="New section name">
+            <input type="text" id="cfg-new-section-page" class="input" placeholder="New section name">
             <button class="btn btn-ghost btn-sm" type="button" id="cfg-add-section-page">+ Add</button>
           </div>
         </section>
       </div>
-      <section class="panel row">
-        <div class="row-main">
+      <section class="surface surface--split">
+        <div>
           <h4>Consolidate duplicates</h4>
-          <p class="meta">Remove semantically duplicate entries from the store.</p>
+          <p class="lede">Remove semantically duplicate entries from the store.</p>
         </div>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-consolidate-page">Run consolidate</button>
       </section>
-      <footer class="actions settings-actions">
+      <footer class="actions settings-foot">
         <button class="btn btn-primary" type="button" id="btn-save-config-page">Save settings</button>
       </footer>
     </div>`;
@@ -1294,7 +1234,7 @@ function renderSettingsPage() {
     const tr = document.createElement('tr');
     tr.dataset.section = name;
     tr.innerHTML = `
-      <td><span class="swatch" style="background:#888888"></span>${escHtml(name)}</td>
+      <td><span class="dot" style="--dot-color:#888888"></span>${escHtml(name)}</td>
       <td><input type="color" class="field-color" data-field="color" value="#888888"></td>
       <td><button class="btn btn-ghost btn-sm" type="button" data-remove="${escHtml(name)}" title="Remove">×</button></td>`;
     tbody.appendChild(tr);
@@ -1417,7 +1357,6 @@ async function boot() {
   const includeDeletedToggle = document.getElementById('toggle-include-deleted');
   if (includeDeletedToggle) includeDeletedToggle.checked = state.includeDeleted;
   await loadStats();
-  await loadEntries();
   switchView('dashboard');
 }
 

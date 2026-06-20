@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE, CONFIG_FILE
+from rememb.config import REMEMB_DIR, ENTRIES_FILE, ENTRIES_DB_FILE, META_FILE, CONFIG_FILE
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,11 @@ def _rememb_path(root: Path) -> Path:
 def _entries_path(root: Path) -> Path:
     """Get path to entries.json file."""
     return _rememb_path(root) / ENTRIES_FILE
+
+
+def _entries_db_path(root: Path) -> Path:
+    """Get path to entries.db file."""
+    return _rememb_path(root) / ENTRIES_DB_FILE
 
 
 def _meta_path(root: Path) -> Path:
@@ -252,9 +257,9 @@ def find_root(start: Path | None = None, local: bool = False) -> Path:
 def is_initialized(root: Path) -> bool:
     """Check if rememb is initialized at the given root."""
     rememb_dir = _rememb_path(root)
-    if (_entries_path(root)).exists():
+    if _entries_path(root).exists():
         return True
-    return (rememb_dir / "entries.db").exists()
+    return _entries_db_path(root).exists()
 
 
 def ensure_global_root(initializer: Callable[[Path, str, bool], object]) -> Path:

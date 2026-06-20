@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-06-20
+
+### Fixed
+- SQLite backend switch no longer fails with `No such file or directory: entries.json` when another process (for example the MCP server) still had a stale in-memory config cache after migration.
+- Config cache now reloads from disk when `config.json` changes, and storage backend resolution falls back to SQLite when `entries.db` exists but `entries.json` was migrated away.
+
 ## [0.4.9] - 2026-05-22
 
 ### Added

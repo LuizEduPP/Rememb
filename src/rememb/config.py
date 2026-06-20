@@ -4,6 +4,7 @@ from typing import Any
 
 REMEMB_DIR = ".rememb"
 ENTRIES_FILE = "entries.json"
+ENTRIES_DB_FILE = "entries.db"
 META_FILE = "meta.json"
 CONFIG_FILE = "config.json"
 

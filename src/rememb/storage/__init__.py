@@ -23,6 +23,21 @@ def normalize_storage_backend(value: object) -> str:
     return backend
 
 
+def _effective_storage_backend(root: Path, configured: str) -> str:
+    """Resolve the backend whose store file is actually present on disk."""
+    from rememb.utils import _entries_db_path, _entries_path
+
+    configured = normalize_storage_backend(configured)
+    if configured == "sqlite":
+        return "sqlite"
+
+    if _entries_path(root).exists():
+        return "json"
+    if _entries_db_path(root).exists():
+        return "sqlite"
+    return "json"
+
+
 def get_storage_backend(root: Path | None = None, *, backend: str | None = None) -> EntryStorageBackend:
     """Resolve the configured storage backend for a rememb root."""
     if backend is not None:
@@ -34,7 +49,8 @@ def get_storage_backend(root: Path | None = None, *, backend: str | None = None)
     from rememb.helpers import _store_context
 
     config = _store_context.get_config(root)
-    selected = normalize_storage_backend(config.get("storage_backend", _DEFAULT_BACKEND))
+    configured = normalize_storage_backend(config.get("storage_backend", _DEFAULT_BACKEND))
+    selected = _effective_storage_backend(root, configured)
     return _BACKENDS[selected]
 
 

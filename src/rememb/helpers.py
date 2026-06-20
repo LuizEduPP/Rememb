@@ -390,14 +390,18 @@ class StoreContext:
     def __init__(self):
         self._model_cache: dict[str, Any] = {}
         self._config_cache: dict[str, dict[str, Any]] = {}
+        self._config_cache_mtime: dict[str, float | None] = {}
         self._model_lock = threading.Lock()
         self._model_release_timer: threading.Timer | None = None
 
     def clear_config_cache(self, root: Path | None = None) -> None:
         if root is None:
             self._config_cache.clear()
+            self._config_cache_mtime.clear()
             return
-        self._config_cache.pop(str(root), None)
+        root_key = str(root)
+        self._config_cache.pop(root_key, None)
+        self._config_cache_mtime.pop(root_key, None)
 
     @staticmethod
     def _parse_non_negative_int(value: object) -> int | None:
@@ -510,10 +514,10 @@ class StoreContext:
             Configuration dictionary with limits and settings
         """
         root_key = str(root)
-        if root_key in self._config_cache:
-            return self._config_cache[root_key]
-        
         config_path = _config_path(root)
+        current_mtime = config_path.stat().st_mtime if config_path.exists() else None
+        if root_key in self._config_cache and self._config_cache_mtime.get(root_key) == current_mtime:
+            return self._config_cache[root_key]
         config_needs_write = False
         if config_path.exists():
             try:
@@ -556,6 +560,7 @@ class StoreContext:
             _save_json_object(config_path, config)
         
         self._config_cache[root_key] = config
+        self._config_cache_mtime[root_key] = current_mtime
         return config
 
     def update_config(self, root: Path, config: dict[str, Any]) -> dict[str, Any]:
@@ -564,6 +569,7 @@ class StoreContext:
         _save_json_object(config_path, config)
         root_key = str(root)
         self._config_cache[root_key] = dict(config)
+        self._config_cache_mtime[root_key] = config_path.stat().st_mtime if config_path.exists() else None
         return dict(config)
 
 
@@ -603,7 +609,7 @@ def _assert_initialized(root) -> None:
         root: Project root path
 
     Raises:
-        RemembNotInitializedError: If .rememb/entries.json does not exist
+        RemembNotInitializedError: If rememb storage is not initialized
     """
     if not is_initialized(root):
         raise RemembNotInitializedError("rememb not initialized. Run `rememb init` first.")

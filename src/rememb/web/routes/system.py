@@ -12,6 +12,7 @@ from rememb.config import SEMANTIC_MODEL_CHOICES
 from rememb.store import consolidate_entries, get_config, get_stats, update_config
 from rememb.utils import (
     _config_path,
+    _entries_db_path,
     _entries_path,
     _meta_path,
     _rememb_path,
@@ -28,7 +29,7 @@ router = APIRouter()
 def _storage_files(root: Path) -> list[str]:
     candidates = [
         _entries_path(root),
-        _rememb_path(root) / "entries.db",
+        _entries_db_path(root),
         _config_path(root),
         _meta_path(root),
         _rememb_path(root) / "embeddings.npy",

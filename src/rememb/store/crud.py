@@ -35,6 +35,7 @@ from rememb.utils import (
     _config_path,
     _current_entry_version,
     _deleted_at,
+    _entries_db_path,
     _entries_path,
     _entry_history,
     _entry_revision_list,
@@ -929,7 +930,7 @@ def get_stats(root: Path) -> dict:
             by_section[sec] = 0
         by_section[sec] += 1
     entries_path = _entries_path(root)
-    db_path = _rememb_path(root) / "entries.db"
+    db_path = _entries_db_path(root)
     if db_path.exists():
         size_kb = round(db_path.stat().st_size / 1024, 1)
     elif entries_path.exists():

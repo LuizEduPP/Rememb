@@ -49,12 +49,6 @@ from rememb.utils import (
     _revision_label,
 )
 
-from rememb.store._common import (
-    _ENTRY_METADATA_FIELDS,
-    _extract_entry_metadata,
-    _normalize_entry_metadata_value,
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -109,7 +103,6 @@ def write_entries(
                 "section": _validate_section(str(item.get("section", "project")), root),
                 "content": _sanitize_content(item["content"], root),
                 "tags": _sanitize_tags(item.get("tags") or [], root),
-                "metadata": _extract_entry_metadata(item),
             }
         )
 
@@ -180,7 +173,6 @@ def write_entries(
                 "created_at": now,
                 "updated_at": now,
             }
-            entry.update(item["metadata"])
             entries.append(entry)
             created_entries.append(entry)
         logger.info("Wrote %s entries", len(created_entries))
@@ -260,18 +252,6 @@ def write_entry(
     tags: list[str] | None = None,
     skip_duplicates: bool = True,
     semantic_scope: str = "global",
-    *,
-    meta_schema_version: int | None = None,
-    workstream_id: str | None = None,
-    session_id: str | None = None,
-    entry_kind: str | None = None,
-    entry_role: str | None = None,
-    actor_type: str | None = None,
-    actor_id: str | None = None,
-    parent_entry_id: str | None = None,
-    supersedes_entry_id: str | None = None,
-    related_entry_ids: list[str] | None = None,
-    structured: dict[str, Any] | None = None,
 ) -> dict:
     """Write a new entry to memory.
     
@@ -299,17 +279,6 @@ def write_entry(
             "section": section,
             "content": content,
             "tags": tags or [],
-            "meta_schema_version": meta_schema_version,
-            "workstream_id": workstream_id,
-            "session_id": session_id,
-            "entry_kind": entry_kind,
-            "entry_role": entry_role,
-            "actor_type": actor_type,
-            "actor_id": actor_id,
-            "parent_entry_id": parent_entry_id,
-            "supersedes_entry_id": supersedes_entry_id,
-            "related_entry_ids": related_entry_ids,
-            "structured": structured,
         }],
         skip_duplicates=skip_duplicates,
         semantic_scope=semantic_scope,
@@ -672,18 +641,6 @@ def edit_entry(
     content: str | None = None,
     section: str | None = None,
     tags: list[str] | None = None,
-    *,
-    meta_schema_version: int | None = None,
-    workstream_id: str | None = None,
-    session_id: str | None = None,
-    entry_kind: str | None = None,
-    entry_role: str | None = None,
-    actor_type: str | None = None,
-    actor_id: str | None = None,
-    parent_entry_id: str | None = None,
-    supersedes_entry_id: str | None = None,
-    related_entry_ids: list[str] | None = None,
-    structured: dict[str, Any] | None = None,
 ) -> dict | None:
     """Edit an existing entry by ID.
     
@@ -708,17 +665,6 @@ def edit_entry(
             "content": content,
             "section": section,
             "tags": tags,
-            "meta_schema_version": meta_schema_version,
-            "workstream_id": workstream_id,
-            "session_id": session_id,
-            "entry_kind": entry_kind,
-            "entry_role": entry_role,
-            "actor_type": actor_type,
-            "actor_id": actor_id,
-            "parent_entry_id": parent_entry_id,
-            "supersedes_entry_id": supersedes_entry_id,
-            "related_entry_ids": related_entry_ids,
-            "structured": structured,
         }],
     )[0]
 
@@ -737,10 +683,9 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
         entry_id = str(update.get("entry_id", "")).strip()
         if not entry_id:
             raise RemembValidationError("Each batch update must include entry_id.")
-        metadata_present = any(field in update for field in _ENTRY_METADATA_FIELDS)
-        if update.get("content") is None and update.get("section") is None and update.get("tags") is None and not metadata_present:
+        if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
             raise RemembValidationError(
-                f"Provide at least one field to update for entry {entry_id}: content, section, tags, or metadata."
+                f"Provide at least one field to update for entry {entry_id}: content, section, or tags."
             )
 
         prepared_update: dict[str, Any] = {"entry_id": entry_id}
@@ -750,14 +695,6 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
             prepared_update["section"] = _validate_section(update["section"], root)
         if update.get("tags") is not None:
             prepared_update["tags"] = _sanitize_tags(update["tags"], root)
-        for field in _ENTRY_METADATA_FIELDS:
-            if field not in update:
-                continue
-            value = update[field]
-            if value is None:
-                prepared_update[field] = None
-            else:
-                prepared_update[field] = _normalize_entry_metadata_value(field, value)
         prepared_updates.append(prepared_update)
 
     def modify_entries(entries: list[dict]) -> list[dict | None]:
@@ -776,13 +713,6 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
                 entry["section"] = update["section"]
             if "tags" in update:
                 entry["tags"] = update["tags"]
-            for field in _ENTRY_METADATA_FIELDS:
-                if field not in update:
-                    continue
-                if update[field] is None:
-                    entry.pop(field, None)
-                else:
-                    entry[field] = update[field]
             entry["history"] = history
             entry["version"] = _current_entry_version(entry) + 1
             entry["updated_at"] = _now()

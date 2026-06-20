@@ -13,10 +13,6 @@ from typing import Any
 from rememb.config import REMEMB_DIR, ENTRIES_FILE, META_FILE, CONFIG_FILE
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 
-HANDOFF_SECTION = "actions"
-HANDOFF_TAG = "handoff"
-HANDOFF_HEADING_PREFIX = "## "
-
 logger = logging.getLogger(__name__)
 
 
@@ -276,97 +272,6 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _normalize_handoff_lines(items: list[str] | None) -> list[str]:
-    if not items:
-        return []
-    normalized: list[str] = []
-    for item in items:
-        text = str(item).strip()
-        if text:
-            normalized.append(text)
-    return normalized
-
-
-def _normalize_handoff_goal_tag(goal: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", goal.strip().lower()).strip("-")
-    return f"goal:{slug or 'handoff'}"
-
-
-def _handoff_list_block(items: list[str], *, ordered: bool = False) -> list[str]:
-    if not items:
-        return ["- None recorded."]
-    if ordered:
-        return [f"{index}. {item}" for index, item in enumerate(items, start=1)]
-    return [f"- {item}" for item in items]
-
-
-def _handoff_text_block(text: str | None, *, fallback: str) -> list[str]:
-    value = str(text or "").strip()
-    return [value or fallback]
-
-
-def _split_handoff_sections(content: str) -> dict[str, list[str]]:
-    sections: dict[str, list[str]] = {}
-    current_heading: str | None = None
-    for raw_line in str(content).splitlines():
-        line = raw_line.rstrip()
-        if line.startswith(HANDOFF_HEADING_PREFIX):
-            current_heading = line[len(HANDOFF_HEADING_PREFIX):].strip().lower()
-            sections.setdefault(current_heading, [])
-            continue
-        if current_heading is not None:
-            sections[current_heading].append(line)
-    return sections
-
-
-def _parse_handoff_list(lines: list[str]) -> list[str]:
-    items: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            items.append(stripped[2:].strip())
-            continue
-        numbered = re.match(r"^\d+\.\s+(.*)$", stripped)
-        if numbered:
-            items.append(numbered.group(1).strip())
-    return [item for item in items if item and item.lower() != "none recorded."]
-
-
-def _parse_handoff_reference(value: str) -> dict[str, Any]:
-    raw = value.strip()
-    match = re.match(r"^(?P<entry_id>[0-9a-f]{8})(?:@v(?P<version>\d+))?$", raw, re.IGNORECASE)
-    if not match:
-        return {"raw": raw, "entry_id": raw, "version": None}
-    version = match.group("version")
-    return {
-        "raw": raw,
-        "entry_id": match.group("entry_id").lower(),
-        "version": int(version) if version else None,
-    }
-
-
-def _parse_restore_context(lines: list[str], *, default_section: str = HANDOFF_SECTION) -> dict[str, Any]:
-    restore_context = {
-        "section": default_section,
-        "query": "",
-        "include_deleted": False,
-    }
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        normalized_key = key.strip().lower()
-        normalized_value = value.strip()
-        if normalized_key == "section" and normalized_value:
-            restore_context["section"] = normalized_value
-        elif normalized_key == "query":
-            restore_context["query"] = normalized_value
-        elif normalized_key == "include_deleted":
-            restore_context["include_deleted"] = normalized_value.lower() == "true"
-    return restore_context
-
-
 def _current_entry_version(entry: dict[str, Any]) -> int:
     raw_version = entry.get("version", 1)
     try:
@@ -374,21 +279,6 @@ def _current_entry_version(entry: dict[str, Any]) -> int:
     except (TypeError, ValueError):
         return 1
     return parsed_version if parsed_version > 0 else 1
-
-
-_ENTRY_REVISION_METADATA_FIELDS = (
-    "meta_schema_version",
-    "workstream_id",
-    "session_id",
-    "entry_kind",
-    "entry_role",
-    "actor_type",
-    "actor_id",
-    "parent_entry_id",
-    "supersedes_entry_id",
-    "related_entry_ids",
-    "structured",
-)
 
 
 def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -399,7 +289,7 @@ def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
-    snapshot = {
+    return {
         "version": _current_entry_version(entry),
         "section": str(entry.get("section", "")),
         "content": str(entry.get("content", "")),
@@ -408,17 +298,6 @@ def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
         "updated_at": str(entry.get("updated_at", "")),
         "deleted_at": str(entry.get("deleted_at", "")),
     }
-    for field in _ENTRY_REVISION_METADATA_FIELDS:
-        if field not in entry:
-            continue
-        value = entry[field]
-        if isinstance(value, list):
-            snapshot[field] = list(value)
-        elif isinstance(value, dict):
-            snapshot[field] = dict(value)
-        else:
-            snapshot[field] = value
-    return snapshot
 
 
 def _deleted_at(entry: dict[str, Any]) -> str | None:
@@ -461,17 +340,6 @@ def _apply_revision(entry: dict[str, Any], revision: dict[str, Any], *, restore_
     entry["section"] = str(revision.get("section", ""))
     entry["content"] = str(revision.get("content", ""))
     entry["tags"] = list(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else []
-    for field in _ENTRY_REVISION_METADATA_FIELDS:
-        if field not in revision:
-            entry.pop(field, None)
-            continue
-        value = revision[field]
-        if isinstance(value, list):
-            entry[field] = list(value)
-        elif isinstance(value, dict):
-            entry[field] = dict(value)
-        else:
-            entry[field] = value
     if restore_deleted:
         entry.pop("deleted_at", None)
 

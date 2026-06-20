@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from rememb.web.routes import entries, review, system, workstreams
+from rememb.web.routes import entries, system
 
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 
@@ -25,8 +25,6 @@ def create_app() -> FastAPI:
         return html_path.read_text(encoding="utf-8")
 
     app.include_router(entries.router)
-    app.include_router(workstreams.router)
-    app.include_router(review.router)
     app.include_router(system.router)
 
     return app

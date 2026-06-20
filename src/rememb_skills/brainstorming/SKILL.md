@@ -25,7 +25,7 @@ Execute these phases sequentially. Do not skip steps:
 4. **Multi-Architecture Trade-offs** — Present 2-3 technical approaches (e.g., edge vs. centralized, native vs. polymorphic components) highlighting performance, complexity, and scalable boundaries.
 5. **Incremental Specification** — Present the system architecture in isolated, logical blocks (Data Flow, API Contracts, State, Error Boundaries).
 6. **Spec File Generation & Commit** — Write the approved architecture directly to `docs/specs/YYYY-MM-DD-<topic>-design.md`.
-7. **Automated Spec Review** — Scan the final document for placeholders, structural contradictions, or coupling leaks before handoff.
+7. **Automated Spec Review** — Scan the final document for placeholders, structural contradictions, or coupling leaks before transition to planning.
 
 ## Architectural Guidelines for AI-Native Environments
 
@@ -76,4 +76,4 @@ Follow the constraints, conventions, and cautions documented below, and prefer t
 
 Use any linked scripts, assets, reference files, and companion resources mentioned in this document.
 
-3. **Invoke the `writing-plans` skill.** Do not slide into implementation, file writing, or style tasks here. Handoff is strict.
+3. **Invoke the `writing-plans` skill.** Do not slide into implementation, file writing, or style tasks here. The transition to planning is strict.

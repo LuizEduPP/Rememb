@@ -61,8 +61,6 @@ async def create_entry(req: WriteRequest) -> dict:
             req.tags if req.tags else None,
             True,
             req.semantic_scope,
-            workstream_id=req.workstream_id,
-            session_id=req.session_id,
         )
         return {"entry": entry}
     except Exception as exc:
@@ -80,8 +78,6 @@ async def update_entry(entry_id: str, req: EditRequest) -> dict:
             req.content,
             req.section,
             req.tags,
-            workstream_id=req.workstream_id,
-            session_id=req.session_id,
         )
         if entry is None:
             raise HTTPException(status_code=404, detail="Entry not found.")

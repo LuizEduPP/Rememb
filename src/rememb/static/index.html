@@ -24,7 +24,6 @@
       <p class="nav-label">Views</p>
       <button class="nav-item" data-view="dashboard" data-nav-view aria-current="page">Overview</button>
       <button class="nav-item" data-view="memories" data-nav-view>Memory</button>
-      <button class="nav-item" data-view="workstreams" data-nav-view>Workstreams</button>
       <p class="nav-label">System</p>
       <button class="nav-item" data-view="stats" data-nav-view>Stats</button>
       <button class="nav-item" data-view="settings" data-nav-view>Settings</button>
@@ -45,19 +44,19 @@
     <div class="content">
       <section id="view-dashboard" class="view">
         <div class="kpi-row">
-          <article class="kpi"><strong id="dashboard-workstreams-count">—</strong><span>Workstreams</span><small id="dashboard-workstreams-caption">…</small></article>
-          <article class="kpi"><strong id="dashboard-execution-count">—</strong><span>Queue</span><small id="dashboard-execution-caption">…</small></article>
-          <article class="kpi"><strong id="dashboard-review-count">—</strong><span>Review</span><small id="dashboard-review-caption">…</small></article>
-          <article class="kpi"><strong id="dashboard-memory-count">—</strong><span>Memory</span><small id="dashboard-memory-caption">…</small></article>
+          <article class="kpi"><strong id="dashboard-entries-count">—</strong><span>Entries</span><small id="dashboard-entries-caption">…</small></article>
+          <article class="kpi"><strong id="dashboard-sections-count">—</strong><span>Sections</span><small id="dashboard-sections-caption">…</small></article>
+          <article class="kpi"><strong id="dashboard-deleted-count">—</strong><span>Deleted</span><small id="dashboard-deleted-caption">…</small></article>
+          <article class="kpi"><strong id="dashboard-size-count">—</strong><span>Size (KB)</span><small id="dashboard-size-caption">…</small></article>
         </div>
         <div class="split">
           <section class="panel">
-            <header class="panel-head"><h2>Workstreams</h2><button class="btn btn-ghost btn-sm" data-shortcut-view="workstreams">View all</button></header>
-            <div id="dashboard-workstreams-list" class="feed"></div>
+            <header class="panel-head"><h2>Recent memory</h2><button class="btn btn-ghost btn-sm" data-shortcut-view="memories">View all</button></header>
+            <div id="dashboard-recent-list" class="feed"></div>
           </section>
           <section class="panel">
-            <header class="panel-head"><h2>Attention</h2><button class="btn btn-ghost btn-sm" data-shortcut-view="workstreams" data-shortcut-panel="review">Review</button></header>
-            <div id="dashboard-attention-list" class="feed"></div>
+            <header class="panel-head"><h2>Quick links</h2></header>
+            <div id="dashboard-links-list" class="feed"></div>
           </section>
         </div>
       </section>
@@ -84,21 +83,6 @@
         </div>
         <div id="cards-grid" class="card-grid"></div>
         <div id="load-more-wrap" class="load-more" hidden><button id="btn-load-more" class="btn">Load more</button></div>
-      </section>
-
-      <section id="view-workstreams" class="view" hidden>
-        <div id="workstream-summary" class="panel panel-tight"></div>
-        <label class="check banner-inline"><input id="toggle-workstreams-include-deleted" type="checkbox"><span>Show deleted workstreams</span></label>
-        <div class="split split-master">
-          <aside class="registry">
-            <h2>Registry</h2>
-            <div id="workstream-grid" class="feed"></div>
-            <h2>Queue</h2>
-            <div id="workstream-queue-summary" class="queue-metrics"></div>
-            <div id="workstream-queue-list" class="feed"></div>
-          </aside>
-          <article id="workstream-detail-root" class="inspector"></article>
-        </div>
       </section>
 
       <section id="view-stats" class="view" hidden>

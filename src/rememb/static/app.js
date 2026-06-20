@@ -1,12 +1,8 @@
 const state = {
   view: 'dashboard',
-  workstreamSurfaceFocus: 'overview',
   section: null,
   config: null,
   entries: [],
-  workstreams: [],
-  reviewItems: [],
-  dashboardSwitchPackage: null,
   skills: null,
   total: 0,
   offset: 0,
@@ -17,22 +13,11 @@ const state = {
   searchMode: false,
   searchQuery: '',
   includeDeleted: false,
-  workstreamsIncludeDeleted: false,
-  reviewFilterWorkstreamId: '',
-  reviewFilterSessionId: '',
-  reviewFilterActorType: '',
-  reviewFilterActorId: '',
-  reviewFilterEntryKind: '',
-  reviewAvailableSessions: [],
-  reviewWorkstreamSummary: null,
-  reviewSessionSummary: null,
-  workstreamQueueItems: [],
-  selectedWorkstreamId: null,
-  workstreamDetail: null,
-  selectedReviewId: null,
   loading: false,
   systemInfo: null,
 };
+
+let dashboardRecentEntries = [];
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(path, {
@@ -61,40 +46,6 @@ const api = {
   restoreDeletedEntry: (id) => apiFetch(`/api/entries/${id}/restore`, { method: 'POST' }),
   restoreEntryVersion: (id, version) => apiFetch(`/api/entries/${id}/versions/${version}/restore`, { method: 'POST' }),
   diffVersions: (id, p) => apiFetch(`/api/entries/${id}/diff?` + new URLSearchParams(p)),
-  workstreams: (p = {}) => apiFetch('/api/workstreams?' + new URLSearchParams(p)),
-  openWorkstream: (body) => apiFetch('/api/workstreams/open', { method: 'POST', body: JSON.stringify(body) }),
-  handoffPackage: (id, p = {}) => {
-    const params = { ...p };
-    if (params.session_id !== undefined && params.execution_id === undefined) params.execution_id = params.session_id;
-    delete params.session_id;
-    return apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff-package?` + new URLSearchParams(params));
-  },
-  workstreamState: (id, p = {}) => {
-    const params = { ...p };
-    if (params.session_id !== undefined && params.execution_id === undefined) params.execution_id = params.session_id;
-    delete params.session_id;
-    return apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state?` + new URLSearchParams(params));
-  },
-  workstreamResume: (id, p = {}) => {
-    const params = { ...p };
-    if (params.session_id !== undefined && params.execution_id === undefined) params.execution_id = params.session_id;
-    delete params.session_id;
-    return apiFetch(`/api/workstreams/${encodeURIComponent(id)}/resume?` + new URLSearchParams(params));
-  },
-  updateWorkstreamState: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/state`, { method: 'POST', body: JSON.stringify(body) }),
-  startExecution: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/executions/start`, { method: 'POST', body: JSON.stringify(body) }),
-  closeExecution: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/executions/close`, { method: 'POST', body: JSON.stringify(body) }),
-  closeExecutionAndHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/executions/close-and-handoff`, { method: 'POST', body: JSON.stringify(body) }),
-  writeStructuredHandoff: (id, body) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff`, { method: 'POST', body: JSON.stringify(body) }),
-  readStructuredHandoff: (id, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(id)}/handoff?` + new URLSearchParams(p)),
-  reviewQueue: (p = {}) => apiFetch('/api/review?' + new URLSearchParams(p)),
-  reviewWorkstream: (id, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(id)}?` + new URLSearchParams(p)),
-  reviewExecution: (workstreamId, executionId, p = {}) => apiFetch(`/api/review/workstreams/${encodeURIComponent(workstreamId)}/executions/${encodeURIComponent(executionId)}?` + new URLSearchParams(p)),
-  workstreamQueue: (p = {}) => apiFetch('/api/workstreams/queue?' + new URLSearchParams(p)),
-  compareExecutions: (workstreamId, p = {}) => apiFetch(`/api/workstreams/${encodeURIComponent(workstreamId)}/compare/executions?` + new URLSearchParams(p)),
-  compareWorkstreams: (p = {}) => apiFetch('/api/workstreams/compare?' + new URLSearchParams(p)),
-  workstreamSwitchPackage: (p = {}) => apiFetch('/api/workstreams/switch-package?' + new URLSearchParams(p)),
-  reviewUpdate: (id, body) => apiFetch(`/api/review/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(body) }),
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
 };
@@ -123,66 +74,14 @@ function toast(msg, type = 'info', duration = 3000) {
   }, duration);
 }
 
-const STATUS_LABELS = {
-  awaiting_review: 'Awaiting review',
-  active: 'Active',
-  ready: 'Ready',
-  idle: 'Idle',
-  pending: 'Pending',
-  approved: 'Approved',
-  dismissed: 'Dismissed',
-  goal_oriented: 'Goal oriented',
-};
-
-function humanLabel(value) {
-  if (value == null || value === '') return '—';
-  const key = String(value);
-  return STATUS_LABELS[key] || key.replace(/_/g, ' ');
-}
-
 function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
 }
 
-function renderWorkstreamSurfaceBar() {
-  const tabs = [
-    { id: 'overview', label: 'State' },
-    { id: 'review', label: 'Review' },
-    { id: 'handoffs', label: 'Handoffs' },
-  ];
-  return `<nav class="tabs">${tabs.map((tab) => `
-    <button type="button" class="btn btn-sm" data-workstream-surface="${tab.id}" ${state.workstreamSurfaceFocus === tab.id ? 'aria-current="page"' : ''}>${tab.label}</button>
-  `).join('')}</nav>`;
-}
-
-function bindWorkstreamSurfaceBar(root) {
-  root.querySelectorAll('[data-workstream-surface]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await setWorkstreamSurfaceFocus(button.dataset.workstreamSurface, { ensureSelected: true, scroll: true });
-    });
-  });
-}
-
-function renderFactList(rows) {
-  const items = rows.filter((row) => row != null);
-  if (!items.length) return '';
-  return `<dl class="facts">${items.map(([label, value]) => `
-    <div><dt>${escHtml(label)}</dt><dd>${escHtml(value)}</dd></div>
-  `).join('')}</dl>`;
-}
-
-function renderMetrics(items) {
-  if (!items.length) return '';
-  return `<section class="metrics">${items.map(([value, label]) => `
-    <div class="metric"><strong>${value}</strong><span>${escHtml(label)}</span></div>
-  `).join('')}</section>`;
-}
-
 const VIEW_META = {
-  dashboard: { title: 'Overview', subtitle: 'What the agent is doing right now' },
+  dashboard: { title: 'Overview', subtitle: 'Memory store at a glance' },
   memories: { title: 'Memory', subtitle: 'Entries persisted by the agent' },
-  workstreams: { title: 'Workstreams', subtitle: 'Operational threads opened by the agent' },
   stats: { title: 'Stats', subtitle: 'Store size and section distribution' },
   settings: { title: 'Settings', subtitle: 'Runtime configuration for this workspace' },
   skills: { title: 'Skills', subtitle: 'Optional bundled agent skills' },
@@ -626,85 +525,6 @@ function renderSections() {
   });
 }
 
-function summarizeDiff(diffText) {
-  const rows = parseUnifiedDiff(diffText);
-  return rows.reduce((summary, row) => {
-    if (row.type === 'added') summary.added += 1;
-    else if (row.type === 'removed') summary.removed += 1;
-    else if (row.type === 'changed') summary.changed += 1;
-    return summary;
-  }, { added: 0, removed: 0, changed: 0 });
-}
-
-
-
-function renderWorkstreamSummary(items) {
-  const total = items.length;
-  const executions = items.reduce((sum, item) => sum + (item.session_count || 0), 0);
-  const awaitingReview = items.filter((item) => item.operational_status === 'awaiting_review').length;
-  const readyToResume = items.filter((item) => item.next_execution?.goal).length;
-  const queueItems = state.workstreamQueueItems || [];
-  const activeQueue = queueItems.filter((item) => item.status === 'active').length;
-  const latest = items[0]?.updated_at || '';
-  document.getElementById('workstream-summary').innerHTML = `
-    <header class="panel-head">
-      <h2>At a glance</h2>
-    </header>
-    <div class="tags">
-      <span class="tag">${total} workstream${total === 1 ? '' : 's'}</span>
-      <span class="tag">${executions} execution cycle${executions === 1 ? '' : 's'}</span>
-      <span class="tag">${awaitingReview} need review</span>
-      <span class="tag">${readyToResume} ready to resume</span>
-      <span class="tag">${activeQueue} in queue</span>
-      <span class="tag">${latest ? `updated ${relTime(latest)}` : 'no history yet'}</span>
-    </div>`;
-}
-
-function renderOperationalQueue(items) {
-  const summaryRoot = document.getElementById('workstream-queue-summary');
-  const listRoot = document.getElementById('workstream-queue-list');
-  if (!summaryRoot || !listRoot) return;
-
-  const active = items.filter((item) => item.status === 'active').length;
-  const awaitingReview = items.filter((item) => item.status === 'awaiting_review').length;
-  const ready = items.filter((item) => item.status === 'ready').length;
-
-  summaryRoot.innerHTML = renderMetrics([
-    [escHtml(items.length), 'Queue items'],
-    [escHtml(active), 'Active'],
-    [escHtml(awaitingReview), 'Awaiting review'],
-    [escHtml(ready), 'Resume ready'],
-  ]);
-
-  if (!items.length) {
-    listRoot.innerHTML = '<p class="meta">No next actions right now. Work that needs attention will appear here.</p>';
-    return;
-  }
-
-  listRoot.innerHTML = items.slice(0, 6).map((item) => `
-    <article class="card card-compact" data-queue-workstream="${escHtml(item.workstream_id || '')}">
-      <header class="row">
-        <span class="tag-mono">${escHtml(item.status || 'queued')}</span>
-        <time>${escHtml(relTime(item.updated_at || item.created_at || ''))}</time>
-      </header>
-      <h4>${escHtml(previewText(item.goal || item.workstream_id || 'Untitled queue item', 68))}</h4>
-      <p>${escHtml(previewText(item.summary || item.next_execution?.goal || 'No queue summary available.', 150))}</p>
-      <footer class="tags">
-        ${item.workstream_id ? `<span class="tag-mono">${escHtml(item.workstream_id)}</span>` : ''}
-        ${item.next_execution?.goal ? `<span class="tag-mono">next:${escHtml(previewText(item.next_execution.goal, 28))}</span>` : ''}
-      </footer>
-    </article>
-  `).join('');
-
-  listRoot.querySelectorAll('[data-queue-workstream]').forEach((node) => {
-    node.addEventListener('click', async () => {
-      const workstreamId = node.dataset.queueWorkstream;
-      if (!workstreamId) return;
-      await selectWorkstream(workstreamId);
-    });
-  });
-}
-
 function renderDashboardList(rootId, items, emptyMessage) {
   const root = document.getElementById(rootId);
   if (!root) return;
@@ -721,27 +541,17 @@ function renderDashboardList(rootId, items, emptyMessage) {
         </div>
         ${item.meta ? `<span class="tag-mono">${escHtml(item.meta)}</span>` : ''}
       </div>
-      ${item.action ? `<footer class="actions"><button class="btn btn-ghost btn-sm" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-workstream="${escHtml(item.action.workstreamId || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></footer>` : ''}
+      ${item.action ? `<footer class="actions"><button class="btn btn-ghost btn-sm" data-dashboard-action="${escHtml(item.action.name)}" data-dashboard-value="${escHtml(item.action.value || '')}" data-dashboard-entry-id="${escHtml(item.action.entryId || '')}">${escHtml(item.action.label)}</button></footer>` : ''}
     </article>
   `).join('');
   root.querySelectorAll('[data-dashboard-action]').forEach((button) => {
     button.addEventListener('click', async () => {
       const action = button.dataset.dashboardAction;
       const value = button.dataset.dashboardValue;
-      if (action === 'open-workstream') {
-        switchView('workstreams');
-        await selectWorkstream(value);
-        return;
-      }
-      if (action === 'open-review') {
-        switchView('workstreams');
-        const workstreamId = button.dataset.dashboardWorkstream || value || state.workstreams[0]?.workstream_id || '';
-        const entryId = button.dataset.dashboardEntryId || '';
-        if (workstreamId) {
-          await selectWorkstream(workstreamId);
-        }
-        state.selectedReviewId = entryId || state.selectedReviewId;
-        await setWorkstreamSurfaceFocus('review', { scroll: true, ensureSelected: true });
+      if (action === 'open-entry') {
+        const entryId = button.dataset.dashboardEntryId;
+        const entry = dashboardRecentEntries.find((item) => item.id === entryId);
+        if (entry) openViewModal(entry);
         return;
       }
       if (action === 'open-memory-admin') {
@@ -750,15 +560,6 @@ function renderDashboardList(rootId, items, emptyMessage) {
       }
       if (action === 'open-runtime-controls') {
         switchView(value || 'settings');
-        return;
-      }
-      if (action === 'open-handoffs') {
-        switchView('workstreams');
-        const workstreamId = button.dataset.dashboardWorkstream || value || state.workstreams[0]?.workstream_id || '';
-        if (workstreamId) {
-          await selectWorkstream(workstreamId);
-        }
-        await setWorkstreamSurfaceFocus('handoffs', { scroll: true, ensureSelected: true });
       }
     });
   });
@@ -766,571 +567,66 @@ function renderDashboardList(rootId, items, emptyMessage) {
 
 async function renderDashboardView() {
   try {
-    const [statsData, workstreamsData, reviewData, queueData] = await Promise.all([
+    const [statsData, recentData] = await Promise.all([
       api.stats(),
-      api.workstreams({ include_deleted: 'false', limit: '6' }),
-      api.reviewQueue({ pending_only: 'true', limit: '6' }),
-      api.workstreamQueue({ limit: '8' }).catch(() => ({ items: [] })),
+      api.entries({ offset: 0, limit: 6, sort_by: 'recent', descending: true }),
     ]);
-    const workstreams = workstreamsData.items || [];
-    const reviewItems = reviewData.items || [];
-    const queueItems = queueData.items || [];
-    const executionBacklog = queueItems.filter((item) => item.status === 'ready' || item.status === 'active' || item.status === 'awaiting_review').length;
-    
-    state.workstreams = workstreams;
-    state.reviewItems = reviewItems;
-    state.workstreamQueueItems = queueItems;
-    state.total = statsData.total_entries ?? 0;
-    state.dashboardSwitchPackage = workstreams.length > 1
-      ? await api.workstreamSwitchPackage({ current_workstream_id: workstreams[0].workstream_id, target_workstream_id: workstreams[1].workstream_id }).catch(() => null)
-      : null;
+    const summary = statsSummary(statsData);
+    const recentEntries = recentData.items || [];
+    dashboardRecentEntries = recentEntries;
 
-    document.getElementById('dashboard-workstreams-count').textContent = String(workstreams.length);
-  document.getElementById('dashboard-workstreams-caption').textContent = workstreams.length ? `${workstreams.filter((item) => (item.session_count || 0) > 0).length} with recent activity` : 'no active workstreams';
-    document.getElementById('dashboard-execution-count').textContent = String(executionBacklog);
-    document.getElementById('dashboard-execution-caption').textContent = executionBacklog ? `${queueItems.filter((item) => item.status === 'awaiting_review').length} awaiting review · ${queueItems.filter((item) => item.status === 'active').length} active` : 'no execution backlog';
-    document.getElementById('dashboard-review-count').textContent = String(reviewItems.length);
-    document.getElementById('dashboard-review-caption').textContent = reviewItems.length ? 'items escalated for final validation' : 'nothing escalated right now';
-    document.getElementById('dashboard-memory-count').textContent = String(statsData.total_entries ?? 0);
-    document.getElementById('dashboard-memory-caption').textContent = `${statsData.deleted_entries ?? 0} deleted · ${Object.values(statsData.sections || {}).filter((count) => count > 0).length} active sections`;
+    setText('dashboard-entries-count', String(summary?.total ?? 0));
+    setText('dashboard-entries-caption', summary?.newest && summary.newest !== '—'
+      ? `newest ${relTime(summary.newest)}`
+      : 'no entries yet');
+    setText('dashboard-sections-count', String(summary?.activeSections ?? 0));
+    setText('dashboard-sections-caption', summary?.storage
+      ? `${summary.storage} backend`
+      : 'storage backend unknown');
+    setText('dashboard-deleted-count', String(summary?.deleted ?? 0));
+    setText('dashboard-deleted-caption', summary?.oldest && summary.oldest !== '—'
+      ? `oldest ${relTime(summary.oldest)}`
+      : 'no deleted entries');
+    setText('dashboard-size-count', summary?.sizeKb != null ? String(Math.round(summary.sizeKb)) : '—');
+    setText('dashboard-size-caption', summary?.activeSections
+      ? `${summary.activeSections} active section${summary.activeSections === 1 ? '' : 's'}`
+      : 'no section data');
 
     renderDashboardList(
-      'dashboard-workstreams-list',
-      [
-        ...(state.dashboardSwitchPackage ? [{
-          title: `Switch package: ${state.dashboardSwitchPackage.current_workstream_id} -> ${state.dashboardSwitchPackage.target_workstream_id}`,
-          body: `needed now=${(state.dashboardSwitchPackage.state_gap?.needed_now_but_not_open || []).join(', ') || 'none'} · risky=${(state.dashboardSwitchPackage.state_gap?.risky_to_carry || []).join(', ') || 'none'}`,
-          meta: 'anti-context-switch',
-          action: { name: 'open-workstream', value: state.dashboardSwitchPackage.target_workstream_id, label: 'Inspect target workstream', variant: 'ghost' },
-        }] : []),
-        ...workstreams.slice(0, 4).map((item) => ({
-        title: item.goal || item.workstream_id,
-        body: `${item.summary || 'No summary yet.'} · ${humanLabel(item.operational_status || 'active')} · next: ${item.next_execution?.goal ? previewText(item.next_execution.goal, 40) : 'none'}`,
-        meta: item.workstream_id,
-        action: { name: 'open-workstream', value: item.workstream_id, label: 'Open workstream', variant: 'ghost' },
-      }))],
-      'No workstreams yet. Agents will start creating continuity here once work begins.'
+      'dashboard-recent-list',
+      recentEntries.map((entry) => ({
+        title: previewText(entry.content, 68),
+        body: `${entry.section} · ${relTime(entry.updated_at || entry.created_at)}${entry.deleted_at ? ' · deleted' : ''}`,
+        meta: entry.id,
+        action: { name: 'open-entry', entryId: entry.id, label: 'View entry' },
+      })),
+      'No memory entries yet. The agent will persist context here via MCP.'
     );
 
-    const attentionItems = [];
-    if (reviewItems.length) {
-      attentionItems.push(...reviewItems.slice(0, 3).map((item) => ({
-        title: item.summary || item.entry_id,
-        body: `${item.workstream_id || 'No workstream'} · ${humanLabel(item.review_status || 'pending')} · ${(item.review_reasons || []).join(', ') || 'No reason given'}`,
-        meta: item.entry_kind || 'entry',
-        action: { name: 'open-review', value: item.workstream_id || '', workstreamId: item.workstream_id || '', entryId: item.entry_id, label: 'Inspect review', variant: 'primary' },
-      })));
-    }
-    if (attentionItems.length < 4) {
-      attentionItems.push({
-        title: 'System',
-        body: 'Inspect store stats, runtime settings and bundled skills.',
-        meta: 'system',
-        action: { name: 'open-runtime-controls', value: 'stats', label: 'Open stats', variant: 'ghost' },
-      });
-    }
-    renderDashboardList('dashboard-attention-list', attentionItems.slice(0, 5), 'No immediate validation backlog. Escalations and admin-only follow-up will surface here.');
+    renderDashboardList(
+      'dashboard-links-list',
+      [
+        {
+          title: 'Stats',
+          body: 'Store size, section distribution, and recent activity.',
+          action: { name: 'open-runtime-controls', value: 'stats', label: 'Open stats' },
+        },
+        {
+          title: 'Settings',
+          body: 'Runtime configuration, storage backend, and sections.',
+          action: { name: 'open-runtime-controls', value: 'settings', label: 'Open settings' },
+        },
+        {
+          title: 'Skills',
+          body: 'Optional bundled agent skills installed with rememb-skills.',
+          action: { name: 'open-runtime-controls', value: 'skills', label: 'Browse skills' },
+        },
+      ],
+      'No quick links available.'
+    );
   } catch (e) {
-    renderDashboardList('dashboard-workstreams-list', [], `Failed to load dashboard: ${e.message}`);
-    renderDashboardList('dashboard-attention-list', [], 'Dashboard could not aggregate current state.');
-  }
-}
-
-function renderWorkstreamCard(item) {
-  const selected = item.workstream_id === state.selectedWorkstreamId;
-  const status = item.operational_status === 'active' ? 'active' : item.operational_status === 'awaiting_review' ? 'review' : 'idle';
-  return `
-    <article class="ws-card ${selected ? 'selected' : ''}" data-workstream-open="${escHtml(item.workstream_id)}" role="button" tabindex="0">
-      <span class="ws-card-bar ${status}"></span>
-      <div class="ws-card-body">
-        <h4>${escHtml(previewText(item.goal || item.workstream_id, 58))}</h4>
-        <p>${escHtml(humanLabel(item.operational_status || 'active'))} · ${escHtml(String(item.entry_count || 0))} entries</p>
-      </div>
-    </article>`;
-}
-
-function renderResumeListSection(title, items, ordered = false) {
-  return `
-    <section class="panel panel-tight">
-      <h4>${escHtml(title)}</h4>
-      <div class="prose">${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}</div>
-    </section>
-  `;
-}
-
-function renderWorkstreamTimeline(items) {
-  if (!items || !items.length) {
-    return '<p class="meta">No timeline events yet.</p>';
-  }
-  return `
-    <section class="timeline">
-      ${items.map((item) => `
-        <article class="timeline-item">
-          <time>${escHtml(relTime(item.updated_at || item.created_at || ''))}</time>
-          <div>
-            <header class="tags">
-              <span class="tag-mono">${escHtml(item.entry_kind || 'entry')}</span>
-              ${item.entry_role ? `<span class="tag">${escHtml(item.entry_role)}</span>` : ''}
-              ${item.session_id ? `<span class="tag-mono">execution:${escHtml(item.session_id)}</span>` : ''}
-              <span class="tag">${escHtml(item.section || '')}</span>
-            </header>
-            <p>${escHtml(item.summary || 'No summary available.')}</p>
-            ${item.related_entry_ids && item.related_entry_ids.length ? `<footer class="tags">${item.related_entry_ids.map((relatedId) => `<span class="tag-mono">${escHtml(relatedId)}</span>`).join('')}</footer>` : ''}
-          </div>
-        </article>
-      `).join('')}
-    </section>
-  `;
-}
-
-function renderWorkstreamDetail() {
-  const root = document.getElementById('workstream-detail-root');
-  if (!state.selectedWorkstreamId) {
-    root.innerHTML = '<article class="state">Select a workstream from the registry on the left.</article>';
-    return;
-  }
-  if (
-    !state.workstreamDetail ||
-    state.workstreamDetail.workstreamId !== state.selectedWorkstreamId ||
-    !state.workstreamDetail.stateData ||
-    !state.workstreamDetail.resumeData
-  ) {
-    root.innerHTML = '<article class="state state-loading">Loading workstream detail…</article>';
-    return;
-  }
-  if (state.workstreamDetail.error) {
-    root.innerHTML = `<article class="state state-error">Failed to load workstream detail: ${escHtml(state.workstreamDetail.error)}</article>`;
-    return;
-  }
-
-  const { workstreamId, stateData, resumeData, handoffData, handoffItems = [], reviewItems = [], reviewSummary = null } = state.workstreamDetail;
-  const switchData = state.workstreamDetail.switchData || null;
-  const focus = state.workstreamSurfaceFocus;
-
-  let tabContent = '';
-
-  if (focus === 'overview') {
-    const next = resumeData.next_execution || {};
-    const nextExecutionPanel = `
-      <section class="panel">
-        <h4>Next execution</h4>
-        <p>${escHtml(next.goal || resumeData.goal || 'Not packaged yet')}</p>
-        ${renderFactList([
-          ['Mode', humanLabel(next.resume_mode || 'goal_oriented')],
-          ['Essential context', `${(next.essential_context || []).length} items`],
-          ['Optional context', `${(next.optional_context || []).length} items`],
-          ['Risky context', `${(next.risky_context || []).length} items`],
-        ])}
-      </section>
-    `;
-    const switchPanel = switchData ? `
-      <section class="panel">
-        <h4>Context switch</h4>
-        <p>${escHtml(switchData.current_workstream_id)} → ${escHtml(switchData.target_workstream_id)}</p>
-        ${renderFactList([
-          ['Load now', `${(switchData.state_gap?.needed_now_but_not_open || []).length} items`],
-          ['Optional', `${(switchData.state_gap?.optional_to_load || []).length} items`],
-          ['Risky to carry', `${(switchData.state_gap?.risky_to_carry || []).length} items`],
-        ])}
-        <div class="tags">${(switchData.state_gap?.needed_now_but_not_open || []).map((item) => `<span class="tag-mono">${escHtml(item)}</span>`).join('') || '<span class="meta">Nothing missing for the target workstream.</span>'}</div>
-      </section>
-    ` : '';
-    tabContent = `
-      <section class="panel">
-        <h4>Goal</h4>
-        <p>${escHtml(resumeData.goal || 'No goal recorded')}</p>
-        <p>${escHtml(resumeData.summary || '')}</p>
-      </section>
-      ${renderMetrics([
-        [escHtml(stateData.entry_count), 'Entries'],
-        [escHtml(reviewSummary?.pending_review_count ?? reviewItems.length), 'Review pending'],
-        [escHtml(stateData.session_count), 'Executions'],
-      ])}
-      ${nextExecutionPanel}
-      ${switchPanel}
-      ${renderResumeListSection('Current state', resumeData.current_state)}
-      ${renderResumeListSection('Open loops', resumeData.open_loops)}
-      ${renderResumeListSection('Next steps', resumeData.next_steps, true)}
-      <section class="panel">
-        <h4>Restore context</h4>
-        ${renderFactList([
-          ['Section', resumeData.restore_context?.section || '—'],
-          ['Query', resumeData.restore_context?.query || '—'],
-          ['Include deleted', resumeData.restore_context?.include_deleted ? 'yes' : 'no'],
-        ])}
-      </section>
-      <section class="panel">
-        <h4>Related entries</h4>
-        <div class="tags">${(resumeData.related_entry_ids || []).map((item) => `<span class="tag-mono">${escHtml(item)}</span>`).join('') || '<span class="meta">None linked</span>'}</div>
-      </section>
-      <section class="panel">
-        <h4>Latest execution</h4>
-        <p>${escHtml(stateData.latest_entry?.session_id || resumeData.session_id || 'None recorded')}</p>
-      </section>
-    `;
-  } else if (focus === 'review') {
-    tabContent = `
-      <section class="panel">
-        <header class="row">
-          <div class="row-main">
-            <h4>Review queue</h4>
-            <p>Items the agent flagged for validation inside this workstream.</p>
-          </div>
-          <span class="tag-mono">${escHtml(reviewSummary?.pending_review_count ?? reviewItems.length)} pending</span>
-        </header>
-        ${reviewItems.length ? `
-          <section>
-            ${reviewItems.slice(0, 4).map((item) => `
-              <article class="card card-compact">
-                <h4>${escHtml(previewText(item.summary || item.entry_id, 58))}</h4>
-                <p>${escHtml(humanLabel(item.review_status || 'pending'))} · ${(item.review_reasons || []).slice(0, 2).map((reason) => escHtml(reason)).join(', ') || 'No reason given'}</p>
-                <footer class="actions">
-                  <button class="btn btn-ghost btn-sm" data-workstream-review-open="${escHtml(item.entry_id)}">Inspect</button>
-                </footer>
-              </article>
-            `).join('')}
-          </section>
-        ` : '<p class="meta">No pending review items for this workstream.</p>'}
-      </section>
-    `;
-  } else if (focus === 'handoffs') {
-    const timeline = renderWorkstreamTimeline(stateData.timeline || []);
-    const handoffGoal = handoffData?.goal ? `
-      <section class="panel">
-        <h4>Latest structured handoff</h4>
-        <p>${escHtml(handoffData.goal)}</p>
-        <p>${escHtml(handoffData.summary || '')}</p>
-      </section>
-    ` : '';
-    tabContent = `
-      <section class="panel">
-        <header class="row">
-          <div class="row-main">
-            <h4>Handoffs</h4>
-            <p>Continuity packages recorded by the agent for this workstream.</p>
-          </div>
-          <span class="tag-mono">${escHtml(handoffItems.length)} total</span>
-        </header>
-        ${handoffItems.length ? `
-          <section>
-            ${handoffItems.slice(0, 4).map((entry) => `
-              <article class="card card-compact">
-                <h4>${escHtml(previewText(entry.summary || entry.id, 58))}</h4>
-                <p>${escHtml(relTime(entry.updated_at || entry.created_at || ''))} · execution ${escHtml(entry.session_id || 'not recorded')}</p>
-                <p>${escHtml(previewText(entry.summary || 'No handoff summary available.', 140))}</p>
-                <footer class="actions">
-                  <button class="btn btn-ghost btn-sm" data-workstream-handoff-open="${escHtml(entry.id)}">Open handoff</button>
-                  <button class="btn btn-ghost btn-sm" data-workstream-handoff-state="${escHtml(entry.id)}">State</button>
-                </footer>
-              </article>
-            `).join('')}
-          </section>
-        ` : '<p class="meta">No handoffs recorded for this workstream yet.</p>'}
-      </section>
-      <section class="panel">
-        <h4>Workstream timeline</h4>
-        ${timeline}
-      </section>
-      ${handoffGoal}
-    `;
-  }
-
-  root.innerHTML = `
-    ${renderWorkstreamSurfaceBar()}
-    <header class="detail-head">
-      <h3>${escHtml(workstreamId)}</h3>
-      <p>${escHtml(previewText(resumeData.summary || resumeData.goal || '', 120))}</p>
-    </header>
-    <div class="tab-pane" id="workstream-section-${focus}">${tabContent}</div>
-    <footer class="actions inspector-foot">
-      <button class="btn btn-ghost btn-sm" id="btn-persisted-workstream-state">Full state</button>
-    </footer>
-  `;
-
-  bindWorkstreamSurfaceBar(root);
-  renderWorkstreamSurfaceTabs();
-  document.getElementById('btn-persisted-workstream-state').addEventListener('click', async () => await openWorkstreamStateModal(workstreamId, null));
-  root.querySelectorAll('[data-workstream-review-open]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      state.selectedReviewId = button.dataset.workstreamReviewOpen;
-      await setWorkstreamSurfaceFocus('review', { ensureSelected: true, scroll: true });
-    });
-  });
-  root.querySelectorAll('[data-workstream-handoff-open]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const entry = handoffItems.find((item) => item.id === button.dataset.workstreamHandoffOpen);
-      if (entry) openHandoffViewModal(entry);
-    });
-  });
-  root.querySelectorAll('[data-workstream-handoff-state]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const entry = handoffItems.find((item) => item.id === button.dataset.workstreamHandoffState);
-      if (entry?.workstream_id) await openWorkstreamStateModal(entry.workstream_id, entry.session_id || null);
-    });
-  });
-}
-
-async function selectWorkstream(workstreamId) {
-  state.selectedWorkstreamId = workstreamId;
-  state.workstreamDetail = { workstreamId };
-  renderWorkstreams(state.workstreams);
-  renderWorkstreamDetail();
-  try {
-    const [stateData, resumeData, reviewData, reviewSummary] = await Promise.all([
-      api.workstreamState(workstreamId, { include_deleted: 'false' }),
-      api.workstreamResume(workstreamId, { include_deleted: 'false' }),
-      api.reviewQueue({ workstream_id: workstreamId, pending_only: 'true', limit: '6' }).catch(() => ({ items: [] })),
-      api.reviewWorkstream(workstreamId).catch(() => null),
-    ]);
-    const handoffData = stateData.latest_handoff ? await api.readStructuredHandoff(workstreamId, { include_deleted: 'true' }).catch(() => null) : null;
-    const alternateWorkstream = (state.workstreams || []).find((item) => item.workstream_id !== workstreamId)?.workstream_id || null;
-    const switchData = alternateWorkstream
-      ? await api.workstreamSwitchPackage({ current_workstream_id: workstreamId, target_workstream_id: alternateWorkstream }).catch(() => null)
-      : null;
-    const handoffItems = (stateData.timeline || [])
-      .filter((item) => item.entry_kind === 'handoff')
-      .map((item) => ({ ...item, workstream_id: workstreamId }));
-    state.workstreamDetail = { workstreamId, stateData, resumeData, handoffData, handoffItems, reviewItems: reviewData.items || [], reviewSummary, switchData };
-  } catch (e) {
-    state.workstreamDetail = { workstreamId, error: e.message };
-  }
-  renderWorkstreamDetail();
-  scrollWorkstreamSurfaceSection(false);
-}
-
-function renderWorkstreams(items) {
-  const grid = document.getElementById('workstream-grid');
-  renderWorkstreamSummary(items);
-  if (!items.length) {
-    grid.innerHTML = '<article class="state">No workstreams yet. The agent creates them via MCP when work begins.</article>';
-    state.selectedWorkstreamId = null;
-    state.workstreamDetail = null;
-    renderWorkstreamDetail();
-    return;
-  }
-  grid.innerHTML = items.map(renderWorkstreamCard).join('');
-  grid.querySelectorAll('[data-workstream-open]').forEach((node) => {
-    const open = async () => {
-      await selectWorkstream(node.dataset.workstreamOpen);
-    };
-    node.addEventListener('click', open);
-    node.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        open();
-      }
-    });
-  });
-}
-
-function renderWorkstreamSurfaceTabs() {
-  document.querySelectorAll('[data-workstream-surface]').forEach((button) => {
-    const isActive = button.dataset.workstreamSurface === state.workstreamSurfaceFocus;
-    if (isActive) button.setAttribute('aria-current', 'page');
-    else button.removeAttribute('aria-current');
-  });
-}
-
-function scrollWorkstreamSurfaceSection(smooth = true) {
-  const activeSection = document.getElementById(`workstream-section-${state.workstreamSurfaceFocus}`);
-  if (activeSection) {
-    activeSection.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-  }
-}
-
-async function setWorkstreamSurfaceFocus(focus, options = {}) {
-  state.workstreamSurfaceFocus = focus || 'overview';
-  renderWorkstreamSurfaceTabs();
-  const ensureSelected = options.ensureSelected !== false;
-  if (ensureSelected && !state.selectedWorkstreamId && state.workstreams[0]?.workstream_id) {
-    await selectWorkstream(state.workstreams[0].workstream_id);
-  } else {
-    renderWorkstreamDetail();
-  }
-  if (options.scroll !== false) scrollWorkstreamSurfaceSection(true);
-}
-
-async function loadWorkstreams() {
-  try {
-    const [data, queueData] = await Promise.all([
-      api.workstreams({ include_deleted: String(state.workstreamsIncludeDeleted), limit: '50' }),
-      api.workstreamQueue({ limit: '12' }).catch(() => ({ items: [] })),
-    ]);
-    state.workstreams = data.items || [];
-    state.workstreamQueueItems = queueData.items || [];
-    renderWorkstreams(state.workstreams);
-    renderOperationalQueue(state.workstreamQueueItems);
-    renderWorkstreamSummary(state.workstreams);
-    const availableIds = new Set(state.workstreams.map((item) => item.workstream_id));
-    const nextSelected = availableIds.has(state.selectedWorkstreamId) ? state.selectedWorkstreamId : state.workstreams[0]?.workstream_id || null;
-    if (!nextSelected) {
-      state.selectedWorkstreamId = null;
-      state.workstreamDetail = null;
-      renderWorkstreamDetail();
-      return;
-    }
-    await selectWorkstream(nextSelected);
-  } catch (e) {
-    document.getElementById('workstream-grid').innerHTML = `<article class="state state-error">Failed to load workstreams: ${escHtml(e.message)}</article>`;
-    const queueRoot = document.getElementById('workstream-queue-list');
-    if (queueRoot) queueRoot.innerHTML = `<article class="state state-error">Failed to load operational queue: ${escHtml(e.message)}</article>`;
-    document.getElementById('workstream-detail-root').innerHTML = '';
-  }
-}
-
-
-
-function openHandoffViewModal(entry) {
-  openModal(modalShell(`
-    <header class="modal-head">
-      <div>
-        <h3>Handoff</h3>
-        <p>${escHtml(entry.id)} · ${escHtml(relTime(entry.updated_at || entry.created_at))}</p>
-      </div>
-      <button class="modal-close" type="button">×</button>
-    </header>
-    <section class="modal-body prose">
-      ${renderMarkdown(entry.content)}
-      <footer class="tags">
-        <span class="tag-mono">${escHtml(entry.id)}</span>
-        ${entry.workstream_id ? `<span class="tag-mono">workstream:${escHtml(entry.workstream_id)}</span>` : ''}
-        ${entry.session_id ? `<span class="tag-mono">session:${escHtml(entry.session_id)}</span>` : ''}
-        ${(entry.tags || []).map((tag) => `<span class="tag">${escHtml(tag)}</span>`).join('')}
-      </footer>
-    </section>
-    <footer class="modal-foot">
-      ${entry.workstream_id ? `<button class="btn btn-ghost" id="btn-handoff-open-state" type="button">Workstream state</button>` : ''}
-      ${entry.workstream_id ? `<button class="btn btn-ghost" id="btn-handoff-open-resume" type="button">Workstream resume</button>` : ''}
-      <button class="btn btn-primary" id="btn-handoff-history" type="button">History</button>
-    </footer>
-  `, 'modal-panel--wide'));
-  if (entry.workstream_id) {
-    document.getElementById('btn-handoff-open-state').addEventListener('click', async () => {
-      await openWorkstreamStateModal(entry.workstream_id, entry.session_id || null);
-    });
-    document.getElementById('btn-handoff-open-resume').addEventListener('click', async () => {
-      await openWorkstreamResumeModal(entry.workstream_id, entry.session_id || null);
-    });
-  }
-  document.getElementById('btn-handoff-history').addEventListener('click', () => {
-    closeModal();
-    openVersionsModal(entry);
-  });
-}
-
-async function openWorkstreamStateModal(workstreamId, sessionId = null) {
-  try {
-    const params = { include_deleted: 'false' };
-    if (sessionId) params.session_id = sessionId;
-    const data = await api.workstreamState(workstreamId, params);
-    const sessions = (data.sessions || []).map((session) => `
-      <article class="card card-compact">
-        <h4>${escHtml(session.session_id || '(none)')}</h4>
-        <p>entries=${escHtml(session.entry_count)} latest=${escHtml(session.latest_entry_id || '')}</p>
-      </article>
-    `).join('') || '<p class="meta">No sessions aggregated.</p>';
-    openModal(modalShell(`
-      <header class="modal-head">
-        <div>
-          <h3>Workstream state</h3>
-          <p>${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</p>
-        </div>
-        <button class="modal-close" type="button">×</button>
-      </header>
-      <section class="modal-body">
-        ${renderMetrics([
-          [escHtml(data.entry_count), 'Entries'],
-          [escHtml(data.session_count), 'Sessions'],
-        ])}
-        <section class="panel">
-          <h4>Latest entry</h4>
-          <p>${escHtml(data.latest_entry?.id || '')}</p>
-          <p>kind=${escHtml(data.latest_entry?.entry_kind || '')} session=${escHtml(data.latest_entry?.session_id || '')}</p>
-        </section>
-        ${renderMetrics([
-          [escHtml(data.latest_handoff?.id || '—'), 'Latest handoff'],
-          [escHtml(data.latest_state?.id || '—'), 'Latest state'],
-        ])}
-        <section>
-          <h4>Aggregated sessions</h4>
-          <div class="feed">${sessions}</div>
-        </section>
-      </section>
-      <footer class="modal-foot">
-        <button class="btn btn-ghost" type="button" onclick="closeModal()">Close</button>
-      </footer>
-    `, 'modal-panel--wide'));
-  } catch (e) {
-    toast('Error: ' + e.message, 'error');
-  }
-}
-
-async function openWorkstreamResumeModal(workstreamId, sessionId = null) {
-  try {
-    const params = { include_deleted: 'false' };
-    if (sessionId) params.session_id = sessionId;
-    const data = await api.workstreamResume(workstreamId, params);
-    const listBlock = (title, items, ordered = false) => `
-      <section class="panel">
-        <h4>${escHtml(title)}</h4>
-        ${renderMarkdown((items || []).map((item, index) => ordered ? `${index + 1}. ${item}` : `- ${item}`).join('\n') || '_none_')}
-      </section>
-    `;
-    openModal(modalShell(`
-      <header class="modal-head">
-        <div>
-          <h3>Workstream resume</h3>
-          <p>${escHtml(workstreamId)}${sessionId ? ` · ${escHtml(sessionId)}` : ''}</p>
-        </div>
-        <button class="modal-close" type="button">×</button>
-      </header>
-      <section class="modal-body">
-        <section class="panel">
-          <h4>Goal</h4>
-          <p>${escHtml(data.goal || '')}</p>
-          <p>${escHtml(data.summary || '')}</p>
-        </section>
-        ${renderMetrics([
-          [escHtml(data.latest_entry_id || ''), 'Latest entry'],
-          [escHtml((data.focus_entry_ids || []).join(', ') || 'none'), 'Focus entries'],
-        ])}
-        ${listBlock('Current state', data.current_state)}
-        ${listBlock('Open loops', data.open_loops)}
-        ${listBlock('Next steps', data.next_steps, true)}
-        <section class="panel">
-          <h4>Restore context</h4>
-          <p>section=${escHtml(data.restore_context?.section || '')} query=${escHtml(data.restore_context?.query || '')} include_deleted=${data.restore_context?.include_deleted ? 'true' : 'false'}</p>
-        </section>
-        <section class="panel">
-          <h4>Compressed context</h4>
-          <div class="tags">
-            <span class="tag-mono">essential:${escHtml((data.compressed_context?.essential || []).length)}</span>
-            <span class="tag-mono">optional:${escHtml((data.compressed_context?.optional || []).length)}</span>
-            <span class="tag-mono">archived:${escHtml((data.compressed_context?.archived || []).length)}</span>
-            <span class="tag-mono">risky:${escHtml((data.compressed_context?.risky || []).length)}</span>
-            <span class="tag-mono">obsolete:${escHtml((data.compressed_context?.obsolete || []).length)}</span>
-          </div>
-        </section>
-        <section class="panel">
-          <h4>Next execution package</h4>
-          <p>${escHtml(data.next_execution?.goal || data.goal || '')}</p>
-          <p>resume_mode=${escHtml(data.next_execution?.resume_mode || 'goal_oriented')} essential=${escHtml((data.next_execution?.essential_context || []).length)} risky=${escHtml((data.next_execution?.risky_context || []).length)}</p>
-        </section>
-        <section class="panel">
-          <h4>What changed since the last anchor</h4>
-          ${renderMarkdown((data.what_changed || []).map((item) => `- ${item.summary || item.id}`).join('\n') || '_none_')}
-        </section>
-        <section class="panel">
-          <h4>Related entries</h4>
-          <div class="tags">${(data.related_entry_ids || []).map((item) => `<span class="tag-mono">${escHtml(item)}</span>`).join('') || '<span class="meta">none</span>'}</div>
-        </section>
-      </section>
-      <footer class="modal-foot">
-        <button class="btn btn-ghost" type="button" onclick="closeModal()">Close</button>
-      </footer>
-    `, 'modal-panel--wide'));
-  } catch (e) {
-    toast('Error: ' + e.message, 'error');
+    renderDashboardList('dashboard-recent-list', [], `Failed to load dashboard: ${e.message}`);
+    renderDashboardList('dashboard-links-list', [], 'Dashboard could not load quick links.');
   }
 }
 
@@ -1773,10 +1069,6 @@ function openConsolidateModal() {
 }
 
 function switchView(name) {
-  if (name === 'review' || name === 'handoffs') {
-    state.workstreamSurfaceFocus = name === 'review' ? 'review' : 'handoffs';
-    name = 'workstreams';
-  }
   state.view = name;
   document.querySelectorAll('.view').forEach((view) => {
     view.hidden = true;
@@ -1794,7 +1086,6 @@ function switchView(name) {
   else if (name === 'stats') renderStatsView();
   else if (name === 'skills') renderSkillsView();
   else if (name === 'settings') renderSettingsPage();
-  else if (name === 'workstreams') loadWorkstreams();
 }
 
 async function renderStatsView() {
@@ -2079,18 +1370,6 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('btn-load-more').addEventListener('click', () => loadEntries(true));
 document.getElementById('clear-search').addEventListener('click', clearSearch);
 
-document.getElementById('toggle-workstreams-include-deleted').addEventListener('change', async (e) => {
-  state.workstreamsIncludeDeleted = e.target.checked;
-  await loadWorkstreams();
-});
-
-
-
-
-
-
-
-
 document.getElementById('sort-select').addEventListener('change', (e) => {
   const [sortBy, dir] = e.target.value.split('-');
   state.sort_by = sortBy;
@@ -2111,16 +1390,8 @@ document.getElementById('toggle-include-deleted').addEventListener('change', asy
 
 document.querySelectorAll('nav button[data-nav-view]').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
 document.querySelectorAll('[data-shortcut-view]').forEach((button) => {
-  button.addEventListener('click', async () => {
+  button.addEventListener('click', () => {
     switchView(button.dataset.shortcutView);
-    if (button.dataset.shortcutPanel) {
-      await setWorkstreamSurfaceFocus(button.dataset.shortcutPanel, { ensureSelected: true, scroll: true });
-    }
-  });
-});
-document.querySelectorAll('[data-workstream-surface]').forEach((button) => {
-  button.addEventListener('click', async () => {
-    await setWorkstreamSurfaceFocus(button.dataset.workstreamSurface, { ensureSelected: true, scroll: true });
   });
 });
 
@@ -2139,7 +1410,6 @@ async function loadSystemInfo() {
 async function boot() {
   await Promise.all([loadConfig(), loadSystemInfo()]);
   document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
-  document.getElementById('toggle-workstreams-include-deleted').checked = state.workstreamsIncludeDeleted;
   await loadStats();
   await loadEntries();
   switchView('dashboard');

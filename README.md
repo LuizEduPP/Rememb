@@ -4,7 +4,7 @@
 [![Rememb MCP server](https://glama.ai/mcp/servers/LuizEduPP/Rememb/badges/score.svg)](https://glama.ai/mcp/servers/LuizEduPP/Rememb)
 [![MCP Badge](https://lobehub.com/badge/mcp/luizedupp-rememb)](https://lobehub.com/mcp/luizedupp-rememb)
 
-Operate AI agents without losing context, focus, or control. `rememb` is a local-first anti-context-switch layer: workstreams, goal-based handoffs, agent supervision, restore and audit trail across execution cycles.
+Operate AI agents without losing context between sessions. `rememb` is a local-first persistent memory layer: structured entries, semantic search, versioning, diff, restore, and audit trail — no cloud service required.
 
 ![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
 ---
@@ -13,10 +13,10 @@ Operate AI agents without losing context, focus, or control. `rememb` is a local
 
 Teams using agents at real velocity rarely fail because they lack generation. They fail because operating agents every day creates context debt:
 
-- too much context switching between workstreams
-- too much review overhead after agent output
-- too little continuity between execution cycles
+- too much re-explaining project facts every session
+- too little durable memory outside the chat window
 - too little audit trail for why something changed
+- too much noise when recalling the right context
 
 Every team or solo developer operating agents professionally hits this wall:
 
@@ -27,13 +27,13 @@ Session 3: Same thing.
 ```
 
 Existing solutions often center on hosted memory layers, API keys, or opaque context pipelines.
-What you actually need is to **resume the next execution with the minimum correct context and a trail you can inspect**.
+What you actually need is to **resume the next session with the minimum correct context and a trail you can inspect**.
 
-`rememb` is built around four operating problems:
+`rememb` is built around four memory problems:
 
-- goal-based handoff instead of generic session summary
-- anti-context-switch workstream switching instead of raw recall
-- memory for agent supervision, not just memory for facts
+- durable facts and decisions instead of session-only chat memory
+- semantic search instead of rereading everything
+- non-destructive versioning instead of silent overwrites
 - local-first audit trail for AI work, not opaque cloud logs
 
 ---
@@ -67,9 +67,9 @@ Zero friction. No CLI commands. Native IDE integration.
 
 **2. Restart your IDE.**
 
-The agent now automatically restores operational context at session start, writes durable state when something changes, and searches only when broader recall is actually needed.
+The agent can read stored context at session start, write durable memory when something changes, and search only when targeted recall is needed.
 
-If you want the new workstream-first flow to be followed consistently, add a strict rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is not to add generic workflow rules; the point is to make the agent route continuity, review, handoff and recovery through rememb every time.
+If you want rememb usage to stay consistent, add a rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is to make the agent route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory.
 
 You can place that block in either of these places:
 
@@ -80,9 +80,7 @@ In both cases, keep the scope explicit: these rules are about how the agent shou
 
 For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
 
-That is enough for the new flow. You do not need extra storage setup, extra server config, or a custom schema migration.
-
-The `rememb_init` MCP tool is optional/deprecated for day-to-day usage: in MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed. The tool remains available for compatibility and explicit recovery workflows.
+No extra storage setup, server config, or schema migration is required. In MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed.
 
 For the current public MCP tool list and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
@@ -115,7 +113,7 @@ rememb fetch-model        # Download the local embedding model for semantic sear
   config.json    ← limits, sections, web UI behavior, semantic model settings
 ```
 
-A local JSON-backed store in your project. Your agent can resume workstreams, freeze one thread and resume another, inspect prior decisions, and hand off the next execution without depending on a cloud memory service.
+A local JSON-backed store in your project. Your agent can read prior decisions, search by meaning, update entries without losing history, and restore previous versions without depending on a cloud memory service.
 
 ```
 User: "We're using PostgreSQL, auth at src/auth/, async patterns"
@@ -175,7 +173,7 @@ Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS
 
 ## Web UI
 
-`rememb` includes a local web interface for an agent-driven operating loop.
+`rememb` includes a local web interface for browsing and maintaining project memory.
 
 ```bash
 rememb                       # Open the web UI (http://localhost:8080)
@@ -201,15 +199,11 @@ Settings view with limits, semantic search controls, section colors, and mainten
 Skills view listing all bundled skills available in the installed rememb package.
 
 Features:
-- **Agent-driven dashboard** — dashboard, workstreams, handoffs and review stay centered on continuity, escalation and audit trail
-- **Goal-based handoff** — the next execution package carries goal, essential context, optional context, risky context and restore hints
-- **Anti-context-switch switching** — compare the current thread against the target thread and expose what must load now versus what is risky to carry
-- **Agent review surface** — inspect risk, confidence, priority, rationale, provenance and resulting validation state in one place
-- **Execution snapshots** — each execution can expose inputs, context used, outputs produced and resulting review state
-- **Workstream-first view** — inspect the selected workstream in a persistent detail panel with current state, next execution package, switch package, review and timeline
-- **Structured handoffs** — write and inspect handoffs linked to workstreams and executions, then restore context from Web or MCP
-- **Runtime control surface** — stats, settings and raw memory maintenance remain available as system controls without becoming the primary operating loop
-- **Settings page** — edit limits, semantic search options, section colors and maintenance actions
+- **Overview dashboard** — entry totals, recent activity, and quick links to memory sections
+- **Memory browser** — browse, filter, create, edit, and delete entries by section or tag
+- **Version history** — inspect revisions, diff changes, and restore prior versions from the UI
+- **Stats page** — totals, section breakdown, date range, and recent entries
+- **Settings page** — edit limits, semantic search options, section colors, and maintenance actions
 - **Skills page** — browse all bundled skills available in the installed rememb package
 
 The semantic search MCP tool also accepts an optional exact `tag` filter, so IDE clients can restrict semantic matches before ranking.
@@ -251,78 +245,14 @@ Short version:
 - **Agnostic** — any agent, any IDE (MCP or CLI)
 - **No lock-in** — no servers, no API keys, no accounts
 
-### Current feature direction: Anti-fatigue agent operations
+Core capabilities:
 
-`rememb` remains the product.
-The current feature direction is workstream-first memory with structured execution handoff.
-
-This feature slice is meant to solve one concrete problem:
-reduce the operational fatigue of running agents by keeping continuity, supervision and audit trail grouped under one logical workstream.
-
-The intended shape is deliberately small and compatible with the current architecture:
-
-- keep entries as the storage unit and add workstream and execution as logical metadata
-- store handoffs as normal entries instead of creating a new storage system
-- use stable markdown sections so handoffs stay human-readable and auditable
-- tag handoffs consistently so they are easy to search and filter
-- expose workstream open, state update, resume, execution lifecycle, switch package and structured handoff through the existing store, Web UI, and MCP surfaces
-- restore context from a handoff through related entries, revisions, and search hints
-- keep settings, maintenance and stats available as runtime controls without framing the product as a human-operated workflow
-
-The current implementation already covers:
-
-- opening and listing workstreams
-- starting and closing sessions
-- writing workstream state checkpoints
-- generating and reading structured handoffs
-- resuming a workstream from the latest relevant state and handoff
-- browsing the same flow in the Web UI
-
-This keeps the feature aligned with rememb's core constraints:
-
-- local-first JSON storage
-- no external services
-- additive MCP and Web changes
-- compatibility with the existing `.rememb` layout
-
-Why this direction matters now:
-
-- AI adoption is high, but trust and enthusiasm are not rising at the same pace
-- teams are feeling more review overhead, more supervision work, and more cognitive load
-- context switching across parallel workstreams is still expensive
-- session handoff and context resumption are still poorly solved end to end
-- auditability is becoming a real product need, not a nice-to-have
-
-The strongest product opportunity for rememb is not more text generation.
-It is reducing the operational fatigue of working with agents.
-
-That points rememb toward four concrete strengths:
-
-- goal-oriented handoff between sessions
-- workstream resumption with minimal relevant context
-- supervision and review of agent output, not just fact recall
-- local-first audit trail with versions, diffs, restore, and history
-
-The near-term product adjustments follow directly from that:
-
-- explicit handoff flows such as ending a session, opening the next one, and generating a handoff for a specific goal
-- stronger workstream views around task, session, and resumption instead of isolated entries only
-- review-oriented inspection for agent changes, with before/after and related decision context
-- smarter context compression, separating essential context from optional or risky carry-over
-- distinct output modes for human handoff and agent handoff
-
-In product terms, the less obvious but stronger bet is this:
-help small teams reduce the fatigue of operating agents across real work.
-
-That means rememb should keep pushing on the package formed by:
-
-- handoff
-- resumption
-- compression
-- diff
-- audit trail
-- restore
-- goal-focused context
+- structured memory with sections and tags
+- semantic search with local embeddings
+- non-destructive versioning, diff, restore, and soft delete
+- duplicate consolidation and store stats
+- config and maintenance via Web UI
+- bundled skills via MCP
 
 ---
 

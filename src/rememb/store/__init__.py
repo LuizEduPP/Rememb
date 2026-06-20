@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from rememb.helpers import MemoryStore, _store_context
 
-from rememb.store._common import _generate_handoff, parse_handoff_restore_context
 from rememb.store.crud import (
     clear_entries,
     consolidate_entries,
@@ -25,55 +24,11 @@ from rememb.store.crud import (
     write_entries,
     write_entry,
 )
-from rememb.store.handoffs import (
-    build_handoff_package,
-    close_session_with_handoff,
-    read_structured_handoff,
-    write_structured_handoff,
-)
-from rememb.store.review import (
-    build_workstream_switch_package,
-    compare_sessions,
-    compare_workstreams,
-    get_review_session,
-    get_review_workstream,
-    list_review_queue,
-    list_workstream_queue,
-    update_review_status,
-)
-from rememb.store.workstreams import (
-    close_session,
-    get_workstream_state,
-    list_workstreams,
-    open_workstream,
-    resume_workstream,
-    start_session,
-    update_workstream_state,
-)
 
 __all__ = [
     "init",
     "get_config",
     "update_config",
-    "list_workstreams",
-    "open_workstream",
-    "get_workstream_state",
-    "parse_handoff_restore_context",
-    "read_structured_handoff",
-    "resume_workstream",
-    "build_handoff_package",
-    "get_review_session",
-    "get_review_workstream",
-    "list_workstream_queue",
-    "compare_sessions",
-    "compare_workstreams",
-    "start_session",
-    "close_session",
-    "close_session_with_handoff",
-    "update_workstream_state",
-    "list_review_queue",
-    "update_review_status",
-    "write_structured_handoff",
     "write_entry",
     "write_entries",
     "consolidate_entries",
@@ -91,7 +46,6 @@ __all__ = [
     "clear_entries",
     "format_entries",
     "get_stats",
-    "build_workstream_switch_package",
 ]
 
 _store_instance = type('StoreModule', (), {

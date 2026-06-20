@@ -33,7 +33,7 @@ não vender “mais geração”, e sim “menos desgaste operacional com agente
 
 2. Context switching está doendo mais, não menos
 A busca em HN trouxe vários relatos de:
-- custo alto de trocar entre workstreams
+- custo alto de trocar entre tarefas e sessões paralelas
 - dificuldade de manter 2-4 sessões/agentes paralelos
 - queda de qualidade quando o contexto fragmenta
 - necessidade de contexto menor, mais focado e por objetivo
@@ -43,10 +43,10 @@ Esse ponto encaixa quase perfeitamente no rememb.
 Oportunidade real:
 o rememb pode virar a camada que segura continuidade entre sessões, não só memória estática.
 
-3. Handoff e contexto entre sessões ainda estão mal resolvidos
+3. Contexto entre sessões ainda está mal resolvido
 Esse foi o achado mais promissor.
 Aparecem explicitamente discussões sobre:
-- handoff file
+- arquivos de contexto para retomada
 - resumir contexto “com respeito ao próximo objetivo”
 - abrir nova thread/sessão já com contexto enxuto e relevante
 - evitar “context rot”
@@ -55,7 +55,7 @@ Isso é importante porque aqui ainda há espaço.
 Existem peças isoladas no mercado, mas o problema ainda está mal fechado ponta a ponta.
 
 Oportunidade real:
-handoff orientado a objetivo, com memória persistente, versões, diff e restore, local-first.
+memória persistente orientada a objetivo, com versões, diff e restore, local-first.
 
 4. Falta trilha verificável para o que agentes fizeram
 Outra dor recorrente:
@@ -79,8 +79,8 @@ O correto é: tem espaço ainda mal resolvido e menos comoditizado.
 
 As melhores apostas são estas:
 
-1. Goal-based handoff
-Em vez de só resumir sessão, o rememb gera:
+1. Goal-based memory
+Em vez de só resumir sessão, o rememb organiza:
 - objetivo da próxima sessão
 - estado atual
 - decisões já tomadas
@@ -93,12 +93,12 @@ Isso apareceu diretamente no padrão de dor.
 2. Anti-context-switch layer
 Uma camada para trocar de tarefa sem perder estado.
 Exemplos:
-- congelar um workstream
-- reabrir outro com contexto mínimo pronto
-- comparar “o que estava aberto” vs. “o que preciso agora”
+- pausar uma linha de trabalho com checkpoint de memória
+- reabrir outra com contexto mínimo pronto via search/read
+- comparar versões anteriores para ver o que mudou
 - retomar com versão, diff e histórico do raciocínio operacional
 
-Isso conversa muito com a dor de workstreams paralelos.
+Isso conversa muito com a dor de tarefas paralelas.
 
 3. Memory for agent supervision, não só memory for recall
 Esse é o posicionamento menos genérico.
@@ -125,26 +125,25 @@ Esse conjunto é raro quando combinado.
 
 O que eu ajustaria no produto agora
 
-1. Handoff por objetivo
-Adicionar um fluxo explícito:
-- “encerrar sessão”
-- “abrir próxima sessão”
-- “gerar handoff focado em X”
+1. Memória por objetivo
+Adicionar um fluxo explícito via MCP:
+- gravar decisões e estado por seção/objetivo
+- buscar contexto relevante antes de retomar
+- consolidar duplicatas sem perder histórico
 
-2. Views de workstreams
+2. Views de memória estruturada
 Não só entries soltas.
 Ter noção de:
-- thread
-- tarefa
-- sessão
-- retomada
+- seções
+- tags
+- versões
+- retomada via search + read
 
 3. Review mode para output de agente
 Uma UI focada em:
-- antes/depois
-- contexto usado
+- antes/depois (diff)
+- versões relacionadas
 - decisões relacionadas
-- confiança
 - pontos que exigem validação humana
 
 4. Compressão inteligente de contexto
@@ -155,10 +154,10 @@ Algo como:
 - contexto arquivado
 - contexto arriscado de carregar
 
-5. Handoff para humano + handoff para agente
+5. Contexto para humano + contexto para agente
 São dois produtos diferentes.
-Humano quer clareza.
-Agente quer contexto estruturado e curto.
+Humano quer clareza na Web UI.
+Agente quer contexto estruturado e curto via MCP.
 
 A oportunidade menos óbvia
 A menos óbvia, e talvez melhor, é esta:
@@ -169,8 +168,8 @@ Não só memória.
 Não só busca.
 Não só versionamento.
 Mas o pacote:
-- handoff
-- retomada
+- persistência local
+- retomada via search/read
 - compressão
 - diff
 - audit trail
@@ -182,7 +181,7 @@ Isso ataca uma dor bem atual e ainda pouco bem resolvida.
 Minha leitura final
 Se eu tivesse que apostar no que vale perseguir, seria:
 
-1. Handoff orientado a objetivo
-2. Retomada de workstream com contexto mínimo
-3. Review/auditoria de mudanças de agente
+1. Memória orientada a objetivo
+2. Retomada de sessão com contexto mínimo via search/read
+3. Review/auditoria de mudanças de agente (diff, versões, restore)
 4. Modo anti-fadiga de IA: menos contexto, menos revisão inútil, menos troca de ferramenta

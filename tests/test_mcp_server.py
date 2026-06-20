@@ -33,25 +33,6 @@ def test_build_tools_exposes_expected_public_contract():
         "rememb_versions",
         "rememb_restore",
         "rememb_diff",
-        "rememb_handoff_package",
-        "rememb_handoff_write_structured",
-        "rememb_handoff_read_structured",
-        "rememb_workstream_switch_package",
-        "rememb_workstream_list",
-        "rememb_workstream_open",
-        "rememb_workstream_state_get",
-        "rememb_workstream_state_update",
-        "rememb_workstream_resume",
-        "rememb_execution_start",
-        "rememb_execution_close",
-        "rememb_execution_close_and_handoff",
-        "rememb_review_queue",
-        "rememb_review_execution_get",
-        "rememb_review_workstream_get",
-        "rememb_workstream_queue",
-        "rememb_compare_executions",
-        "rememb_compare_workstreams",
-        "rememb_review_update",
         "rememb_write",
         "rememb_edit",
         "rememb_delete",
@@ -75,29 +56,8 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_versions"].inputSchema["required"] == ["entry_id"]
     assert by_name["rememb_restore"].inputSchema["required"] == ["entry_id"]
     assert by_name["rememb_diff"].inputSchema["required"] == ["entry_id", "from_version", "to_version"]
-    assert by_name["rememb_handoff_package"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_workstream_switch_package"].inputSchema["required"] == ["current_workstream_id", "target_workstream_id"]
-    assert by_name["rememb_handoff_write_structured"].inputSchema["required"] == ["workstream_id", "goal"]
-    assert "workstream_id" in by_name["rememb_handoff_read_structured"].inputSchema["properties"]
-    assert "limit" in by_name["rememb_workstream_list"].inputSchema["properties"]
-    assert by_name["rememb_workstream_open"].inputSchema["required"] == ["goal"]
-    assert by_name["rememb_workstream_state_get"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_workstream_state_update"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_workstream_resume"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_execution_start"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_execution_close"].inputSchema["required"] == ["workstream_id", "outcome"]
-    assert by_name["rememb_execution_close_and_handoff"].inputSchema["required"] == ["workstream_id", "outcome", "next_goal"]
-    assert by_name["rememb_review_execution_get"].inputSchema["required"] == ["workstream_id", "execution_id"]
-    assert by_name["rememb_review_workstream_get"].inputSchema["required"] == ["workstream_id"]
-    assert by_name["rememb_compare_executions"].inputSchema["required"] == ["workstream_id", "base_execution_id", "target_execution_id"]
-    assert by_name["rememb_compare_workstreams"].inputSchema["required"] == ["left_workstream_id", "right_workstream_id"]
-    assert by_name["rememb_review_update"].inputSchema["required"] == ["entry_id", "review_status"]
-    assert "actor_type" in by_name["rememb_review_queue"].inputSchema["properties"]
-    assert "review_reason" in by_name["rememb_review_update"].inputSchema["properties"]
-    assert "workstream_id" in by_name["rememb_write"].inputSchema["properties"]
-    assert "entry_kind" in by_name["rememb_write"].inputSchema["properties"]
-    assert "structured" in by_name["rememb_edit"].inputSchema["properties"]
-    assert "updates" in by_name["rememb_edit"].inputSchema["properties"]
+    assert set(by_name["rememb_write"].inputSchema["properties"]) >= {"content", "section", "tags", "semantic_scope", "entries"}
+    assert set(by_name["rememb_edit"].inputSchema["properties"]) >= {"entry_id", "content", "section", "tags", "updates"}
     assert "entry_ids" in by_name["rememb_delete"].inputSchema["properties"]
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
 
@@ -125,7 +85,7 @@ def test_handle_tool_supports_batch_write(monkeypatch, tmp_path):
             "rememb_write",
             {
                 "entries": [
-                    {"content": "First", "section": "project", "tags": ["a"], "workstream_id": "ws_1", "entry_kind": "state"},
+                    {"content": "First", "section": "project", "tags": ["a"]},
                     {"content": "Second", "section": "actions"},
                 ]
             },
@@ -137,8 +97,8 @@ def test_handle_tool_supports_batch_write(monkeypatch, tmp_path):
     assert "Saved 2 entries" in result[0].text
     assert "11111111" in result[0].text
     assert "22222222" in result[0].text
-    assert captured["entries"][0]["workstream_id"] == "ws_1"
-    assert captured["entries"][0]["entry_kind"] == "state"
+    assert captured["entries"][0]["content"] == "First"
+    assert captured["entries"][0]["section"] == "project"
 
 
 def test_handle_tool_supports_batch_edit(monkeypatch, tmp_path):
@@ -163,7 +123,7 @@ def test_handle_tool_supports_batch_edit(monkeypatch, tmp_path):
             "rememb_edit",
             {
                 "updates": [
-                    {"entry_id": "abcd1234", "content": "Updated", "structured": {"goal": "resume"}},
+                    {"entry_id": "abcd1234", "content": "Updated"},
                     {"entry_id": "deadbeef", "section": "project"},
                 ]
             },
@@ -175,7 +135,7 @@ def test_handle_tool_supports_batch_edit(monkeypatch, tmp_path):
     assert "Processed 2 updates (1 updated)" in result[0].text
     assert "Updated abcd1234" in result[0].text
     assert "Entry deadbeef not found" in result[0].text
-    assert captured["updates"][0]["structured"] == {"goal": "resume"}
+    assert captured["updates"][0]["content"] == "Updated"
 
 
 def test_handle_tool_supports_batch_delete(monkeypatch, tmp_path):

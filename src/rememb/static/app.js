@@ -79,6 +79,12 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
+function bindEvent(id, event, handler) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener(event, handler);
+}
+
 const VIEW_META = {
   dashboard: { title: 'Overview', subtitle: 'Memory store at a glance' },
   memories: { title: 'Memory', subtitle: 'Entries persisted by the agent' },
@@ -156,7 +162,7 @@ function relTime(isoStr) {
   return d.toLocaleDateString();
 }
 
-function previewText(text, max = 96) {
+function truncateContent(text, max = 96) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 1) + '…';
@@ -595,7 +601,7 @@ async function renderDashboardView() {
     renderDashboardList(
       'dashboard-recent-list',
       recentEntries.map((entry) => ({
-        title: previewText(entry.content, 68),
+        title: truncateContent(entry.content, 68),
         body: `${entry.section} · ${relTime(entry.updated_at || entry.created_at)}${entry.deleted_at ? ' · deleted' : ''}`,
         meta: entry.id,
         action: { name: 'open-entry', entryId: entry.id, label: 'View entry' },
@@ -687,7 +693,7 @@ function renderEntryCard(entry) {
   const timeTitle = isEdited ? `Created: ${entry.created_at}\nEdited: ${entry.updated_at}` : (entry.created_at || '');
   const tags = (entry.tags || []).slice(0, 3).map((t) => `<span class="tag">${escHtml(t)}</span>`).join('');
   const extraTags = (entry.tags || []).length > 3 ? `<span class="tag">+${entry.tags.length - 3}</span>` : '';
-  const preview = previewText(entry.content, 280);
+  const preview = truncateContent(entry.content, 280);
 
   return `
     <article class="card memory-card" data-id="${escHtml(entry.id)}" style="--section-color:${theme.color}">
@@ -978,7 +984,7 @@ async function openVersionsModal(entry) {
         const isSelectedFrom = revision.version === previousVersion && previousVersion !== currentVersion;
         const isSelectedTo = revision.version === currentVersion;
         const theme = sectionTheme(revision.section || entry.section);
-        const preview = previewText(revision.content, 120);
+        const preview = truncateContent(revision.content, 120);
         const activeBorder = isSelectedFrom || isSelectedTo ? `border-color:${theme.color}; box-shadow:0 0 0 1px ${theme.color}, 0 8px 24px ${theme.glow};` : '';
         return `
           <article class="version-item">
@@ -1098,7 +1104,7 @@ async function renderStatsView() {
       const color = sectionColor(e.section);
       return `<article class="row">
         <span class="swatch" style="background:${color}"></span>
-        <span class="row-main">${escHtml(previewText(e.content, 80))}</span>
+        <span class="row-main">${escHtml(truncateContent(e.content, 80))}</span>
         <time>${relTime(e.updated_at || e.created_at)}</time>
       </article>`;
     }).join('');
@@ -1334,7 +1340,7 @@ function renderSettingsPage() {
 }
 
 let searchTimer = null;
-document.getElementById('search-input').addEventListener('input', (e) => {
+bindEvent('search-input', 'input', (e) => {
   const q = e.target.value.trim();
   clearTimeout(searchTimer);
   if (!q) {
@@ -1344,7 +1350,7 @@ document.getElementById('search-input').addEventListener('input', (e) => {
   searchTimer = setTimeout(() => doSearch(q), 400);
 });
 
-document.getElementById('search-input').addEventListener('keydown', (e) => {
+bindEvent('search-input', 'keydown', (e) => {
   if (e.key === 'Enter') {
     const q = e.target.value.trim();
     if (!q) return;
@@ -1366,11 +1372,10 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+bindEvent('btn-load-more', 'click', () => loadEntries(true));
+bindEvent('clear-search', 'click', clearSearch);
 
-document.getElementById('btn-load-more').addEventListener('click', () => loadEntries(true));
-document.getElementById('clear-search').addEventListener('click', clearSearch);
-
-document.getElementById('sort-select').addEventListener('change', (e) => {
+bindEvent('sort-select', 'change', (e) => {
   const [sortBy, dir] = e.target.value.split('-');
   state.sort_by = sortBy;
   state.descending = dir === 'desc';
@@ -1378,7 +1383,7 @@ document.getElementById('sort-select').addEventListener('change', (e) => {
   loadEntries();
 });
 
-document.getElementById('toggle-include-deleted').addEventListener('change', async (e) => {
+bindEvent('toggle-include-deleted', 'change', async (e) => {
   state.includeDeleted = e.target.checked;
   state.offset = 0;
   if (state.searchMode && state.searchQuery) {
@@ -1409,7 +1414,8 @@ async function loadSystemInfo() {
 
 async function boot() {
   await Promise.all([loadConfig(), loadSystemInfo()]);
-  document.getElementById('toggle-include-deleted').checked = state.includeDeleted;
+  const includeDeletedToggle = document.getElementById('toggle-include-deleted');
+  if (includeDeletedToggle) includeDeletedToggle.checked = state.includeDeleted;
   await loadStats();
   await loadEntries();
   switchView('dashboard');

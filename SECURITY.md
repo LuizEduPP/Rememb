@@ -43,7 +43,7 @@ We take security seriously. If you discover a security vulnerability in rememb, 
 
 2. **Semantic Security Guard**
    - The 88% similarity threshold prevents most duplicates
-   - Review entries before storing highly sensitive information
+   - Inspect entries before storing highly sensitive information
    - rememb does NOT encrypt data at rest (local file system only)
 
 3. **Updates**

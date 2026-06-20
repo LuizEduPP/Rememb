@@ -107,7 +107,7 @@ Em vez de “lembrar fatos”, o rememb ajuda a supervisionar agentes:
 - por quê
 - de qual versão veio
 - o que foi deletado
-- o que precisa review humano
+- o que precisa validação humana
 
 Isso bate direto na fadiga de revisão.
 
@@ -139,7 +139,7 @@ Ter noção de:
 - versões
 - retomada via search + read
 
-3. Review mode para output de agente
+3. Modo de auditoria para output de agente
 Uma UI focada em:
 - antes/depois (diff)
 - versões relacionadas
@@ -183,5 +183,5 @@ Se eu tivesse que apostar no que vale perseguir, seria:
 
 1. Memória orientada a objetivo
 2. Retomada de sessão com contexto mínimo via search/read
-3. Review/auditoria de mudanças de agente (diff, versões, restore)
+3. Auditoria de mudanças de agente (diff, versões, restore)
 4. Modo anti-fadiga de IA: menos contexto, menos revisão inútil, menos troca de ferramenta

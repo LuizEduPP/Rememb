@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from rememb.exceptions import RemembStorageError
-from rememb.utils import _entries_path, _rememb_path
+from rememb.utils import _entries_db_path, _entries_path
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class SqliteEntryStorage:
     _lock = threading.Lock()
 
     def _db_path(self, root: Path) -> Path:
-        return _rememb_path(root) / "entries.db"
+        return _entries_db_path(root)
 
     def _connect(self, root: Path) -> sqlite3.Connection:
         key = str(root.resolve())

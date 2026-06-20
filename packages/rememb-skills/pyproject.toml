@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rememb-skills"
-version = "0.4.9"
+version = "0.4.10"
 description = "Bundled agent skills for rememb (optional install)"
 readme = "README.md"
 license = "MIT"

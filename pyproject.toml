@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rememb"
-version = "0.4.7"
+version = "0.4.9"
 description = "Persistent memory standard for AI agents — local, portable, zero config"
 readme = "README.md"
 license = "MIT"
@@ -24,8 +24,9 @@ classifiers = [
 ]
 dependencies = [
     "typer>=0.12.0",
+    "rich>=13.0.0",
     "fastapi>=0.100.0",
-    "uvicorn>=0.20.0",
+    "uvicorn[standard]>=0.20.0",
     "sentence-transformers>=3.0.0",
     "numpy>=1.24.0",
     "pypdf>=4.0.0",
@@ -36,7 +37,8 @@ dependencies = [
 rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pytest>=8.0.0"]
+dev = ["build", "twine", "pytest>=8.0.0", "httpx>=0.27.0"]
+skills = ["rememb-skills==0.4.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -50,10 +52,11 @@ Changelog = "https://github.com/LuizEduPP/rememb/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["rememb*"]
+exclude = ["rememb_skills*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.md", "*.json", "*.gif", "*.html", "*.png"]
-"rememb" = ["skills/**/*.md"]
 
 [tool.setuptools]
 include-package-data = true

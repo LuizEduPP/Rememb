@@ -5,10 +5,17 @@ from __future__ import annotations
 import sys
 
 import typer
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from rememb import __version__
 from rememb.config import DEFAULT_SEMANTIC_MODEL_NAME
-from rememb.utils import console, box, Columns, Panel, Table, Text
+
+
+console = Console()
 
 
 def _version_callback(value: bool) -> None:

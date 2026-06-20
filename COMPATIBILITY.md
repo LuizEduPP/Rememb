@@ -23,22 +23,25 @@ It is intentionally conservative. Anything listed here should be read as one of 
 | Web UI via `rememb` | Documented | Primary local interface (FastAPI + SPA, opens in browser) |
 | CLI version/help output | Tested | Covered by pytest |
 | `rememb fetch-model` | Documented | Not covered by automated tests yet |
+| JSON storage backend | Tested | Default `.rememb/entries.json` path covered by pytest |
+| SQLite storage backend | Tested | Optional `storage_backend: sqlite` covered by pytest |
 
 ## MCP Transport Surfaces
 
 | Surface | Status | Notes |
 |---------|--------|-------|
 | stdio MCP via `rememb mcp` | Documented and partially tested | CLI contract and tool schema are covered by pytest |
-| SSE MCP via `rememb mcp --transport sse` | Documented | Repository documents and exposes this path, but no end-to-end automated client test exists yet |
-| MCP tool set (12 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults, including local skill discovery tools |
+| SSE MCP via `rememb mcp --transport sse` | Tested at app level | pytest verifies SSE route wiring and startup contract |
+| MCP tool set (33 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults, including skill discovery tools |
 
 ## Registry and Packaging Surfaces
 
 | Surface | Status | Notes |
 |---------|--------|-------|
 | PyPI package `rememb` | Active | Public package metadata maintained in `pyproject.toml` |
+| Optional package `rememb-skills` | Active | Bundled skills moved out of the core wheel; install with `pip install rememb[skills]` |
 | MCP registry metadata in `server.json` | Documented | Public metadata file exists in repository |
-| Docker container for MCP | Documented | Dockerfile exists; not covered by automated tests yet |
+| Docker container for MCP | Tested | Dockerfile build and `rememb mcp --help` smoke test covered in CI |
 
 ## Compatibility by Client Type
 
@@ -53,8 +56,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 These surfaces are not yet validated by automated end-to-end coverage in this repository:
 
 - real MCP client interoperability matrix by product name
-- end-to-end SSE integration tests
-- Docker-based runtime validation
+- full end-to-end SSE client session tests against a live MCP consumer
 - cross-platform smoke tests outside the GitHub Actions Linux runner
 
 ## Reading This Matrix Correctly

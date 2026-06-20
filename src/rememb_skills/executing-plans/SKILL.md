@@ -36,7 +36,7 @@ For each task:
 ### Step 3: Complete Development
 
 After all tasks complete and verified:
-- Announce that you are moving into final verification and handoff
+- Announce that you are moving into final verification and delivery
 - Run the project's normal finish workflow: tests, validation, summary, and delivery options
 - If the current host provides a dedicated finishing workflow, use it
 
@@ -71,7 +71,7 @@ After all tasks complete and verified:
 **Related workflow skills or processes:**
 - An isolated workspace workflow, if your host or team uses one
 - A planning workflow that creates the written plan this skill executes
-- A finishing workflow for tests, validation, and handoff
+- A finishing workflow for tests, validation, and delivery
 ## Examples
 
 Use the examples and snippets already present in this document whenever they apply to the task.

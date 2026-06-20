@@ -1,17 +1,24 @@
 <!-- mcp-name: io.github.LuizEduPP/rememb -->
-![rememb cover](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/cover.png)
+![rememb cover](assets/cover.png)
 
 [![Rememb MCP server](https://glama.ai/mcp/servers/LuizEduPP/Rememb/badges/score.svg)](https://glama.ai/mcp/servers/LuizEduPP/Rememb)
 [![MCP Badge](https://lobehub.com/badge/mcp/luizedupp-rememb)](https://lobehub.com/mcp/luizedupp-rememb)
 
-AI agents forget everything between sessions. `rememb` gives them persistent memory — local, portable, and works with any agent.
+Operate AI agents without losing context between sessions. `rememb` is a local-first persistent memory layer: structured entries, semantic search, versioning, diff, restore, and audit trail — no cloud service required.
 
-![rememb chat demo](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/rememb-chat.gif)
+![rememb chat demo](assets/rememb-chat.gif)
 ---
 
 ## The problem
 
-Every dev using AI professionally hits this wall:
+Teams using agents at real velocity rarely fail because they lack generation. They fail because operating agents every day creates context debt:
+
+- too much re-explaining project facts every session
+- too little durable memory outside the chat window
+- too little audit trail for why something changed
+- too much noise when recalling the right context
+
+Every team or solo developer operating agents professionally hits this wall:
 
 ```
 Session 1: "We're using PostgreSQL, auth at src/auth/, prefer async patterns."
@@ -19,8 +26,15 @@ Session 2: Agent starts from zero. You explain everything again.
 Session 3: Same thing.
 ```
 
-Existing solutions (Mem0, Zep, Letta) require servers, API keys, and cloud accounts.  
-You just want the agent to **remember your project**.
+Existing solutions often center on hosted memory layers, API keys, or opaque context pipelines.
+What you actually need is to **resume the next session with the minimum correct context and a trail you can inspect**.
+
+`rememb` is built around four memory problems:
+
+- durable facts and decisions instead of session-only chat memory
+- semantic search instead of rereading everything
+- non-destructive versioning instead of silent overwrites
+- local-first audit trail for AI work, not opaque cloud logs
 
 ---
 
@@ -53,9 +67,20 @@ Zero friction. No CLI commands. Native IDE integration.
 
 **2. Restart your IDE.**
 
-The agent now automatically reads memory at session start, writes when learning something new, and searches when needed.
+The agent can read stored context at session start, write durable memory when something changes, and search only when targeted recall is needed.
 
-The `rememb_init` MCP tool is optional/deprecated for day-to-day usage: in MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed. The tool remains available for compatibility and explicit recovery workflows.
+If you want rememb usage to stay consistent, add a rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is to make the agent route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory.
+
+You can place that block in either of these places:
+
+- IDE-level custom instructions
+- the system prompt or instruction field of the MCP client that is calling rememb
+
+In both cases, keep the scope explicit: these rules are about how the agent should use rememb, not about replacing the rest of your coding instructions.
+
+For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
+
+No extra storage setup, server config, or schema migration is required. In MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed.
 
 For the current public MCP tool list and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
@@ -83,12 +108,12 @@ rememb fetch-model        # Download the local embedding model for semantic sear
 
 ```
 .rememb/
-  entries.json   ← structured memory (project, actions, systems, user, context)
+  entries.json   ← default JSON store (or entries.db with SQLite backend)
   meta.json      ← project metadata
-  config.json    ← limits, sections, web UI behavior, semantic model settings
+  config.json    ← limits, sections, storage backend, semantic model settings
 ```
 
-A JSON file in your project. Your agent reads it at the start of every session.
+A local JSON-backed store in your project. Your agent can read prior decisions, search by meaning, update entries without losing history, and restore previous versions without depending on a cloud memory service.
 
 ```
 User: "We're using PostgreSQL, auth at src/auth/, async patterns"
@@ -98,6 +123,7 @@ Agent: [rememb_write] → Saved
 Agent: [rememb_read]  → Context loaded
 Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 ```
+These map to rememb_write, rememb_edit, and rememb_delete respectively. For the current public MCP tool list and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 Search uses local semantic embeddings (no API, no cloud). The embedding model is unloaded after a short idle window by default, so the process does not keep the full model resident forever.
 
@@ -118,9 +144,12 @@ rememb now writes the full configuration set to .rememb/config.json during initi
   "entry_load_threshold": 6,
   "semantic_model_idle_ttl_seconds": 15,
   "semantic_model_name": "paraphrase-multilingual-MiniLM-L12-v2",
-  "semantic_conflict_threshold": 0.88
+  "semantic_conflict_threshold": 0.88,
+  "storage_backend": "json"
 }
 ```
+
+Set `storage_backend` to `sqlite` for larger stores. The Web UI and MCP migrate existing JSON entries automatically when you switch backends.
 
 Set semantic_model_idle_ttl_seconds to 0 to unload the model immediately after each semantic operation. If you want a smaller model, you can switch semantic_model_name to another SentenceTransformers model such as intfloat/multilingual-e5-small or all-MiniLM-L6-v2.
 
@@ -147,7 +176,7 @@ Environment overrides are also available: REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS
 
 ## Web UI
 
-`rememb` includes a local web interface for browsing and managing memory entries.
+`rememb` includes a local web interface for **supervision** — browse memory, inspect history, and tune runtime settings. The agent writes memory through MCP; the web UI is read-only for entries.
 
 ```bash
 rememb                       # Open the web UI (http://localhost:8080)
@@ -156,31 +185,30 @@ rememb --port 9000           # Custom port
 rememb --no-browser          # Start server without opening the browser
 ```
 
-![rememb web UI](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui.png)
+![rememb web UI](assets/web-ui.png)
 
-The screenshot above shows the actual local web UI running with demo data.
+Overview with entry totals and recent memory activity.
 
-![rememb stats view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-stats.png)
+![rememb stats view](assets/web-ui-stats.png)
 
-Stats view with totals, section breakdown, date range, and recent entries.
+Stats with totals, section breakdown, date range, and recent entries.
 
-![rememb settings view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-settings.png)
+![rememb settings view](assets/web-ui-settings.png)
 
-Settings view with limits, semantic search controls, section colors, and maintenance actions.
+Settings for limits, storage backend, semantic search, section colors, and maintenance actions.
 
-![rememb skills view](https://raw.githubusercontent.com/LuizEduPP/Rememb/main/assets/web-ui-skills.png)
+![rememb skills view](assets/web-ui-skills.png)
 
-Skills view listing all bundled skills available in the installed rememb package.
+Skills browser for the optional `rememb-skills` package (`pip install rememb-skills` or `pip install rememb[skills]`).
 
-Features:
-- **Top-level navigation** — switch between Memories, Stats, Skills, and Settings
-- **Section sidebar** — filter by section with live entry counts and a one-click consolidate action
-- **Search and sorting** — search from the header and reorder results by most recent, oldest, storage order, or reversed
-- **Card-based browsing** — scan entries with section badges, relative timestamps, tags, and entry IDs
-- **Modal CRUD flows** — create entries, inspect details, edit content and tags, or delete entries from the detail view
-- **Stats page** — view totals, active sections, store size, date range, and recent entries
-- **Settings page** — edit limits, semantic search options, section colors, and maintenance actions
-- **Skills page** — browse all bundled skills available in the installed rememb package
+Views:
+- **Overview** — entry totals, deleted count, store size, and recent memory
+- **Memory** — browse, search, filter by section, sort, and include deleted entries
+- **Stats** — totals, backend, section bars, oldest/newest timestamps, and recent entries
+- **Settings** — edit limits, storage backend, semantic search, section colors, consolidate duplicates, and save runtime config
+- **Skills** — browse bundled agent skills when `rememb-skills` is installed
+
+Entry inspection from the UI includes version history, side-by-side diff, and restore actions. Writes and edits stay on the MCP side.
 
 The semantic search MCP tool also accepts an optional exact `tag` filter, so IDE clients can restrict semantic matches before ranking.
 
@@ -220,6 +248,15 @@ Short version:
 - **Portable** — copy `.rememb/` anywhere, it works
 - **Agnostic** — any agent, any IDE (MCP or CLI)
 - **No lock-in** — no servers, no API keys, no accounts
+
+Core capabilities:
+
+- structured memory with sections and tags
+- semantic search with local embeddings
+- non-destructive versioning, diff, restore, and soft delete
+- duplicate consolidation and store stats
+- config and maintenance via Web UI (settings only; entry writes via MCP)
+- optional bundled skills via `rememb-skills` and MCP
 
 ---
 

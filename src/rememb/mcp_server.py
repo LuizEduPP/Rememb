@@ -8,20 +8,28 @@ from rememb.config import DEFAULT_SECTIONS, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
 from rememb.store import (
     clear_entries,
     consolidate_entries,
+    diff_entry_versions,
+    delete_entries,
     delete_entry,
+    edit_entries,
     edit_entry,
     format_entries,
     get_config,
     get_stats,
     init,
+    list_entry_versions,
     read_entries,
     read_entries_page,
+    restore_deleted_entry,
+    restore_entry_version,
     search_entries,
+    write_entries,
     write_entry,
 )
-from rememb.exceptions import RemembError, RemembNotInitializedError
+from rememb.exceptions import RemembError, rememb_error_response_text
 from rememb.utils import (
     _validate_entry_id,
+    ensure_global_root,
     global_root,
     is_initialized,
     list_skill_definitions,
@@ -93,9 +101,6 @@ def _get_root() -> Path:
 
     Returns:
         Global root path
-
-    Raises:
-        RemembNotInitializedError: If global rememb cannot be initialized
     """
     root = global_root()
 
@@ -103,7 +108,7 @@ def _get_root() -> Path:
         init(root, project_name="global", global_mode=True)
 
     if not is_initialized(root):
-        raise RemembNotInitializedError("Global rememb not initialized.")
+        raise RemembError("Global rememb not initialized.")
 
     root_cache = _mcp_context.get_root_cache()
     if "root" in root_cache and root_cache["root"] != root:
@@ -130,20 +135,10 @@ def _get_default_mcp_section() -> str:
     return sections[0]
 
 
-def _render_entries(
-    entries: list[dict],
-    *,
-    include_score: bool = False,
-    max_chars: int | None = None,
-    summary_only: bool = False,
-) -> str:
-    return format_entries(
-        entries,
-        include_id=True,
-        include_score=include_score,
-        max_chars=max_chars,
-        summary_only=summary_only,
-    )
+def _tool_error_text(exc: Exception) -> str:
+    if isinstance(exc, RemembError):
+        return f"Error: {rememb_error_response_text(exc)}"
+    return f"Unexpected error: {exc}"
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
@@ -161,14 +156,16 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_read():
         section = arguments.get("section")
+        include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
         summary_only = arguments.get("summary_only", False)
-        entries = await asyncio.to_thread(read_entries, root, section)
-        return [TextContent(type="text", text=_render_entries(entries, max_chars=max_chars, summary_only=summary_only))]
+        entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
+        return [TextContent(type="text", text=format_entries(entries, include_id=True, max_chars=max_chars, summary_only=summary_only))]
 
     async def rememb_read_page():
         section = arguments.get("section")
         tag = arguments.get("tag")
+        include_deleted = arguments.get("include_deleted", False)
         offset = arguments.get("offset", 0)
         limit = arguments.get("limit", 100)
         sort_by = arguments.get("sort_by", "storage")
@@ -180,6 +177,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             root,
             section,
             tag=tag,
+            include_deleted=include_deleted,
             offset=offset,
             limit=limit,
             sort_by=sort_by,
@@ -189,7 +187,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Page {page['offset']}..{page['next_offset']} of {page['total']} "
             f"(limit={page['limit']}, has_more={page['has_more']})"
         )
-        body = _render_entries(page["items"], max_chars=max_chars, summary_only=summary_only)
+        body = format_entries(page["items"], include_id=True, max_chars=max_chars, summary_only=summary_only)
         return [TextContent(type="text", text=f"{header}\n\n{body}")]
 
     async def rememb_search():
@@ -197,20 +195,121 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         top_k = arguments.get("top_k", 5)
         section = arguments.get("section")
         tag = arguments.get("tag")
+        include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
         summary_only = arguments.get("summary_only", True)
-        entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag)
-        return [TextContent(type="text", text=_render_entries(entries, include_score=True, max_chars=max_chars, summary_only=summary_only))]
+        entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
+        return [TextContent(type="text", text=format_entries(entries, include_id=True, include_score=True, max_chars=max_chars, summary_only=summary_only))]
+
+    async def rememb_versions():
+        entry_id = arguments["entry_id"]
+        if not _validate_entry_id(entry_id):
+            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        include_deleted = arguments.get("include_deleted", True)
+        versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
+        if not versions:
+            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+        lines = [f"Versions for {entry_id} ({len(versions)} total):"]
+        for revision in versions:
+            deleted_marker = " [deleted]" if str(revision.get("deleted_at", "")).strip() else ""
+            tags = ", ".join(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else ""
+            lines.append(
+                f"- v{revision['version']} section={revision.get('section', '')}{deleted_marker}"
+                f" tags=[{tags}] updated={revision.get('updated_at', '')}"
+            )
+        return [TextContent(type="text", text="\n".join(lines))]
+
+    async def rememb_restore():
+        entry_id = arguments["entry_id"]
+        if not _validate_entry_id(entry_id):
+            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        version = arguments.get("version")
+        if version is None:
+            restored = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
+            if restored is None:
+                return [TextContent(type="text", text=f"Deleted entry {entry_id} not found")]
+            return [TextContent(type="text", text=f"Restored deleted entry {entry_id} (now v{restored['version']})")]
+        restored = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
+        if restored is None:
+            return [TextContent(type="text", text=f"Entry {entry_id} or version {version} not found")]
+        return [TextContent(type="text", text=f"Restored {entry_id} to version {version} (now v{restored['version']})")]
+
+    async def rememb_diff():
+        entry_id = arguments["entry_id"]
+        if not _validate_entry_id(entry_id):
+            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        from_version = arguments["from_version"]
+        to_version = arguments["to_version"]
+        result = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
+        if result is None:
+            return [TextContent(type="text", text=f"Entry {entry_id} or requested versions not found")]
+        diff_text = result["diff"] or "(no content changes)"
+        return [TextContent(type="text", text=f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")]
 
     async def rememb_write():
-        content = arguments["content"]
+        entries = arguments.get("entries")
+        semantic_scope = arguments.get("semantic_scope", "global")
+        if entries is not None:
+            if not isinstance(entries, list) or not entries:
+                return [TextContent(type="text", text="Provide a non-empty entries array.")]
+            default_section = _get_default_mcp_section()
+            prepared_entries: list[dict[str, Any]] = []
+            for item in entries:
+                if not isinstance(item, dict):
+                    return [TextContent(type="text", text="Each batch entry must be an object.")]
+                if item.get("content") is None:
+                    return [TextContent(type="text", text="Each batch entry must include content.")]
+                prepared_entries.append(
+                    {
+                        "content": item["content"],
+                        "section": item.get("section", default_section),
+                        "tags": item.get("tags", []),
+                    }
+                )
+            created = await asyncio.to_thread(write_entries, root, prepared_entries, True, semantic_scope)
+            summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
+            return [TextContent(type="text", text=f"Saved {len(created)} entries\n{summary}")]
+
+        content = arguments.get("content")
+        if content is None:
+            return [TextContent(type="text", text="Provide content for a single entry or entries for batch write.")]
         section = arguments.get("section", _get_default_mcp_section())
         tags = arguments.get("tags", [])
-        semantic_scope = arguments.get("semantic_scope", "global")
-        entry = await asyncio.to_thread(write_entry, root, section, content, tags, True, semantic_scope)
+        entry = await asyncio.to_thread(
+            write_entry,
+            root,
+            section,
+            content,
+            tags,
+            True,
+            semantic_scope,
+        )
         return [TextContent(type="text", text=f"Saved [{entry['section']}] id={entry['id']}")]
 
     async def rememb_edit():
+        updates = arguments.get("updates")
+        if updates is not None:
+            if not isinstance(updates, list) or not updates:
+                return [TextContent(type="text", text="Provide a non-empty updates array.")]
+            for update in updates:
+                if not isinstance(update, dict):
+                    return [TextContent(type="text", text="Each batch update must be an object.")]
+                entry_id = update.get("entry_id")
+                if entry_id is None or not _validate_entry_id(entry_id):
+                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+                if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
+                    return [TextContent(type="text", text=f"Provide at least one field to update for {entry_id}: content, section, or tags.")]
+            results = await asyncio.to_thread(edit_entries, root, updates)
+            lines = []
+            updated_count = 0
+            for update, result in zip(updates, results):
+                if result:
+                    updated_count += 1
+                    lines.append(f"- Updated {update['entry_id']}")
+                else:
+                    lines.append(f"- Entry {update['entry_id']} not found")
+            return [TextContent(type="text", text=f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))]
+
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
             return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
@@ -219,12 +318,36 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         tags = arguments.get("tags")
         if content is None and section is None and tags is None:
             return [TextContent(type="text", text="Provide at least one field to update: content, section, or tags.")]
-        result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
+        result = await asyncio.to_thread(
+            edit_entry,
+            root,
+            entry_id,
+            content,
+            section,
+            tags,
+        )
         if result:
             return [TextContent(type="text", text=f"Updated {entry_id}")]
         return [TextContent(type="text", text=f"Entry {entry_id} not found")]
 
     async def rememb_delete():
+        entry_ids = arguments.get("entry_ids")
+        if entry_ids is not None:
+            if not isinstance(entry_ids, list) or not entry_ids:
+                return [TextContent(type="text", text="Provide a non-empty entry_ids array.")]
+            for entry_id in entry_ids:
+                if not _validate_entry_id(entry_id):
+                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            deleted_ids = await asyncio.to_thread(delete_entries, root, entry_ids)
+            deleted_set = set(deleted_ids)
+            lines = []
+            for entry_id in entry_ids:
+                if entry_id in deleted_set:
+                    lines.append(f"- Deleted {entry_id}")
+                else:
+                    lines.append(f"- Entry {entry_id} not found")
+            return [TextContent(type="text", text=f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))]
+
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
             return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
@@ -243,6 +366,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         stats = await asyncio.to_thread(get_stats, root)
         lines = [
             f"Total entries: {stats['total']}",
+            f"Deleted entries: {stats.get('deleted_total', 0)}",
             f"Memory size: {stats['size_kb']} KB",
             f"Oldest entry: {stats['oldest']}",
             f"Newest entry: {stats['newest']}",
@@ -279,15 +403,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             ),
         )]
 
-    async def rememb_init():
-        project_name = arguments.get("project_name", "")
-        init_root = global_root()
-        if await asyncio.to_thread(is_initialized, init_root):
-            return [TextContent(type="text", text=f"Already initialized at {init_root / '.rememb'}")]
-        _mcp_context.clear_root_cache()
-        effective_project_name = project_name or "global"
-        rememb_path = await asyncio.to_thread(init, init_root, effective_project_name, True)
-        return [TextContent(type="text", text=f"Initialized at {rememb_path}")]
 
     async def rememb_list_skills():
         skills = await asyncio.to_thread(list_skill_definitions)
@@ -325,13 +440,15 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_read": rememb_read,
         "rememb_read_page": rememb_read_page,
         "rememb_search": rememb_search,
+        "rememb_versions": rememb_versions,
+        "rememb_restore": rememb_restore,
+        "rememb_diff": rememb_diff,
         "rememb_write": rememb_write,
         "rememb_edit": rememb_edit,
         "rememb_delete": rememb_delete,
         "rememb_clear": rememb_clear,
         "rememb_stats": rememb_stats,
         "rememb_consolidate": rememb_consolidate,
-        "rememb_init": rememb_init,
         "rememb_list_skills": rememb_list_skills,
         "rememb_use_skill": rememb_use_skill,
     }
@@ -343,9 +460,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     try:
         return await handler()
     except RemembError as e:
-        return [TextContent(type="text", text=f"Error: {e}")]
+        return [TextContent(type="text", text=_tool_error_text(e))]
     except Exception as e:
-        return [TextContent(type="text", text=f"Unexpected error: {e}")]
+        return [TextContent(type="text", text=_tool_error_text(e))]
 
 
 def _build_tools(Tool):
@@ -380,12 +497,17 @@ def _build_tools(Tool):
     return [
         _tool(
             name="rememb_read",
-            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Use this at the start of every session to load context. Prefer rememb_search when looking for specific information by keyword or topic.",
+            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Prefer rememb_search when looking for specific information by keyword or topic.",
             properties={
                 "section": {
                     "type": "string",
                     "enum": sections,
                     "description": f"Filter by section: {', '.join(sections)}",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include soft-deleted entries in the response",
                 },
                 "summary_only": {
                     "type": "boolean",
@@ -410,6 +532,11 @@ def _build_tools(Tool):
                 "tag": {
                     "type": "string",
                     "description": "Optional exact tag filter applied before pagination",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include soft-deleted entries in the response",
                 },
                 "offset": {
                     "type": "integer",
@@ -445,7 +572,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_search",
-            description="Search memory entries by content or tags using semantic similarity. Safe, read-only operation with no side effects. Use instead of rememb_read when you need to find specific entries by topic rather than loading all entries. Returns the top_k most relevant results ranked by similarity.",
+            description="Search memory entries by content or tags using semantic similarity. Safe, read-only operation. Returns the top_k most relevant results ranked by similarity.",
             properties={
                 "query": {
                     "type": "string",
@@ -459,6 +586,11 @@ def _build_tools(Tool):
                 "tag": {
                     "type": "string",
                     "description": "Optional exact tag filter applied before semantic search",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include soft-deleted entries in the search corpus and results",
                 },
                 "top_k": {
                     "type": "integer",
@@ -478,12 +610,86 @@ def _build_tools(Tool):
             required=["query"],
         ),
         _tool(
+            name="rememb_versions",
+            description="List all revisions known for an entry, including prior content snapshots and deleted states when requested. Safe, read-only operation.",
+            properties={
+                "entry_id": {
+                    "type": "string",
+                    "description": "Entry ID (8 hex characters)",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Keep deleted revisions visible when the current entry is soft-deleted",
+                },
+            },
+            required=["entry_id"],
+        ),
+        _tool(
+            name="rememb_restore",
+            description="Restore a soft-deleted entry, or restore a specific prior version as the new current head. Restores are non-destructive: they append a new head revision rather than rewriting history.",
+            properties={
+                "entry_id": {
+                    "type": "string",
+                    "description": "Entry ID (8 hex characters)",
+                },
+                "version": {
+                    "type": "integer",
+                    "description": "Optional historical version to restore. If omitted, restores the current soft-deleted entry.",
+                },
+            },
+            required=["entry_id"],
+        ),
+        _tool(
+            name="rememb_diff",
+            description="Show a unified diff between two revisions of the same entry. Safe, read-only operation.",
+            properties={
+                "entry_id": {
+                    "type": "string",
+                    "description": "Entry ID (8 hex characters)",
+                },
+                "from_version": {
+                    "type": "integer",
+                    "description": "Older or source version",
+                },
+                "to_version": {
+                    "type": "integer",
+                    "description": "Newer or target version",
+                },
+            },
+            required=["entry_id", "from_version", "to_version"],
+        ),
+        _tool(
             name="rememb_write",
-            description="Save a new memory entry. Creates a new entry and returns its ID — does not overwrite existing entries. Use when you learn something new worth remembering across sessions. Use rememb_edit instead to update an existing entry by ID. semantic_scope controls whether semantic duplicate blocking checks globally or only inside the target section.",
+            description="Save a new memory entry or multiple entries in one call. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID.",
             properties={
                 "content": {
                     "type": "string",
                     "description": "Content to remember (1-3 sentences)",
+                },
+                "entries": {
+                    "type": "array",
+                    "description": "Batch write payloads. Each item accepts content and optional section/tags.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Content to remember (1-3 sentences)",
+                            },
+                            "section": {
+                                "type": "string",
+                                "enum": sections,
+                                "description": f"Section: {', '.join(sections)}",
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags to categorize this entry",
+                            },
+                        },
+                        "required": ["content"],
+                    },
                 },
                 "section": {
                     "type": "string",
@@ -503,15 +709,42 @@ def _build_tools(Tool):
                     "description": "Semantic duplicate guard scope: global (all sections) or section (target section only)",
                 },
             },
-            required=["content"],
         ),
         _tool(
             name="rememb_edit",
-            description="Update an existing memory entry in-place by its ID. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: the entry is updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove one.",
+            description="Update one existing memory entry by ID or multiple entries in one call via updates[]. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove them.",
             properties={
                 "entry_id": {
                     "type": "string",
                     "description": "Entry ID (8 hex characters)",
+                },
+                "updates": {
+                    "type": "array",
+                    "description": "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "entry_id": {
+                                "type": "string",
+                                "description": "Entry ID (8 hex characters)",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "New content",
+                            },
+                            "section": {
+                                "type": "string",
+                                "enum": sections,
+                                "description": "Move to different section",
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Replace tags",
+                            },
+                        },
+                        "required": ["entry_id"],
+                    },
                 },
                 "content": {
                     "type": "string",
@@ -528,18 +761,23 @@ def _build_tools(Tool):
                     "description": "Replace tags",
                 },
             },
-            required=["entry_id"],
         ),
         _tool(
             name="rememb_delete",
-            description="Permanently delete a single memory entry by its ID. Deletion is irreversible — the entry cannot be recovered. No cascading side effects. Use rememb_edit to update instead. Use rememb_clear to delete all entries at once.",
+            description="Soft-delete one memory entry by its ID or multiple entries via entry_ids[]. Deleted entries are hidden by default from reads and search, but can be restored later. Use rememb_restore to undo a deletion. Use rememb_clear to permanently delete all entries at once.",
             properties={
                 "entry_id": {
                     "type": "string",
                     "description": "Entry ID to delete",
+                },
+                "entry_ids": {
+                    "type": "array",
+                    "description": "Batch deletion IDs.",
+                    "items": {
+                        "type": "string",
+                    },
                 }
             },
-            required=["entry_id"],
         ),
         _tool(
             name="rememb_clear",
@@ -577,16 +815,6 @@ def _build_tools(Tool):
                     "default": DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
                     "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)",
                 },
-            },
-        ),
-        _tool(
-            name="rememb_init",
-            description="Initialize rememb memory storage. Useful for explicit setup and recovery flows. Home-first root resolution also auto-initializes ~/.rememb when needed, and this tool remains idempotent and safe to call repeatedly.",
-            properties={
-                "project_name": {
-                    "type": "string",
-                    "description": "Optional project name",
-                }
             },
         ),
         _tool(

@@ -8,8 +8,11 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["TQDM_DISABLE"] = "0"
 
 try:
-    from tqdm.std import TqdmDefaultWriteLock
-    TqdmDefaultWriteLock.create_mp_lock()
+    import tqdm.std as tqdm_std
+
+    tqdm_write_lock = getattr(tqdm_std, "TqdmDefaultWriteLock", None)
+    if tqdm_write_lock is not None:
+        tqdm_write_lock.create_mp_lock()
 except Exception:
     pass
 
@@ -22,7 +25,7 @@ import threading
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import IO, Any, Callable, Protocol, TypeVar, runtime_checkable
 
 try:
     import numpy as np
@@ -31,14 +34,18 @@ except ImportError:
 
 from rememb.config import (
     DEFAULT_ALL_SECTION_COLOR,
+    DEFAULT_REMOVED_SECTION_NAME,
     DEFAULT_SECTION_COLORS,
     DEFAULT_SECTIONS,
     DEFAULT_CONFIG,
     DEFAULT_SEMANTIC_MODEL_NAME,
     DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
     DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
+    NON_NEGATIVE_INT_CONFIG_KEYS,
+    POSITIVE_INT_CONFIG_KEYS,
+    UNIT_INTERVAL_FLOAT_CONFIG_KEYS,
 )
-from rememb.utils import _rememb_path, _entries_path, _config_path, is_initialized
+from rememb.utils import _rememb_path, _entries_path, _config_path, _meta_path, _now, is_initialized
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
@@ -46,6 +53,9 @@ from rememb.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
+_ModifierResult = TypeVar("_ModifierResult")
 
 
 def _requires_exclusive_lock(mode: str) -> bool:
@@ -116,6 +126,177 @@ def _save_json_object(filepath: Path, data: dict[str, Any]) -> None:
             tmp_path.unlink()
         raise
 
+
+def _validate_sections_config(raw_sections: object) -> list[str]:
+    if not isinstance(raw_sections, list):
+        raise RemembValidationError("sections must be a list of section names.")
+
+    for item in raw_sections:
+        if not isinstance(item, str):
+            raise RemembValidationError("sections must contain only strings.")
+
+    normalized = _normalize_sections(raw_sections)
+    if not normalized:
+        raise RemembValidationError("At least one section is required.")
+    return normalized
+
+
+def _plan_section_migration(
+    root: Path,
+    current_sections: list[str],
+    requested_sections: list[str],
+) -> tuple[list[str], set[str], str | None]:
+    entries = _load_entries(root)
+    removed_sections = set(current_sections) - set(requested_sections)
+    used_removed_sections = {
+        str(entry.get("section", "")).strip().lower()
+        for entry in entries
+        if str(entry.get("section", "")).strip().lower() in removed_sections
+    }
+
+    final_sections = list(requested_sections)
+    migration_target: str | None = None
+    if used_removed_sections:
+        migration_target = DEFAULT_REMOVED_SECTION_NAME
+        if migration_target not in final_sections:
+            final_sections.append(migration_target)
+
+    return final_sections, used_removed_sections, migration_target
+
+
+def _migrate_entries_to_section(root: Path, source_sections: set[str], target_section: str) -> dict[str, str]:
+    def migrate(entries: list[dict]) -> dict[str, str]:
+        moved_entries: dict[str, str] = {}
+        for entry in entries:
+            current_section = str(entry.get("section", "")).strip().lower()
+            if current_section in source_sections:
+                moved_entries[str(entry.get("id", ""))] = current_section
+                entry["section"] = target_section
+                entry["updated_at"] = _now()
+        return moved_entries
+
+    return _atomic_modify(root, migrate)
+
+
+def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None:
+    if not moved_entries:
+        return
+
+    def restore(entries: list[dict]) -> None:
+        for entry in entries:
+            entry_id = str(entry.get("id", ""))
+            if entry_id in moved_entries:
+                entry["section"] = moved_entries[entry_id]
+                entry["updated_at"] = _now()
+        return None
+
+    _atomic_modify(root, restore)
+
+
+def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
+    meta_file = _meta_path(root)
+    existing_meta: dict[str, object] = {}
+    if meta_file.exists():
+        try:
+            loaded_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if isinstance(loaded_meta, dict):
+                existing_meta = dict(loaded_meta)
+        except (json.JSONDecodeError, OSError):
+            existing_meta = {}
+
+    meta = dict(existing_meta)
+    meta["version"] = str(meta.get("version") or "1")
+    meta["project"] = str(meta.get("project") or project_name or root.name)
+    meta["created_at"] = str(meta.get("created_at") or _now())
+    meta["sections"] = list(sections)
+    _save_json_object(meta_file, meta)
+
+
+def _validate_config_updates(
+    root: Path,
+    current_config: dict[str, object],
+    updates: dict[str, object],
+) -> dict[str, object]:
+    if not isinstance(updates, dict) or not updates:
+        raise RemembValidationError("Provide at least one configuration field to update.")
+
+    next_config: dict[str, object] = dict(current_config)
+    for key, value in updates.items():
+        if key not in current_config:
+            raise RemembValidationError(f"Unknown config key: {key}")
+
+        if key in POSITIVE_INT_CONFIG_KEYS:
+            try:
+                parsed = int(str(value).strip())
+            except (TypeError, ValueError):
+                raise RemembValidationError(f"{key} must be a positive integer.") from None
+            if parsed <= 0:
+                raise RemembValidationError(f"{key} must be a positive integer.")
+            next_config[key] = parsed
+            continue
+
+        if key in NON_NEGATIVE_INT_CONFIG_KEYS:
+            try:
+                parsed = int(str(value).strip())
+            except (TypeError, ValueError):
+                raise RemembValidationError(f"{key} must be a non-negative integer.") from None
+            if parsed < 0:
+                raise RemembValidationError(f"{key} must be a non-negative integer.")
+            next_config[key] = parsed
+            continue
+
+        if key in UNIT_INTERVAL_FLOAT_CONFIG_KEYS:
+            try:
+                parsed_f = float(str(value).strip())
+            except (TypeError, ValueError):
+                raise RemembValidationError(f"{key} must be a float between 0.0 and 1.0.") from None
+            if not (0.0 <= parsed_f <= 1.0):
+                raise RemembValidationError(f"{key} must be between 0.0 and 1.0.")
+            next_config[key] = parsed_f
+            continue
+
+        if key == "semantic_model_name":
+            model_name = str(value).strip()
+            if not model_name:
+                raise RemembValidationError("semantic_model_name cannot be empty.")
+            next_config[key] = model_name
+            continue
+
+        if key == "sections":
+            next_config[key] = _validate_sections_config(value)
+            continue
+
+        if key == "section_colors":
+            if not isinstance(value, dict):
+                raise RemembValidationError("section_colors must be a dictionary keyed by section name.")
+            for section_name, color in value.items():
+                if not isinstance(section_name, str) or not _is_hex_color(color):
+                    raise RemembValidationError("section_colors values must be hex colors like #12abef.")
+            next_config[key] = {str(section_name): str(color).strip().lower() for section_name, color in value.items()}
+            continue
+
+        if key == "storage_backend":
+            from rememb.storage import normalize_storage_backend
+
+            next_config[key] = normalize_storage_backend(value)
+            continue
+
+        next_config[key] = value
+
+    current_sections = _validate_sections_config(current_config["sections"])
+    requested_sections = _validate_sections_config(next_config.get("sections", current_sections))
+    final_sections, used_removed_sections, migration_target = _plan_section_migration(
+        root,
+        current_sections,
+        requested_sections,
+    )
+    next_config["sections"] = final_sections
+    next_config["section_colors"] = _normalize_section_colors(next_config.get("section_colors"), final_sections)
+    next_config["_used_removed_sections"] = used_removed_sections
+    next_config["_migration_target"] = migration_target
+
+    return next_config
+
 @runtime_checkable
 class MemoryStore(Protocol):
     """Abstract protocol for memory store operations."""
@@ -130,6 +311,16 @@ class MemoryStore(Protocol):
         semantic_scope: str = "global",
     ) -> dict:
         """Write a new entry to memory."""
+        ...
+
+    def write_entries(
+        self,
+        root: Path,
+        items: list[dict[str, Any]],
+        skip_duplicates: bool = True,
+        semantic_scope: str = "global",
+    ) -> list[dict]:
+        """Write multiple entries to memory atomically."""
         ...
     
     def read_entries(self, root: Path, section: str | None = None) -> list[dict]:
@@ -172,9 +363,17 @@ class MemoryStore(Protocol):
     def delete_entry(self, root: Path, entry_id: str) -> bool:
         """Delete an entry by ID."""
         ...
+
+    def delete_entries(self, root: Path, entry_ids: list[str]) -> list[str]:
+        """Delete multiple entries by ID."""
+        ...
     
     def edit_entry(self, root: Path, entry_id: str, content: str | None = None, section: str | None = None, tags: list[str] | None = None) -> dict | None:
         """Edit an existing entry."""
+        ...
+
+    def edit_entries(self, root: Path, updates: list[dict[str, Any]]) -> list[dict | None]:
+        """Edit multiple entries atomically."""
         ...
     
     def clear_entries(self, root: Path, *, confirm: bool = False) -> int:
@@ -411,150 +610,32 @@ def _assert_initialized(root) -> None:
 
 @contextmanager
 def _file_lock(filepath: Path, mode: str = "r+"):
-    """Context manager for cross-platform file locking.
-    
-    Args:
-        filepath: Path to file to lock
-        mode: File mode (r+ for read/write, r for read)
-    
-    Yields:
-        Open file handle with lock acquired
-    """
-    if not filepath.exists() and _requires_exclusive_lock(mode):
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text("[]", encoding="utf-8")
-    
-    f = open(filepath, mode, encoding="utf-8")
-    wants_exclusive_lock = _requires_exclusive_lock(mode)
-    is_windows = platform.system() == "Windows"
-    try:
-        if is_windows:
-            import msvcrt
-            lock_mode = msvcrt.LK_LOCK if wants_exclusive_lock else msvcrt.LK_RLCK
-            msvcrt.locking(f.fileno(), lock_mode, 1)
-        else:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_EX if wants_exclusive_lock else fcntl.LOCK_SH)
-        yield f
-    finally:
-        if is_windows:
-            import msvcrt
-            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_UN)
-        f.close()
+    """Backward-compatible wrapper around the shared storage file lock."""
+    from rememb.storage.locking import file_lock
+
+    with file_lock(filepath, mode=mode) as handle:
+        yield handle
 
 
 def _load_entries(root: Path) -> list[dict]:
-    """Load entries from JSON file with corruption recovery.
-    
-    Args:
-        root: Project root path
-    
-    Returns:
-        List of entry dictionaries
-    
-    Raises:
-        RemembStorageError: If file is corrupted and recovery fails
-    """
-    filepath = _entries_path(root)
-    with _file_lock(filepath, mode="r") as f:
-        raw = f.read()
-    try:
-        entries = json.loads(raw)
-        logger.debug(f"Loaded {len(entries)} entries from {filepath}")
-        return entries
-    except json.JSONDecodeError as e:
-        backup_path = filepath.parent / (filepath.name + ".corrupted")
-        try:
-            if not backup_path.exists():
-                backup_path.write_bytes(filepath.read_bytes())
-        except OSError:
-            pass
-        
-        try:
-            entries = []
-            raw_stripped = raw.strip()
-            if raw_stripped.startswith("["):
-                json_objects = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw)
-                for obj_str in json_objects:
-                    try:
-                        entry = json.loads(obj_str)
-                        if isinstance(entry, dict) and "id" in entry:
-                            entries.append(entry)
-                    except json.JSONDecodeError:
-                        continue
-            
-            if entries:
-                _save_entries(root, entries)
-                return entries
-        except Exception:
-            pass
-        
-        raise RemembStorageError(
-            f"Memory file is corrupted ({filepath}): {e}\n"
-            f"Backup saved to {backup_path}. Delete {filepath} to reset."
-        ) from e
+    """Load entries from the configured storage backend."""
+    from rememb.storage import get_storage_backend
+
+    return get_storage_backend(root).load_entries(root)
 
 
 def _save_entries(root: Path, entries: list[dict]) -> None:
-    """Save entries to JSON file atomically.
-    
-    Args:
-        root: Project root path
-        entries: List of entry dictionaries to save
-    """
-    filepath = _entries_path(root)
-    data = json.dumps(entries, indent=2)
-    tmp_path = filepath.parent / (filepath.name + ".tmp")
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp_path.replace(filepath)
-        logger.debug(f"Saved {len(entries)} entries to {filepath}")
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
+    """Save entries through the configured storage backend."""
+    from rememb.storage import get_storage_backend
+
+    get_storage_backend(root).save_entries(root, entries)
 
 
-def _atomic_modify(root: Path, modifier) -> any:
-    """Execute modifier function atomically with file lock.
-    
-    Args:
-        root: Project root path
-        modifier: Function that takes entries list and returns modified result
-    
-    Returns:
-        Result from modifier function
-    
-    Raises:
-        RemembStorageError: If file is corrupted
-    """
-    filepath = _entries_path(root)
-    with _file_lock(filepath, mode="r+") as f:
-        raw = f.read()
-        logger.debug(f"Atomic modify on {filepath}")
-        try:
-            entries = json.loads(raw)
-        except json.JSONDecodeError as e:
-            raise RemembStorageError(
-                f"Memory file is corrupted ({filepath}): {e}\n"
-                f"Fix manually or delete {filepath} to reset."
-            ) from e
-        
-        result = modifier(entries)
-        
-        data = json.dumps(entries, indent=2)
-        f.seek(0)
-        f.write(data)
-        f.truncate()
-        f.flush()
-        os.fsync(f.fileno())
-        return result
+def _atomic_modify(root: Path, modifier: Callable[[list[dict]], _ModifierResult]) -> _ModifierResult:
+    """Execute modifier function atomically through the storage backend."""
+    from rememb.storage import get_storage_backend
+
+    return get_storage_backend(root).atomic_modify(root, modifier)
 
 def _compute_entries_hash(entries: list[dict]) -> str:
     """Compute SHA256 hash of entries for cache validation.
@@ -569,8 +650,39 @@ def _compute_entries_hash(entries: list[dict]) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model, *, persist: bool = True) -> "np.ndarray":
+def _normalize_search_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.lower().split()).strip()
+
+
+def _search_tokens(value: object) -> set[str]:
+    normalized = _normalize_search_text(value)
+    if not normalized:
+        return set()
+    return {token for token in _SEARCH_TOKEN_RE.findall(normalized) if token}
+
+
+def _search_document(entry: dict[str, Any]) -> str:
+    content = _normalize_search_text(entry.get("content", ""))
+    section = _normalize_search_text(entry.get("section", ""))
+    tags = " ".join(
+        _normalize_search_text(tag)
+        for tag in entry.get("tags", [])
+        if isinstance(tag, str)
+    )
+    return " ".join(part for part in (section, tags, content) if part)
+
+
+def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model, *, persist: bool = True) -> Any:
     """Load embeddings from disk cache or compute and persist them."""
+    numpy_module = np
+    if numpy_module is None:
+        raise ImportError(
+            "Semantic search requires numpy and sentence-transformers.\n"
+            "Install with: pip install rememb"
+        )
+
     current_hash = _compute_entries_hash(entries)
     embeddings_path = _rememb_path(root) / "embeddings.npy"
     hash_path = _rememb_path(root) / "embeddings.hash"
@@ -578,13 +690,13 @@ def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict
     if persist and embeddings_path.exists() and hash_path.exists():
         try:
             if hash_path.read_text(encoding="utf-8") == current_hash:
-                return np.load(str(embeddings_path))
+                return numpy_module.load(str(embeddings_path))
         except (OSError, ValueError):
             pass
 
     embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
     if persist:
-        np.save(str(embeddings_path), embeddings)
+        numpy_module.save(str(embeddings_path), embeddings)
         hash_path.write_text(current_hash, encoding="utf-8")
     return embeddings
 
@@ -640,11 +752,13 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
             "Install with: pip install rememb"
         )
 
-    texts = [e["content"] for e in entries]
+    texts = [_search_document(e) for e in entries]
     embeddings = _load_or_compute_embeddings(root, texts, entries, model, persist=persist)
 
     query_vec = model.encode([query], show_progress_bar=False)[0]
-    
+    normalized_query = _normalize_search_text(query)
+    query_tokens = _search_tokens(query)
+
     norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
     scores = np.zeros(len(entries))
     
@@ -652,17 +766,37 @@ def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, mo
     now_ts = datetime.now(timezone.utc).timestamp()
     
     for i, e in enumerate(entries):
-        base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
+        semantic_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
+        document = texts[i]
+        document_tokens = _search_tokens(document)
+        lexical_score = 0.0
+
+        if normalized_query and normalized_query in document:
+            lexical_score += 0.18
+
+        if query_tokens and document_tokens:
+            overlap_ratio = len(query_tokens & document_tokens) / len(query_tokens)
+            lexical_score += overlap_ratio * 0.22
+
+        tag_tokens: set[str] = set()
+        for tag in e.get("tags", []):
+            tag_tokens.update(_search_tokens(tag))
+        if query_tokens and tag_tokens:
+            tag_overlap_ratio = len(query_tokens & tag_tokens) / len(query_tokens)
+            lexical_score += tag_overlap_ratio * 0.12
+
+        base_score = float(semantic_score) + lexical_score
 
         try:
-            pts = datetime.strptime(e.get("updated_at", e.get("created_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            entry_timestamp = str(e.get("updated_at") or e.get("created_at") or "")
+            pts = datetime.strptime(entry_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
             days_old = (now_ts - pts) / 86400.0
-            decay = max(0.70, 1.0 - (days_old * 0.003)) 
+            decay = max(0.92, 1.0 - (days_old * 0.0006))
             base_score *= decay
         except Exception:
             pass
             
-        scores[i] = base_score
+        scores[i] = max(-1.0, base_score)
 
     top_indices = np.argsort(scores)[::-1][:top_k]
     ranked: list[dict] = []
@@ -689,7 +823,8 @@ def _sanitize_content(content: str, root: Path) -> str:
         raise RemembValidationError(f"Content must be string, got {type(content).__name__}")
     
     content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
-    content = " ".join(content.split())
+    normalized_lines = [" ".join(line.split()) for line in content.splitlines()]
+    content = "\n".join(normalized_lines).strip()
     
     if not content.strip():
         raise RemembValidationError("Content cannot be empty")
@@ -735,7 +870,7 @@ def _sanitize_tags(tags: list[str], root: Path) -> list[str]:
             continue
         
         tag = tag.lower().strip()
-        tag = "".join(c for c in tag if c.isalnum() or c in "-_")
+        tag = "".join(c for c in tag if c.isalnum() or c in "-_:")
         
         if len(tag) > max_tag_length:
             tag = tag[:max_tag_length]

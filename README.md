@@ -199,14 +199,14 @@ Settings for limits, storage backend, semantic search, section colors, and maint
 
 ![rememb skills view](assets/web-ui-skills.png)
 
-Skills browser for the optional `rememb-skills` package (`pip install rememb-skills` or `pip install rememb[skills]`).
+Skills browser for bundled agent skills included with rememb.
 
 Views:
 - **Overview** — entry totals, deleted count, store size, and recent memory
 - **Memory** — browse, search, filter by section, sort, and include deleted entries
 - **Stats** — totals, backend, section bars, oldest/newest timestamps, and recent entries
 - **Settings** — edit limits, storage backend, semantic search, section colors, consolidate duplicates, and save runtime config
-- **Skills** — browse bundled agent skills when `rememb-skills` is installed
+- **Skills** — browse bundled agent skills
 
 Entry inspection from the UI includes version history, side-by-side diff, and restore actions. Writes and edits stay on the MCP side.
 
@@ -256,7 +256,7 @@ Core capabilities:
 - non-destructive versioning, diff, restore, and soft delete
 - duplicate consolidation and store stats
 - config and maintenance via Web UI (settings only; entry writes via MCP)
-- optional bundled skills via `rememb-skills` and MCP
+- bundled agent skills via Web UI and MCP
 
 ---
 

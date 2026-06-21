@@ -33,7 +33,7 @@ def test_index_exposes_deleted_and_history_controls():
     assert "View all" in response.text
     assert "Storage backend" in script
     assert "Save settings" in script
-    assert "rememb-skills" in script
+    assert "No bundled skills found" in script
     assert "Skills" in response.text
 
 

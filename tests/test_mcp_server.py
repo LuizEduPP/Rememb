@@ -62,6 +62,22 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
 
 
+def test_bundled_skills_are_discoverable():
+    skills = list_skill_definitions()
+    assert skills
+    assert all(skill["id"] for skill in skills)
+
+
+def test_handle_tool_lists_bundled_skills():
+    result = asyncio.run(
+        mcp_server._handle_tool("rememb_list_skills", {}, FakeTextContent)
+    )
+
+    assert len(result) == 1
+    assert "No bundled rememb skills found" not in result[0].text
+    assert "skill" in result[0].text.lower()
+
+
 def test_handle_tool_supports_batch_write(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
     captured = {}

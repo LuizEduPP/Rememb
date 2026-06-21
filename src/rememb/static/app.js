@@ -1091,39 +1091,14 @@ function renderSkillsCards(skills) {
   `).join('');
 }
 
-function renderSkillsPackageBanner(info) {
-  const banner = document.getElementById('skills-package-banner');
-  if (!banner) return;
-  if (!info || info.skills_installed) {
-    banner.hidden = true;
-    banner.innerHTML = '';
-    return;
-  }
-  banner.hidden = false;
-  banner.innerHTML = `
-    <p><strong>rememb-skills is not installed.</strong> Install optional skills with
-    <code>pip install rememb-skills</code> or <code>pip install rememb[skills]</code>.</p>`;
-}
-
 async function renderSkillsView() {
   const root = document.getElementById('skills-root');
   root.innerHTML = '<article class="empty empty-loading">Loading…</article>';
   try {
-    const [data, info] = await Promise.all([
-      api.skills(),
-      state.systemInfo ? Promise.resolve(state.systemInfo) : api.systemInfo(),
-    ]);
-    state.systemInfo = info;
-    renderSkillsPackageBanner(info);
+    const data = await api.skills();
     const skills = data.skills || [];
     state.skills = skills;
-    if (!skills.length && !info?.skills_installed) {
-      root.innerHTML = '<article class="empty">No skills available. Install the rememb-skills package to browse bundled agent skills.</article>';
-    } else if (!skills.length) {
-      root.innerHTML = '<article class="empty">No bundled skills found.</article>';
-    } else {
-      root.innerHTML = renderSkillsCards(skills);
-    }
+    root.innerHTML = renderSkillsCards(skills);
     document.getElementById('skills-updated').textContent = `${skills.length} skills · ${relTime(new Date().toISOString())}`;
     root.querySelectorAll('[data-open-skill]').forEach((card) => {
       card.addEventListener('click', () => openSkillModal(card.dataset.openSkill));

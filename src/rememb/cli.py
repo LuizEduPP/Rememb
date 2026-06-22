@@ -108,7 +108,7 @@ def main(
         None, "--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
     host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the web UI server."),
-    port: int = typer.Option(8080, "--port", min=1, max=65535, help="Port for the web UI server."),
+    port: int = typer.Option(18181, "--port", min=1, max=65535, help="Port for the web UI server."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Start server without opening the browser."),
 ) -> None:
     if ctx.invoked_subcommand is None:

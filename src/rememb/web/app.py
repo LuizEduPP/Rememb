@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def run_web(host: str = "127.0.0.1", port: int = 8080, open_browser: bool = True) -> None:
+def run_web(host: str = "127.0.0.1", port: int = 18181, open_browser: bool = True) -> None:
     """Start the rememb web UI server."""
     import uvicorn
 

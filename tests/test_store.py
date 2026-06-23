@@ -11,6 +11,7 @@ from rememb.helpers import _file_lock
 from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 from rememb.store import (
+    agent_summarize_hint,
     clear_entries,
     diff_entry_versions,
     delete_entries,
@@ -169,7 +170,7 @@ def test_delete_entries_removes_only_found_ids(tmp_path):
     assert deleted_entry["history"][0]["version"] == 1
 
 
-def test_read_page_and_search_hide_deleted_by_default(tmp_path, monkeypatch):
+def test_read_page_and_search_hide_deleted_by_default(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
@@ -177,13 +178,6 @@ def test_read_page_and_search_hide_deleted_by_default(tmp_path, monkeypatch):
     deleted = write_entry(root, "project", "Deleted alpha memory", ["alpha"])
     live = write_entry(root, "project", "Live alpha memory", ["alpha"])
     delete_entries(root, [deleted["id"]])
-
-    class AlphaModel:
-        def encode(self, texts, show_progress_bar=False, batch_size=32):
-            return [[1.0, 0.0] for _ in texts]
-
-    monkeypatch.setattr("rememb.store._store_context.get_model", lambda _root=None: AlphaModel())
-    monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
 
     page = read_entries_page(root)
     hidden_results = search_entries(root, "alpha")
@@ -319,51 +313,36 @@ def test_search_and_stats_require_initialization(tmp_path):
     assert not (root / ".rememb").exists()
 
 
-def test_search_entries_returns_scores(tmp_path, monkeypatch):
+def test_search_entries_returns_scores(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    write_entry(root, "project", "alpha match")
-    write_entry(root, "project", "beta mismatch")
-
-    class FakeModel:
-        def encode(self, texts, show_progress_bar=False, batch_size=32):
-            vectors = []
-            for text in texts:
-                lowered = text.lower()
-                vectors.append([1.0, 0.0] if "alpha" in lowered else [0.0, 1.0])
-            return vectors
-
-    monkeypatch.setattr("rememb.store._store_context.get_model", lambda _root=None: FakeModel())
-    monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
+    write_entry(root, "project", "alpha primary match")
+    write_entry(root, "project", "alpha secondary note")
 
     results = search_entries(root, "alpha")
     stored = read_entries(root)
     stored_by_id = {entry["id"]: entry for entry in stored}
 
+    assert len(results) == 2
     assert results[0]["score"] >= results[1]["score"]
     assert "score" in results[0]
     assert all(stored_by_id[result["id"]]["access_count"] == 1 for result in results)
     assert all(stored_by_id[result["id"]]["last_accessed"] for result in results)
 
 
-def test_search_entries_boosts_exact_tokens_and_tags(tmp_path, monkeypatch):
+def test_search_entries_boosts_exact_tokens_and_tags(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     init(root)
-    write_entry(root, "project", "Completely generic note.", ["release"])
+    write_entry(root, "project", "Generic alpha planning note.", ["release"])
     write_entry(root, "project", "Roadmap and timeline details.", ["alpha", "launch"])
-
-    class FlatModel:
-        def encode(self, texts, show_progress_bar=False, batch_size=32):
-            return [[1.0, 0.0] for _ in texts]
-
-    monkeypatch.setattr("rememb.store._store_context.get_model", lambda _root=None: FlatModel())
-    monkeypatch.setattr("rememb.store._store_context.schedule_model_release", lambda _root=None: None)
 
     results = search_entries(root, "alpha launch")
 
-    assert results[0]["tags"] == ["alpha", "launch"]
+    assert len(results) == 2
+    tagged = next(entry for entry in results if entry["tags"] == ["alpha", "launch"])
+    assert tagged is results[0]
     assert results[0]["score"] > results[1]["score"]
 
 
@@ -384,7 +363,7 @@ def test_get_stats_excludes_deleted_from_totals(tmp_path):
     assert stats["by_section"]["actions"] == 1
 
 
-def test_format_entries_supports_summary_and_truncation():
+def test_format_entries_supports_truncation_and_timestamps():
     entries = [
         {
             "id": "abcd1234",
@@ -392,11 +371,36 @@ def test_format_entries_supports_summary_and_truncation():
             "content": "a" * 20,
             "tags": ["tag1"],
             "score": 0.98765,
+            "updated_at": "2026-06-23T12:00:00Z",
         }
     ]
 
-    text = format_entries(entries, include_id=True, include_score=True, max_chars=8, summary_only=True)
+    text = format_entries(entries, include_id=True, include_score=True, max_chars=8)
 
     assert "abcd1234" in text
     assert "score: 0.988" in text
     assert "aaaaa..." in text
+    assert "2026-06-23" in text
+
+
+def test_format_entries_summary_only_is_deprecated():
+    entries = [
+        {
+            "id": "abcd1234",
+            "section": "project",
+            "content": "hello",
+            "tags": [],
+            "updated_at": "2026-06-23T12:00:00Z",
+        }
+    ]
+
+    with pytest.warns(DeprecationWarning, match="summary_only is deprecated"):
+        text = format_entries(entries, summary_only=True)
+
+    assert "2026-06-23" in text
+
+
+def test_agent_summarize_hint_thresholds():
+    assert agent_summarize_hint(3) == ""
+    assert "Agent note" in agent_summarize_hint(8)
+    assert "More pages may remain" in agent_summarize_hint(3, has_more=True)

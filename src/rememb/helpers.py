@@ -357,7 +357,7 @@ class MemoryStore(Protocol):
         section: str | None = None,
         tag: str | None = None,
     ) -> list[dict]:
-        """Search entries by content or tags."""
+        """Search entries by keyword and token overlap."""
         ...
     
     def delete_entry(self, root: Path, entry_id: str) -> bool:
@@ -706,6 +706,66 @@ def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict
         hash_path.write_text(current_hash, encoding="utf-8")
     return embeddings
 
+def _keyword_search(
+    entries: list[dict],
+    query: str,
+    top_k: int,
+) -> list[dict]:
+    """Rank entries by keyword and token overlap.
+
+    Semantic relevance is handled by the calling agent. This function only
+    performs deterministic lexical matching over section, tags, and content.
+    """
+    from datetime import datetime, timezone
+
+    normalized_query = _normalize_search_text(query)
+    query_tokens = _search_tokens(query)
+    texts = [_search_document(e) for e in entries]
+    now_ts = datetime.now(timezone.utc).timestamp()
+    scored: list[tuple[float, int]] = []
+
+    for i, entry in enumerate(entries):
+        document = texts[i]
+        document_tokens = _search_tokens(document)
+        score = 0.0
+
+        if normalized_query and normalized_query in document:
+            score += 0.18
+
+        if query_tokens and document_tokens:
+            overlap_ratio = len(query_tokens & document_tokens) / len(query_tokens)
+            score += overlap_ratio * 0.22
+
+        tag_tokens: set[str] = set()
+        for tag in entry.get("tags", []):
+            tag_tokens.update(_search_tokens(tag))
+        if query_tokens and tag_tokens:
+            tag_overlap_ratio = len(query_tokens & tag_tokens) / len(query_tokens)
+            score += tag_overlap_ratio * 0.12
+
+        if score <= 0.0:
+            continue
+
+        try:
+            entry_timestamp = str(entry.get("updated_at") or entry.get("created_at") or "")
+            pts = datetime.strptime(entry_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            days_old = (now_ts - pts) / 86400.0
+            decay = max(0.92, 1.0 - (days_old * 0.0006))
+            score *= decay
+        except Exception:
+            pass
+
+        scored.append((score, i))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    ranked: list[dict] = []
+    for score, index in scored[:top_k]:
+        item = dict(entries[index])
+        item["score"] = round(float(score), 4)
+        ranked.append(item)
+    return ranked
+
+
 def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model, threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD, *, persist: bool = True) -> dict | None:
     """Check if the content is semantically a duplicate of an existing entry.
     
@@ -736,17 +796,16 @@ def _check_semantic_conflict(root: Path, entries: list[dict], content: str, mode
 
 def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, model, *, persist: bool = True) -> list[dict]:
     """Perform semantic search using embeddings.
-    
-    Args:
-        root: Project root path
-        entries: List of entry dictionaries to search
-        query: Search query string
-        top_k: Maximum number of results to return
-        model: Embedding model instance
-    
-    Returns:
-        List of top-k entries ranked by semantic similarity
+
+    .. deprecated::
+        Search no longer loads embedding models. Use :func:`_keyword_search`
+        and let the calling agent rank semantic relevance.
     """
+    warnings.warn(
+        "_semantic_search is deprecated; use _keyword_search and let agents handle semantic ranking.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if np is None:
         raise ImportError(
             "Semantic search requires numpy and sentence-transformers.\n"

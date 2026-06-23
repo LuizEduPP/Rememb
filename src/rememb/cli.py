@@ -12,7 +12,6 @@ from rich.table import Table
 from rich.text import Text
 
 from rememb import __version__
-from rememb.config import DEFAULT_SEMANTIC_MODEL_NAME
 
 
 console = Console()
@@ -74,7 +73,6 @@ def _show_help():
     cmd_table.add_column("Description", style="white")
     cmd_table.add_row("rememb", "Launch web UI (opens in browser)")
     cmd_table.add_row("mcp", "Start MCP server (stdio or local SSE)")
-    cmd_table.add_row("fetch-model", "Download local embedding model for offline use")
     
     console.print(Panel(
         cmd_table,
@@ -174,23 +172,9 @@ def mcp(
         print(f"MCP support requires additional dependencies: {e}")
         raise typer.Exit(1)
 
-@app.command(name="fetch-model")
+@app.command(name="fetch-model", hidden=True)
 def fetch_model():
-    """Download embedding model for offline semantic search."""
-    console.print(f"Downloading [bold cyan]{DEFAULT_SEMANTIC_MODEL_NAME}[/bold cyan]...")
-    
-    try:
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            transient=False,
-        ) as progress:
-            progress.add_task(description="Downloading model weights from HuggingFace...", total=None)
-            from sentence_transformers import SentenceTransformer
-            SentenceTransformer(DEFAULT_SEMANTIC_MODEL_NAME)
-            console.print("[bold green]✓[/bold green] Model downloaded successfully.")
-            console.print("[dim]You can now use semantic search offline.[/dim]")
-    except ImportError:
-        console.print("[bold red]Error:[/bold red] sentence-transformers is missing from the current environment. Reinstall with: [cyan]pip install rememb[/cyan]")
-        raise typer.Exit(1)
+    """Disabled: rememb no longer downloads local embedding models."""
+    console.print("[bold yellow]fetch-model is disabled.[/bold yellow]")
+    console.print("[dim]Search uses keyword matching; agents handle semantic relevance.[/dim]")
+    raise typer.Exit(1)

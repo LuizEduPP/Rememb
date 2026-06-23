@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
 from pathlib import Path
 from typing import Any
 
 from rememb.config import DEFAULT_SECTIONS, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
 from rememb.store import (
+    agent_summarize_hint,
     clear_entries,
     consolidate_entries,
     diff_entry_versions,
@@ -157,10 +159,18 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     async def rememb_read():
         section = arguments.get("section")
         include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
         summary_only = arguments.get("summary_only", False)
+        if summary_only:
+            warnings.warn(
+                "rememb_read summary_only is deprecated; agents summarize semantically after reads.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        max_chars = arguments.get("max_chars")
         entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
-        return [TextContent(type="text", text=format_entries(entries, include_id=True, max_chars=max_chars, summary_only=summary_only))]
+        body = format_entries(entries, include_id=True, max_chars=max_chars)
+        hint = agent_summarize_hint(len(entries))
+        return [TextContent(type="text", text=f"{body}{hint}")]
 
     async def rememb_read_page():
         section = arguments.get("section")
@@ -171,7 +181,13 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         sort_by = arguments.get("sort_by", "storage")
         descending = arguments.get("descending", False)
         max_chars = arguments.get("max_chars")
-        summary_only = arguments.get("summary_only", True)
+        summary_only = arguments.get("summary_only", False)
+        if summary_only:
+            warnings.warn(
+                "rememb_read_page summary_only is deprecated; agents summarize semantically after reads.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         page = await asyncio.to_thread(
             read_entries_page,
             root,
@@ -187,8 +203,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Page {page['offset']}..{page['next_offset']} of {page['total']} "
             f"(limit={page['limit']}, has_more={page['has_more']})"
         )
-        body = format_entries(page["items"], include_id=True, max_chars=max_chars, summary_only=summary_only)
-        return [TextContent(type="text", text=f"{header}\n\n{body}")]
+        body = format_entries(page["items"], include_id=True, max_chars=max_chars)
+        hint = agent_summarize_hint(len(page["items"]), has_more=page["has_more"])
+        return [TextContent(type="text", text=f"{header}\n\n{body}{hint}")]
 
     async def rememb_search():
         query = arguments["query"]
@@ -197,9 +214,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         tag = arguments.get("tag")
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
-        summary_only = arguments.get("summary_only", True)
+        summary_only = arguments.get("summary_only", False)
+        if summary_only:
+            warnings.warn(
+                "rememb_search summary_only is deprecated; agents summarize semantically after reads.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
-        return [TextContent(type="text", text=format_entries(entries, include_id=True, include_score=True, max_chars=max_chars, summary_only=summary_only))]
+        body = format_entries(entries, include_id=True, include_score=True, max_chars=max_chars)
+        hint = agent_summarize_hint(len(entries))
+        return [TextContent(type="text", text=f"{body}{hint}")]
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
@@ -497,7 +522,7 @@ def _build_tools(Tool):
     return [
         _tool(
             name="rememb_read",
-            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Prefer rememb_search when looking for specific information by keyword or topic.",
+            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Returns full entry content; summarize task-relevant facts in your working context after large reads.",
             properties={
                 "section": {
                     "type": "string",
@@ -512,17 +537,17 @@ def _build_tools(Tool):
                 "summary_only": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Render a compact one-line summary per entry",
+                    "description": "Deprecated and ignored. Agents summarize semantically after reads.",
                 },
                 "max_chars": {
                     "type": "integer",
-                    "description": "Maximum characters of content to include per entry",
+                    "description": "Optional mechanical cap on content characters per entry",
                 },
             },
         ),
         _tool(
             name="rememb_read_page",
-            description="Read a paginated slice of entries with server-side truncation. Best for browsing large stores without flooding the context window.",
+            description="Read a paginated slice of entries with optional section or tag filtering. Returns full entry content; summarize task-relevant facts in your working context after each page.",
             properties={
                 "section": {
                     "type": "string",
@@ -561,22 +586,22 @@ def _build_tools(Tool):
                 },
                 "summary_only": {
                     "type": "boolean",
-                    "default": True,
-                    "description": "Render a compact one-line summary per entry",
+                    "default": False,
+                    "description": "Deprecated and ignored. Agents summarize semantically after reads.",
                 },
                 "max_chars": {
                     "type": "integer",
-                    "description": "Maximum characters of content to include per entry",
+                    "description": "Optional mechanical cap on content characters per entry",
                 },
             },
         ),
         _tool(
             name="rememb_search",
-            description="Search memory entries by content or tags using semantic similarity. Safe, read-only operation. Returns the top_k most relevant results ranked by similarity.",
+            description="Keyword and token search over memory entries. Safe, read-only operation. Returns top_k lexical matches with full entry content; summarize task-relevant facts in your working context.",
             properties={
                 "query": {
                     "type": "string",
-                    "description": "Search query - natural language or keywords",
+                    "description": "Search query - keywords or short phrases",
                 },
                 "section": {
                     "type": "string",
@@ -585,7 +610,7 @@ def _build_tools(Tool):
                 },
                 "tag": {
                     "type": "string",
-                    "description": "Optional exact tag filter applied before semantic search",
+                    "description": "Optional exact tag filter applied before keyword search",
                 },
                 "include_deleted": {
                     "type": "boolean",
@@ -599,12 +624,12 @@ def _build_tools(Tool):
                 },
                 "summary_only": {
                     "type": "boolean",
-                    "default": True,
-                    "description": "Render a compact one-line summary per entry",
+                    "default": False,
+                    "description": "Deprecated and ignored. Agents summarize semantically after reads.",
                 },
                 "max_chars": {
                     "type": "integer",
-                    "description": "Maximum characters of content to include per entry",
+                    "description": "Optional mechanical cap on content characters per entry",
                 },
             },
             required=["query"],

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+import warnings
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,7 @@ from rememb.helpers import (
     _restore_migrated_entries,
     _sanitize_content,
     _sanitize_tags,
-    _semantic_search,
+    _keyword_search,
     _store_context,
     _sync_meta_sections,
     _validate_config_updates,
@@ -851,17 +852,20 @@ def search_entries(
     *,
     include_deleted: bool = False,
 ) -> list[dict]:
-    """Search entries by semantic similarity.
-    
+    """Search entries by keyword and token overlap.
+
+    Semantic relevance is left to the calling agent. This function performs
+    deterministic lexical matching and returns the top_k highest-scoring entries.
+
     Args:
         root: Project root path
-        query: Search query (natural language or keywords)
+        query: Search query (keywords or short phrases)
         top_k: Maximum number of results to return
-        section: Optional section filter applied before semantic search
-        tag: Optional exact tag filter applied before semantic search
-    
+        section: Optional section filter applied before search
+        tag: Optional exact tag filter applied before search
+
     Returns:
-        List of top-k matching entries ranked by similarity
+        List of top-k matching entries ranked by lexical score
     """
     logger.debug(
         "search_entries called: query='%s', top_k=%s, section=%s, tag=%s",
@@ -881,15 +885,8 @@ def search_entries(
         logger.warning("No entries to search")
         return []
 
-    try:
-        model = _store_context.get_model(root)
-        try:
-            results = _semantic_search(root, entries, query, top_k, model, persist=not bool(section or tag))
-        finally:
-            _store_context.schedule_model_release(root)
-    except ImportError as e:
-        raise RemembError(str(e)) from e
-        
+    results = _keyword_search(entries, query, top_k)
+
     logger.info(f"Search returned {len(results)} results for query '{query}'")
 
     if results:
@@ -1026,6 +1023,21 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
     }
 
 
+AGENT_SUMMARIZE_THRESHOLD = 8
+
+
+def agent_summarize_hint(entry_count: int, *, has_more: bool = False) -> str:
+    """Return guidance for the calling agent when a read payload is large."""
+    if entry_count < AGENT_SUMMARIZE_THRESHOLD and not has_more:
+        return ""
+    more = " More pages may remain." if has_more else ""
+    return (
+        f"\n---\nAgent note: {entry_count} entries returned.{more} "
+        "Summarize task-relevant facts in your working context. "
+        "Narrow with section, tag, rememb_search, or smaller rememb_read_page limits when needed."
+    )
+
+
 def format_entries(
     entries: list[dict],
     include_id: bool = False,
@@ -1040,12 +1052,19 @@ def format_entries(
         entries: List of entry dictionaries
         include_id: If True, include entry IDs in output
         include_score: If True, include semantic scores when available
-        max_chars: Optional maximum number of content characters per entry
-        summary_only: If True, render a compact one-line summary per entry
+        max_chars: Optional mechanical cap on content characters per entry
+        summary_only: Deprecated. Ignored; agents summarize semantically after reads.
     
     Returns:
         Formatted markdown string
     """
+    if summary_only:
+        warnings.warn(
+            "summary_only is deprecated; rememb returns full entry content and agents summarize semantically.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     if not entries:
         return "No memory entries found."
 
@@ -1066,18 +1085,13 @@ def format_entries(
         lines.append(f"## {section.capitalize()}")
         for item in items:
             content = _truncate(str(item.get("content", "")))
-            if summary_only and not content:
-                content = ""
             tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
             score = item.get("score")
             score_text = f" (score: {float(score):.3f})" if include_score and isinstance(score, (int, float)) else ""
             prefix = f"[{item['id']}] " if include_id else ""
-            if summary_only:
-                lines.append(f"- {prefix}{content}{score_text}{tags}")
-            else:
-                ts = (item.get("updated_at") or item.get("created_at") or "")[:10]
-                ts_str = f" [{ts}]" if ts else ""
-                lines.append(f"- {prefix}{content}{score_text}{tags}{ts_str}")
+            ts = (item.get("updated_at") or item.get("created_at") or "")[:10]
+            ts_str = f" [{ts}]" if ts else ""
+            lines.append(f"- {prefix}{content}{score_text}{tags}{ts_str}")
         lines.append("")
 
     return "\n".join(lines)

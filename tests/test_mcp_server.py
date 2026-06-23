@@ -49,7 +49,8 @@ def test_build_tools_exposes_expected_public_contract():
     assert by_name["rememb_read"].inputSchema["properties"]["include_deleted"]["default"] is False
     assert "max_chars" in by_name["rememb_read"].inputSchema["properties"]
     assert by_name["rememb_read_page"].inputSchema["properties"]["offset"]["default"] == 0
-    assert by_name["rememb_read_page"].inputSchema["properties"]["summary_only"]["default"] is True
+    assert by_name["rememb_read_page"].inputSchema["properties"]["summary_only"]["default"] is False
+    assert by_name["rememb_search"].inputSchema["properties"]["summary_only"]["default"] is False
     assert "section" in by_name["rememb_search"].inputSchema["properties"]
     assert by_name["rememb_search"].inputSchema["properties"]["include_deleted"]["default"] is False
     assert "summary_only" in by_name["rememb_search"].inputSchema["properties"]

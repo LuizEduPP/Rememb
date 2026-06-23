@@ -13,9 +13,18 @@ Use rememb as the authoritative local memory layer for this project.
 
 ## Read vs Search
 
-* Use `rememb_search` when looking for specific information by topic or keyword.
+* Use `rememb_search` when you know specific keywords, tags, or short phrases to match.
 * Use `rememb_read` for broad section loads or when you need full entry content.
 * Use `rememb_read_page` when browsing large stores without flooding the context window.
+* Apply your own semantic relevance judgment after reads or keyword search; rememb no longer ranks search with local embedding models.
+
+## Summarization
+
+* rememb returns full entry content from read/search tools; it does not generate semantic summaries.
+* After large reads, summarize task-relevant facts in your working context before continuing.
+* Use `max_chars` only as an optional mechanical cap, not as a substitute for semantic summarization.
+* Prefer narrower reads (`section`, `tag`, `rememb_search`, smaller `rememb_read_page` limits) before relying on broad compaction.
+* The deprecated `summary_only` parameter is ignored; do not depend on server-side pseudo-summaries.
 
 ## Write vs Edit
 
@@ -58,12 +67,12 @@ Read all entries or filter by section. Safe and read-only.
 Key parameters:
 - section
 - include_deleted
-- summary_only
-- max_chars
+- max_chars (optional mechanical cap)
+- summary_only (deprecated, ignored)
 
 ### rememb_read_page
 
-Read a paginated slice of entries with optional section or tag filtering. Safe and read-only.
+Read a paginated slice of entries with optional section or tag filtering. Safe and read-only. Returns full content; agent summarizes semantically.
 
 Key parameters:
 - section
@@ -73,12 +82,12 @@ Key parameters:
 - limit
 - sort_by
 - descending
-- summary_only
-- max_chars
+- max_chars (optional mechanical cap)
+- summary_only (deprecated, ignored)
 
 ### rememb_search
 
-Semantic search over entries with optional section or tag filtering. Safe and read-only.
+Keyword and token search over entries with optional section or tag filtering. Safe and read-only. Returns full content; agent summarizes semantically.
 
 Key parameters:
 - query (required)
@@ -86,8 +95,8 @@ Key parameters:
 - tag
 - include_deleted
 - top_k
-- summary_only
-- max_chars
+- max_chars (optional mechanical cap)
+- summary_only (deprecated, ignored)
 
 ### rememb_write
 

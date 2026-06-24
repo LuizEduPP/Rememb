@@ -768,16 +768,15 @@ def _keyword_search(
 
 def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model, threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD, *, persist: bool = True) -> dict | None:
     """Check if the content is semantically a duplicate of an existing entry.
-    
-    Args:
-        root: Project root path
-        entries: List of entry dictionaries
-        content: New content string
-        model: Embedding model instance
-        
-    Returns:
-        Conflicting entry dictionary if found, None otherwise
+
+    .. deprecated::
+        Duplicate detection is exact-only; agents should use rememb_edit instead of near-duplicates.
     """
+    warnings.warn(
+        "_check_semantic_conflict is deprecated; use exact duplicate checks and let agents handle near-duplicates.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if np is None or not entries:
         return None
         

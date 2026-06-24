@@ -5,10 +5,13 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_SECTIONS, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
+from rememb.config import DEFAULT_SECTIONS
 from rememb.store import (
     agent_summarize_hint,
     clear_entries,
+    get_entry,
+    list_entry_tags,
+    read_recent_entries,
     consolidate_entries,
     diff_entry_versions,
     delete_entries,
@@ -156,16 +159,47 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     """
     root = await asyncio.to_thread(_get_root)
 
+    async def rememb_get():
+        entry_id = arguments["entry_id"]
+        if not _validate_entry_id(entry_id):
+            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        include_deleted = arguments.get("include_deleted", False)
+        max_chars = arguments.get("max_chars")
+        entry = await asyncio.to_thread(get_entry, root, entry_id, include_deleted=include_deleted)
+        if entry is None:
+            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+        body = format_entries([entry], include_id=True, max_chars=max_chars)
+        return [TextContent(type="text", text=body)]
+
+    async def rememb_recent():
+        limit = arguments.get("limit", 10)
+        section = arguments.get("section")
+        include_deleted = arguments.get("include_deleted", False)
+        max_chars = arguments.get("max_chars")
+        entries = await asyncio.to_thread(
+            read_recent_entries,
+            root,
+            limit=limit,
+            section=section,
+            include_deleted=include_deleted,
+        )
+        body = format_entries(entries, include_id=True, max_chars=max_chars)
+        hint = agent_summarize_hint(len(entries))
+        return [TextContent(type="text", text=f"{body}{hint}")]
+
+    async def rememb_list_tags():
+        limit = arguments.get("limit", 50)
+        include_deleted = arguments.get("include_deleted", False)
+        tags = await asyncio.to_thread(list_entry_tags, root, include_deleted=include_deleted, limit=limit)
+        if not tags:
+            return [TextContent(type="text", text="No tags found.")]
+        lines = ["Tags (count):"]
+        lines.extend(f"- {item['tag']}: {item['count']}" for item in tags)
+        return [TextContent(type="text", text="\n".join(lines))]
+
     async def rememb_read():
         section = arguments.get("section")
         include_deleted = arguments.get("include_deleted", False)
-        summary_only = arguments.get("summary_only", False)
-        if summary_only:
-            warnings.warn(
-                "rememb_read summary_only is deprecated; agents summarize semantically after reads.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         max_chars = arguments.get("max_chars")
         entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
         body = format_entries(entries, include_id=True, max_chars=max_chars)
@@ -181,13 +215,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         sort_by = arguments.get("sort_by", "storage")
         descending = arguments.get("descending", False)
         max_chars = arguments.get("max_chars")
-        summary_only = arguments.get("summary_only", False)
-        if summary_only:
-            warnings.warn(
-                "rememb_read_page summary_only is deprecated; agents summarize semantically after reads.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         page = await asyncio.to_thread(
             read_entries_page,
             root,
@@ -214,13 +241,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         tag = arguments.get("tag")
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
-        summary_only = arguments.get("summary_only", False)
-        if summary_only:
-            warnings.warn(
-                "rememb_search summary_only is deprecated; agents summarize semantically after reads.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
         body = format_entries(entries, include_id=True, include_score=True, max_chars=max_chars)
         hint = agent_summarize_hint(len(entries))
@@ -273,7 +293,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_write():
         entries = arguments.get("entries")
-        semantic_scope = arguments.get("semantic_scope", "global")
         if entries is not None:
             if not isinstance(entries, list) or not entries:
                 return [TextContent(type="text", text="Provide a non-empty entries array.")]
@@ -291,7 +310,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                         "tags": item.get("tags", []),
                     }
                 )
-            created = await asyncio.to_thread(write_entries, root, prepared_entries, True, semantic_scope)
+            created = await asyncio.to_thread(write_entries, root, prepared_entries, True)
             summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
             return [TextContent(type="text", text=f"Saved {len(created)} entries\n{summary}")]
 
@@ -307,7 +326,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             content,
             tags,
             True,
-            semantic_scope,
         )
         return [TextContent(type="text", text=f"Saved [{entry['section']}] id={entry['id']}")]
 
@@ -402,27 +420,24 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     async def rememb_consolidate():
         section = arguments.get("section")
         mode = arguments.get("mode", "exact")
-        _cfg = get_config(root)
-        similarity_threshold = arguments.get(
-            "similarity_threshold",
-            _cfg["semantic_conflict_threshold"],
-        )
+        if mode != "exact":
+            warnings.warn(
+                "rememb_consolidate semantic mode is deprecated; exact mode is used and agents review near-duplicates.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         result = await asyncio.to_thread(
             consolidate_entries,
             root,
             section,
-            mode,
-            similarity_threshold,
+            "exact",
         )
         target = result["section"] if result["section"] else "all sections"
-        mode_info = f" mode={result['mode']}"
-        if result["mode"] == "semantic":
-            mode_info += f" threshold={result['similarity_threshold']}"
         return [TextContent(
             type="text",
             text=(
                 f"Consolidation completed for {target}. "
-                f"Using{mode_info}. "
+                f"Using mode=exact. "
                 f"Removed {result['removed_count']} duplicate entries "
                 f"({result['total_before']} -> {result['total_after']})."
             ),
@@ -462,6 +477,9 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         )]
 
     tool_handlers = {
+        "rememb_get": rememb_get,
+        "rememb_recent": rememb_recent,
+        "rememb_list_tags": rememb_list_tags,
         "rememb_read": rememb_read,
         "rememb_read_page": rememb_read_page,
         "rememb_search": rememb_search,
@@ -521,6 +539,67 @@ def _build_tools(Tool):
 
     return [
         _tool(
+            name="rememb_get",
+            description="Fetch one memory entry by ID with full content. Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID.",
+            properties={
+                "entry_id": {
+                    "type": "string",
+                    "description": "Entry ID (8 hex characters)",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include the entry even if it is soft-deleted",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Optional mechanical cap on content characters",
+                },
+            },
+            required=["entry_id"],
+        ),
+        _tool(
+            name="rememb_recent",
+            description="Return recently updated entries, newest first. Safe, read-only. Useful for catching up on what changed since the last session.",
+            properties={
+                "limit": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Maximum number of entries to return",
+                },
+                "section": {
+                    "type": "string",
+                    "enum": sections,
+                    "description": f"Optional section filter: {', '.join(sections)}",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include soft-deleted entries",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Optional mechanical cap on content characters per entry",
+                },
+            },
+        ),
+        _tool(
+            name="rememb_list_tags",
+            description="List tags used in the store with usage counts. Safe, read-only. Use to discover filters before rememb_search or rememb_read_page.",
+            properties={
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "Maximum number of tags to return",
+                },
+                "include_deleted": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include tags from soft-deleted entries",
+                },
+            },
+        ),
+        _tool(
             name="rememb_read",
             description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Returns full entry content; summarize task-relevant facts in your working context after large reads.",
             properties={
@@ -533,11 +612,6 @@ def _build_tools(Tool):
                     "type": "boolean",
                     "default": False,
                     "description": "Include soft-deleted entries in the response",
-                },
-                "summary_only": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Deprecated and ignored. Agents summarize semantically after reads.",
                 },
                 "max_chars": {
                     "type": "integer",
@@ -584,11 +658,6 @@ def _build_tools(Tool):
                     "default": False,
                     "description": "Reverse the selected sort order",
                 },
-                "summary_only": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Deprecated and ignored. Agents summarize semantically after reads.",
-                },
                 "max_chars": {
                     "type": "integer",
                     "description": "Optional mechanical cap on content characters per entry",
@@ -621,11 +690,6 @@ def _build_tools(Tool):
                     "type": "integer",
                     "default": 5,
                     "description": "Maximum number of results",
-                },
-                "summary_only": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Deprecated and ignored. Agents summarize semantically after reads.",
                 },
                 "max_chars": {
                     "type": "integer",
@@ -727,12 +791,6 @@ def _build_tools(Tool):
                     "items": {"type": "string"},
                     "description": "Tags to categorize this entry",
                 },
-                "semantic_scope": {
-                    "type": "string",
-                    "enum": ["global", "section"],
-                    "default": "global",
-                    "description": "Semantic duplicate guard scope: global (all sections) or section (target section only)",
-                },
             },
         ),
         _tool(
@@ -822,23 +880,12 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_consolidate",
-            description="Consolidate duplicate entries and merge metadata (tags and access data). Supports exact mode (default, normalized content match) and semantic mode (cosine similarity threshold). This mutates storage by removing redundant entries and keeping one consolidated record per duplicate group.",
+            description="Consolidate literal duplicate entries and merge metadata (tags and access data). Exact normalized-content match only; review near-duplicates with the agent before consolidating.",
             properties={
                 "section": {
                     "type": "string",
                     "enum": sections,
                     "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "mode": {
-                    "type": "string",
-                    "enum": ["exact", "semantic"],
-                    "default": "exact",
-                    "description": "Consolidation mode: exact (normalized content) or semantic (similarity threshold)",
-                },
-                "similarity_threshold": {
-                    "type": "number",
-                    "default": DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
-                    "description": "Cosine similarity threshold used when mode is semantic (>0 and <=1)",
                 },
             },
         ),

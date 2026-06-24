@@ -11,6 +11,13 @@ If you want rememb to run as a strictly agent-driven memory layer, use this rule
 
 Use rememb as the authoritative local memory layer for this project.
 
+## Targeted Reads
+
+* Use `rememb_get` when you already know an entry ID from search or recent reads.
+* Use `rememb_recent` to catch up on what changed since the last session.
+* Use `rememb_list_tags` to discover tag filters before search or paginated reads.
+* Use `rememb_stats` for store size and section totals at session start.
+
 ## Read vs Search
 
 * Use `rememb_search` when you know specific keywords, tags, or short phrases to match.
@@ -24,12 +31,12 @@ Use rememb as the authoritative local memory layer for this project.
 * After large reads, summarize task-relevant facts in your working context before continuing.
 * Use `max_chars` only as an optional mechanical cap, not as a substitute for semantic summarization.
 * Prefer narrower reads (`section`, `tag`, `rememb_search`, smaller `rememb_read_page` limits) before relying on broad compaction.
-* The deprecated `summary_only` parameter is ignored; do not depend on server-side pseudo-summaries.
 
 ## Write vs Edit
 
 * Use `rememb_write` for new facts, decisions, or context.
 * Use `rememb_edit` to update existing entries instead of duplicating memory with new writes.
+* Review near-duplicates yourself with `rememb_search` / `rememb_read`; rememb only blocks exact duplicate content in the same section.
 
 ## Recovery & Versioning
 
@@ -39,7 +46,7 @@ Use rememb as the authoritative local memory layer for this project.
 ## Maintenance
 
 * Use `rememb_stats` for store inspection.
-* Use `rememb_consolidate` only for intentional duplicate cleanup.
+* Use `rememb_consolidate` only for intentional literal duplicate cleanup (exact content match).
 * Use `rememb_clear` only when the user explicitly requests a full reset.
 
 ## Skills
@@ -60,6 +67,33 @@ These rules are the canonical agent-driven routing contract. The documented tool
 
 ## Core memory tools
 
+### rememb_get
+
+Fetch one entry by ID with full content. Safe and read-only.
+
+Key parameters:
+- entry_id (required)
+- include_deleted
+- max_chars
+
+### rememb_recent
+
+Recently updated entries, newest first. Safe and read-only.
+
+Key parameters:
+- limit
+- section
+- include_deleted
+- max_chars
+
+### rememb_list_tags
+
+Tag inventory with usage counts. Safe and read-only.
+
+Key parameters:
+- limit
+- include_deleted
+
 ### rememb_read
 
 Read all entries or filter by section. Safe and read-only.
@@ -68,7 +102,6 @@ Key parameters:
 - section
 - include_deleted
 - max_chars (optional mechanical cap)
-- summary_only (deprecated, ignored)
 
 ### rememb_read_page
 
@@ -83,7 +116,6 @@ Key parameters:
 - sort_by
 - descending
 - max_chars (optional mechanical cap)
-- summary_only (deprecated, ignored)
 
 ### rememb_search
 
@@ -96,7 +128,6 @@ Key parameters:
 - include_deleted
 - top_k
 - max_chars (optional mechanical cap)
-- summary_only (deprecated, ignored)
 
 ### rememb_write
 
@@ -107,7 +138,6 @@ Key parameters:
 - entries
 - section
 - tags
-- semantic_scope
 
 ### rememb_edit
 
@@ -141,12 +171,10 @@ Return totals, size, oldest/newest timestamps, and count by section.
 
 ### rememb_consolidate
 
-Consolidate duplicate entries in exact or semantic mode.
+Consolidate literal duplicate entries in exact mode.
 
 Key parameters:
 - section
-- mode
-- similarity_threshold
 
 ## Versioning and recovery tools
 

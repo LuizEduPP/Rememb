@@ -54,13 +54,6 @@ from rememb.utils import (
 logger = logging.getLogger(__name__)
 
 
-def _normalize_semantic_scope(semantic_scope: str) -> str:
-    normalized_scope = semantic_scope.lower().strip()
-    if normalized_scope not in {"global", "section"}:
-        raise RemembValidationError("Invalid semantic_scope. Use 'global' or 'section'.")
-    return normalized_scope
-
-
 def _generate_entry_id(existing_ids: set[str]) -> str:
     new_id = str(uuid.uuid4())[:8]
     max_attempts = 100
@@ -83,17 +76,21 @@ def write_entries(
     semantic_scope: str = "global",
 ) -> list[dict]:
     """Write multiple entries to memory atomically."""
+    if semantic_scope != "global":
+        warnings.warn(
+            "semantic_scope is deprecated and ignored; agents should use rememb_edit instead of near-duplicate writes.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     logger.debug(
-        "write_entries called: items=%s, skip_duplicates=%s, semantic_scope=%s",
+        "write_entries called: items=%s, skip_duplicates=%s",
         len(items),
         skip_duplicates,
-        semantic_scope,
     )
     _assert_initialized(root)
     if not items:
         raise RemembValidationError("At least one entry is required.")
 
-    normalized_scope = _normalize_semantic_scope(semantic_scope)
     prepared_items: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -132,34 +129,6 @@ def write_entries(
                         f"Duplicate entry: same content appears multiple times in section '{item['section']}' within the batch"
                     )
                 seen_batch_keys.add(key)
-
-            try:
-                from rememb.helpers import _check_semantic_conflict
-
-                model = _store_context.get_model(root)
-                for item in prepared_items:
-                    semantic_entries = entries
-                    if normalized_scope == "section":
-                        semantic_entries = [
-                            entry for entry in entries if entry.get("section") == item["section"]
-                        ]
-                    conflict = _check_semantic_conflict(
-                        root,
-                        semantic_entries,
-                        item["content"],
-                        model,
-                        threshold=float(config["semantic_conflict_threshold"]),
-                        persist=(normalized_scope != "section"),
-                    )
-                    if conflict:
-                        raise RemembValidationError(
-                            f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
-                            f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
-                        )
-            except ImportError:
-                pass
-            finally:
-                _store_context.schedule_model_release(root)
 
         existing_ids = {entry["id"] for entry in entries}
         now = _now()
@@ -263,7 +232,6 @@ def write_entry(
         content: Entry content (1-3 sentences recommended)
         tags: Optional list of tags for categorization
         skip_duplicates: If True, reject duplicate content in same section
-        semantic_scope: Scope for semantic duplicate guard: "global" or "section"
     
     Returns:
         Created entry dictionary with id, section, content, tags, timestamps
@@ -331,29 +299,32 @@ def consolidate_entries(
     mode: str = "exact",
     similarity_threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
 ) -> dict:
-    """Consolidate entries with exact or semantic duplicate detection.
+    """Consolidate entries with exact duplicate detection.
 
     Args:
         root: Project root path
         section: Optional section filter. When provided, only that section is deduplicated.
-        mode: Consolidation mode. Supported: "exact" or "semantic".
-        similarity_threshold: Cosine similarity threshold used when mode="semantic".
+        mode: Deprecated. Only exact normalized-content matching is supported.
+        similarity_threshold: Deprecated and ignored.
 
     Returns:
         Dictionary with consolidation summary
     """
-    logger.debug(
-        f"consolidate_entries called: section={section}, mode={mode}, similarity_threshold={similarity_threshold}"
-    )
+    if mode.lower().strip() != "exact":
+        warnings.warn(
+            "semantic consolidate mode is deprecated; use exact mode and let the agent review duplicates.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if similarity_threshold != DEFAULT_SEMANTIC_CONFLICT_THRESHOLD:
+        warnings.warn(
+            "similarity_threshold is deprecated and ignored.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    logger.debug("consolidate_entries called: section=%s", section)
     _assert_initialized(root)
     target_section = _validate_section(section, root) if section else None
-    normalized_mode = mode.lower().strip()
-
-    if normalized_mode not in {"exact", "semantic"}:
-        raise RemembValidationError("Invalid consolidation mode. Use 'exact' or 'semantic'.")
-
-    if similarity_threshold <= 0 or similarity_threshold > 1:
-        raise RemembValidationError("similarity_threshold must be > 0 and <= 1.")
 
     def _safe_int(value: object) -> int:
         return value if isinstance(value, int) else 0
@@ -380,93 +351,26 @@ def consolidate_entries(
             return incoming
         return current
 
-    def _cosine_similarity(vec_a: object, vec_b: object) -> float:
-        if not isinstance(vec_a, (list, tuple)) or not isinstance(vec_b, (list, tuple)):
-            return 0.0
-        if len(vec_a) == 0 or len(vec_b) == 0 or len(vec_a) != len(vec_b):
-            return 0.0
-
-        dot = 0.0
-        norm_a = 0.0
-        norm_b = 0.0
-        for a, b in zip(vec_a, vec_b):
-            af = float(a)
-            bf = float(b)
-            dot += af * bf
-            norm_a += af * af
-            norm_b += bf * bf
-
-        if norm_a == 0.0 or norm_b == 0.0:
-            return 0.0
-        return dot / ((norm_a ** 0.5) * (norm_b ** 0.5))
-
     def _consolidate(entries: list[dict]) -> dict:
         total_before = len(entries)
         kept: list[dict] = []
         index_by_key: dict[tuple[str, str], int] = {}
-        semantic_refs: dict[str, list[tuple[int, object]]] = {}
         removed_ids: list[str] = []
         merged_groups = 0
-        model = None
-        embeddings_by_idx: dict[int, object] = {}
 
-        if normalized_mode == "semantic":
-            try:
-                model = _store_context.get_model(root)
-                if model is None:
-                    raise RemembError("Semantic model unavailable")
-            except ImportError as e:
-                raise RemembError(str(e)) from e
-            try:
-                target_indexes = []
-                target_texts = []
-                for idx, entry in enumerate(entries):
-                    entry_section = _safe_str(entry.get("section", "context"))
-                    if target_section and entry_section != target_section:
-                        continue
-                    target_indexes.append(idx)
-                    target_texts.append(_safe_str(entry.get("content")))
-
-                if target_texts:
-                    vectors = model.encode(target_texts, show_progress_bar=False, batch_size=32)
-                    for local_idx, global_idx in enumerate(target_indexes):
-                        embeddings_by_idx[global_idx] = vectors[local_idx].tolist()
-            finally:
-                _store_context.schedule_model_release(root)
-
-        for idx, entry in enumerate(entries):
+        for entry in entries:
             entry_section = _safe_str(entry.get("section", "context"))
             if target_section and entry_section != target_section:
                 kept.append(entry)
                 continue
 
-            existing_idx = None
-            if normalized_mode == "exact":
-                key = _entry_key(entry)
-                existing_idx = index_by_key.get(key)
-            else:
-                entry_vec = embeddings_by_idx.get(idx)
-                if entry_vec is not None:
-                    section_refs = semantic_refs.get(entry_section, [])
-                    best_idx = None
-                    best_score = -1.0
-                    for kept_idx, ref_vec in section_refs:
-                        score = _cosine_similarity(entry_vec, ref_vec)
-                        if score >= similarity_threshold and score > best_score:
-                            best_score = score
-                            best_idx = kept_idx
-                    existing_idx = best_idx
+            key = _entry_key(entry)
+            existing_idx = index_by_key.get(key)
 
             if existing_idx is None:
                 kept_idx = len(kept)
                 kept.append(entry)
-                if normalized_mode == "exact":
-                    key = _entry_key(entry)
-                    index_by_key[key] = kept_idx
-                else:
-                    entry_vec = embeddings_by_idx.get(idx)
-                    if entry_vec is not None:
-                        semantic_refs.setdefault(entry_section, []).append((kept_idx, entry_vec))
+                index_by_key[key] = kept_idx
                 continue
 
             merged_groups += 1
@@ -525,8 +429,7 @@ def consolidate_entries(
             "merged_groups": merged_groups,
             "removed_ids": removed_ids,
             "section": target_section,
-            "mode": normalized_mode,
-            "similarity_threshold": similarity_threshold,
+            "mode": "exact",
         }
 
     return _atomic_modify(root, _consolidate)

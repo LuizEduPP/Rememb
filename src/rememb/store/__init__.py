@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from rememb.helpers import MemoryStore, _store_context
 
+from rememb.store.agent_tools import (
+    get_entry,
+    list_entry_tags,
+    read_recent_entries,
+)
 from rememb.store.crud import (
     agent_summarize_hint,
     clear_entries,
@@ -47,6 +52,9 @@ __all__ = [
     "clear_entries",
     "format_entries",
     "agent_summarize_hint",
+    "get_entry",
+    "list_entry_tags",
+    "read_recent_entries",
     "get_stats",
 ]
 

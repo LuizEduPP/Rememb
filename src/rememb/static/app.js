@@ -968,12 +968,7 @@ function openConsolidateModal() {
       <label class="field">Mode
         <select id="f-cons-mode" class="input">
           <option value="exact">Exact (normalized content match)</option>
-          <option value="semantic">Semantic (similarity threshold)</option>
         </select>
-      </label>
-      <label class="field" id="threshold-group" hidden>Similarity threshold
-        <input type="number" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
-        <span class="lede">Higher = stricter (less aggressive). Range: 0.5 – 1.0</span>
       </label>
     </section>
     <footer class="modal-foot">
@@ -982,21 +977,11 @@ function openConsolidateModal() {
     </footer>
   `, 'modal-compact'));
 
-  const modeSelect = document.getElementById('f-cons-mode');
-  const thresholdGroup = document.getElementById('threshold-group');
-  if (modeSelect && thresholdGroup) {
-    modeSelect.addEventListener('change', () => {
-      thresholdGroup.hidden = modeSelect.value !== 'semantic';
-    });
-  }
-
   bindEvent('btn-cancel-consolidate', 'click', closeModal);
   bindEvent('btn-run-consolidate', 'click', async () => {
     const section = document.getElementById('f-cons-section').value || null;
-    const mode = modeSelect.value;
-    const threshold = parseFloat(document.getElementById('f-threshold').value) || 0.88;
     try {
-      const data = await api.consolidate({ section, mode, similarity_threshold: threshold });
+      const data = await api.consolidate({ section, mode: 'exact' });
       closeModal();
       const result = data.result || {};
       const removed = result.removed_count ?? result.removed ?? result.merged ?? 0;

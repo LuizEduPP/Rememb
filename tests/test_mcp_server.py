@@ -27,6 +27,9 @@ def test_build_tools_exposes_expected_public_contract():
     by_name = {tool.name: tool for tool in tools}
 
     assert set(by_name) == {
+        "rememb_get",
+        "rememb_recent",
+        "rememb_list_tags",
         "rememb_read",
         "rememb_read_page",
         "rememb_search",
@@ -42,22 +45,24 @@ def test_build_tools_exposes_expected_public_contract():
         "rememb_list_skills",
         "rememb_use_skill",
     }
+    assert by_name["rememb_get"].inputSchema["required"] == ["entry_id"]
     assert by_name["rememb_search"].inputSchema["required"] == ["query"]
-    assert by_name["rememb_write"].inputSchema["properties"]["semantic_scope"]["default"] == "global"
     assert "entries" in by_name["rememb_write"].inputSchema["properties"]
+    assert "semantic_scope" not in by_name["rememb_write"].inputSchema["properties"]
+    assert "summary_only" not in by_name["rememb_read"].inputSchema["properties"]
     assert "section" in by_name["rememb_read"].inputSchema["properties"]
     assert by_name["rememb_read"].inputSchema["properties"]["include_deleted"]["default"] is False
     assert "max_chars" in by_name["rememb_read"].inputSchema["properties"]
     assert by_name["rememb_read_page"].inputSchema["properties"]["offset"]["default"] == 0
-    assert by_name["rememb_read_page"].inputSchema["properties"]["summary_only"]["default"] is False
-    assert by_name["rememb_search"].inputSchema["properties"]["summary_only"]["default"] is False
+    assert "summary_only" not in by_name["rememb_read_page"].inputSchema["properties"]
+    assert "summary_only" not in by_name["rememb_search"].inputSchema["properties"]
     assert "section" in by_name["rememb_search"].inputSchema["properties"]
     assert by_name["rememb_search"].inputSchema["properties"]["include_deleted"]["default"] is False
-    assert "summary_only" in by_name["rememb_search"].inputSchema["properties"]
     assert by_name["rememb_versions"].inputSchema["required"] == ["entry_id"]
     assert by_name["rememb_restore"].inputSchema["required"] == ["entry_id"]
     assert by_name["rememb_diff"].inputSchema["required"] == ["entry_id", "from_version", "to_version"]
-    assert set(by_name["rememb_write"].inputSchema["properties"]) >= {"content", "section", "tags", "semantic_scope", "entries"}
+    assert set(by_name["rememb_write"].inputSchema["properties"]) >= {"content", "section", "tags", "entries"}
+    assert "mode" not in by_name["rememb_consolidate"].inputSchema["properties"]
     assert set(by_name["rememb_edit"].inputSchema["properties"]) >= {"entry_id", "content", "section", "tags", "updates"}
     assert "entry_ids" in by_name["rememb_delete"].inputSchema["properties"]
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
@@ -83,9 +88,9 @@ def test_handle_tool_supports_batch_write(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
     captured = {}
 
-    def fake_write_entries(root, entries, skip_duplicates, semantic_scope):
+    def fake_write_entries(root, entries, skip_duplicates):
         captured["entries"] = entries
-        captured["semantic_scope"] = semantic_scope
+        captured["skip_duplicates"] = skip_duplicates
         return [
             {"id": "11111111", "section": entries[0]["section"]},
             {"id": "22222222", "section": entries[1]["section"]},

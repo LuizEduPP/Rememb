@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-06-25
+
 ### Removed
 - `sentence-transformers` and `numpy` dependencies; embedding model code, `/api/models`, `fetch-model` CLI, and semantic config keys.
-- Dead embedding cache files (`embeddings.npy`, `embeddings.hash`) from init/gitignore and storage listings.
+- Dead embedding cache files (`embeddings.npy`, `embeddings.hash`) from store init, gitignore, and storage listings.
+- `semantic_scope` from write/consolidate APIs and MCP handlers; consolidate is section-scoped exact duplicate cleanup only.
+
+### Changed
+- Install and CI are much lighter without PyTorch or embedding model downloads; search remains keyword/token matching with agent-side relevance.
+- GitHub Actions uses `uv` with dependency caching, Python 3.12 only on PRs, path filters to skip docs-only runs, and Buildx cache for Docker smoke tests.
+- Documentation aligned with keyword-only runtime: README, COMPATIBILITY, SECURITY, and CONTRIBUTING.
 
 ## [0.4.12] - 2026-06-23
 

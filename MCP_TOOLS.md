@@ -1,6 +1,6 @@
 # MCP Tools
 
-This file documents the current public MCP tools exposed by `src/rememb/mcp_server.py`.
+This file documents the **17 public MCP tools** exposed by `src/rememb/mcp_server.py`.
 
 ## Recommended agent rules
 

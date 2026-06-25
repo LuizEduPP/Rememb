@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web UI consolidate/settings copy reflects literal duplicate cleanup; semantic model settings removed from the UI.
 - Default web UI port is now `18181`.
 - `fetch-model` CLI command is disabled with guidance to use agent-side relevance instead.
+- Documentation aligned with v0.4.12 behavior: README, MCP_TOOLS, COMPATIBILITY, RELEASE, SECURITY, CONTRIBUTING, and `server.json` (keyword search, 17 MCP tools, `~/.rememb` default, disabled `fetch-model`, release workflow dispatch semantics).
 
 ### Fixed
 - Package wheel now ships `style.css` and `app.js` static assets (fixes web UI startup after install).

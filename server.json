@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.LuizEduPP/rememb",
-  "description": "Persistent memory for AI agents — local JSON, zero config, no server required.",
+  "description": "Persistent memory for AI agents — local-first store, keyword search, 17 MCP tools, zero config.",
   "repository": {
     "url": "https://github.com/LuizEduPP/Rememb",
     "source": "github"
   },
-  "version": "0.4.12",
+  "version": "0.4.13",
   "packages": [
     {
       "registryType": "pypi",
       "name": "io.github.LuizEduPP/rememb",
       "identifier": "rememb",
-      "version": "0.4.12",
+      "version": "0.4.13",
       "transport": {
         "type": "stdio"
       },

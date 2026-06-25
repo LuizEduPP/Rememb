@@ -8,7 +8,7 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_CONFIG, DEFAULT_SEMANTIC_CONFLICT_THRESHOLD
+from rememb.config import DEFAULT_CONFIG
 from rememb.exceptions import (
     RemembConfigError,
     RemembError,
@@ -73,15 +73,8 @@ def write_entries(
     root: Path,
     items: list[dict[str, Any]],
     skip_duplicates: bool = True,
-    semantic_scope: str = "global",
 ) -> list[dict]:
     """Write multiple entries to memory atomically."""
-    if semantic_scope != "global":
-        warnings.warn(
-            "semantic_scope is deprecated and ignored; agents should use rememb_edit instead of near-duplicate writes.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
     logger.debug(
         "write_entries called: items=%s, skip_duplicates=%s",
         len(items),
@@ -199,8 +192,6 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     if not global_mode:
         gitignore = root / ".gitignore"
         gitignore_lines = [
-            ".rememb/embeddings.npy\n",
-            ".rememb/embeddings.hash\n",
             ".rememb/entries.db\n",
         ]
         try:
@@ -222,7 +213,6 @@ def write_entry(
     content: str,
     tags: list[str] | None = None,
     skip_duplicates: bool = True,
-    semantic_scope: str = "global",
 ) -> dict:
     """Write a new entry to memory.
     
@@ -251,7 +241,6 @@ def write_entry(
             "tags": tags or [],
         }],
         skip_duplicates=skip_duplicates,
-        semantic_scope=semantic_scope,
     )[0]
 
 
@@ -296,32 +285,16 @@ def update_config(root: Path, updates: dict[str, object]) -> dict:
 def consolidate_entries(
     root: Path,
     section: str | None = None,
-    mode: str = "exact",
-    similarity_threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
 ) -> dict:
     """Consolidate entries with exact duplicate detection.
 
     Args:
         root: Project root path
         section: Optional section filter. When provided, only that section is deduplicated.
-        mode: Deprecated. Only exact normalized-content matching is supported.
-        similarity_threshold: Deprecated and ignored.
 
     Returns:
         Dictionary with consolidation summary
     """
-    if mode.lower().strip() != "exact":
-        warnings.warn(
-            "semantic consolidate mode is deprecated; use exact mode and let the agent review duplicates.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    if similarity_threshold != DEFAULT_SEMANTIC_CONFLICT_THRESHOLD:
-        warnings.warn(
-            "similarity_threshold is deprecated and ignored.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
     logger.debug("consolidate_entries called: section=%s", section)
     _assert_initialized(root)
     target_section = _validate_section(section, root) if section else None
@@ -526,14 +499,6 @@ def clear_entries(root: Path, *, confirm: bool = False) -> int:
     def clear_all(entries: list[dict]) -> int:
         count = len(entries)
         entries.clear()
-        
-        embeddings_path = _rememb_path(root) / "embeddings.npy"
-        hash_path = _rememb_path(root) / "embeddings.hash"
-        if embeddings_path.exists():
-            embeddings_path.unlink()
-        if hash_path.exists():
-            hash_path.unlink()
-        
         logger.info(f"Cleared {count} entries")
         return count
     

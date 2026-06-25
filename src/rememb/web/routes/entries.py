@@ -59,8 +59,6 @@ async def create_entry(req: WriteRequest) -> dict:
             req.section,
             req.content,
             req.tags if req.tags else None,
-            True,
-            req.semantic_scope,
         )
         return {"entry": entry}
     except Exception as exc:

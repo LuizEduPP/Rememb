@@ -31,7 +31,6 @@ async function apiFetch(path, opts = {}) {
 
 const api = {
   config: () => apiFetch('/api/config'),
-  models: () => apiFetch('/api/models'),
   stats: () => apiFetch('/api/stats'),
   systemInfo: () => apiFetch('/api/system/info'),
   skills: () => apiFetch('/api/skills'),
@@ -967,7 +966,7 @@ function openConsolidateModal() {
   bindEvent('btn-run-consolidate', 'click', async () => {
     const section = document.getElementById('f-cons-section').value || null;
     try {
-      const data = await api.consolidate({ section, mode: 'exact' });
+      const data = await api.consolidate({ section });
       closeModal();
       const result = data.result || {};
       const removed = result.removed_count ?? result.removed ?? result.merged ?? 0;

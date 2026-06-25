@@ -29,7 +29,7 @@ We take security seriously. If you discover a security vulnerability in rememb, 
 | Level | Description | Example |
 |-------|-------------|---------|
 | **Critical** | Remote code execution, data breach, auth bypass | Memory injection, arbitrary file write |
-| **High** | Privilege escalation, DoS, authentication flaw | Bypass semantic_scope checks |
+| **High** | Privilege escalation, DoS, authentication flaw | Unauthenticated write to another user's store path |
 | **Medium** | Information leak, input validation bypass | Exposed paths in error messages |
 | **Low** | Hardening improvements, minor config issues | Weak default settings |
 
@@ -38,21 +38,20 @@ We take security seriously. If you discover a security vulnerability in rememb, 
 ### Using rememb Safely
 
 1. **File Permissions**
-   - rememb stores sensitive memories in `~/.rememb/`
+   - rememb stores sensitive memories in `~/.rememb/` by default
    - Ensure your home directory has restrictive permissions: `chmod 700 ~/.rememb`
 
-2. **Semantic Security Guard**
-   - The 88% similarity threshold prevents most duplicates
+2. **Sensitive Data**
    - Inspect entries before storing highly sensitive information
    - rememb does NOT encrypt data at rest (local file system only)
+   - Write duplicate guard blocks exact same content in the same section only; near-duplicates are not blocked automatically
 
 3. **Updates**
    - Keep rememb updated: `pip install --upgrade rememb`
    - Subscribe to [releases](https://github.com/LuizEduPP/Rememb/releases) for security patches
 
 4. **Dependency Audit**
-   - rememb depends on `sentence-transformers`, `textual`, `typer`, `mcp`
-   - These are vetted production libraries
+   - Core runtime deps: `typer`, `rich`, `fastapi`, `uvicorn`, `mcp`, `pypdf`
    - We monitor for vulnerability alerts via GitHub Dependabot
 
 ## Vulnerability Disclosure Timeline
@@ -74,11 +73,13 @@ Once a vulnerability is reported:
 
 ## Security Headers & Compliance
 
-rememb is a **local-first tool** with no network dependencies. There are no:
-- ❌ Remote APIs to attack
-- ❌ Cloud storage to compromise
-- ❌ Authentication servers to bypass
-- ✅ Only local JSON-backed storage with file system permissions
+rememb is a **local-first tool** with no required network dependencies at runtime. There are no:
+
+- remote APIs to attack
+- cloud storage to compromise
+- authentication servers to bypass
+
+Storage is local JSON or SQLite under `~/.rememb/` (or a manually initialized path), protected by file system permissions.
 
 ## References
 
@@ -88,5 +89,5 @@ rememb is a **local-first tool** with no network dependencies. There are no:
 
 ---
 
-**Last Updated:** April 28, 2026
+**Last Updated:** June 25, 2026  
 **Contact:** luizedupp@gmail.com

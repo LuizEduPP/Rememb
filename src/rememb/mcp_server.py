@@ -419,18 +419,10 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_consolidate():
         section = arguments.get("section")
-        mode = arguments.get("mode", "exact")
-        if mode != "exact":
-            warnings.warn(
-                "rememb_consolidate semantic mode is deprecated; exact mode is used and agents review near-duplicates.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         result = await asyncio.to_thread(
             consolidate_entries,
             root,
             section,
-            "exact",
         )
         target = result["section"] if result["section"] else "all sections"
         return [TextContent(

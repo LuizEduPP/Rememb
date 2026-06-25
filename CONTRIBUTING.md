@@ -5,18 +5,21 @@ Thank you for your interest in contributing to rememb!
 ## Development Setup
 
 1. Clone the repository:
+
 ```bash
-git clone https://github.com/LuizEduPP/rememb.git
-cd rememb
+git clone https://github.com/LuizEduPP/Rememb.git
+cd Rememb
 ```
 
 2. Create a virtual environment:
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. Install in development mode:
+
 ```bash
 pip install -e ".[dev]"
 ```
@@ -34,33 +37,61 @@ pip install -e ".[dev]"
 ```
 src/rememb/
 ├── __init__.py          # Version
-├── cli.py               # CLI entrypoints and help output
+├── cli.py               # CLI entrypoints (web UI default, mcp subcommand)
 ├── config.py            # Default config and constants
 ├── exceptions.py        # Custom exceptions
-├── helpers.py           # Persistence, validation and search helpers
-├── mcp_server.py        # MCP server surface
-├── store.py             # Core memory API
-├── web.py               # Web UI (FastAPI + SPA)
-└── utils.py             # Shared utilities
+├── helpers.py           # Store context, keyword search, validation helpers
+├── mcp_server.py        # MCP server (17 public tools)
+├── utils.py             # Shared utilities and skill discovery
+├── store/
+│   ├── __init__.py      # Public store API
+│   ├── crud.py          # CRUD, search, consolidate
+│   └── agent_tools.py   # Agent-facing store helpers
+├── storage/
+│   ├── __init__.py      # JSON / SQLite backend resolution
+│   ├── base.py
+│   ├── json_backend.py
+│   ├── sqlite_backend.py
+│   └── locking.py
+└── web/
+    ├── app.py           # FastAPI app
+    ├── deps.py          # Store dependency (~/.rememb)
+    ├── schemas.py
+    ├── routes/
+    │   ├── entries.py
+    │   └── system.py
+    └── static/          # SPA (index.html, app.js, style.css)
+
+src/rememb_skills/       # 60 bundled agent skills (SKILL.md per skill)
+tests/                   # pytest suite
 ```
 
 ## Making Changes
 
 1. Create a branch for your feature:
+
 ```bash
 git checkout -b feature/your-feature-name
 ```
 
-2. Make your changes and test locally
+2. Make your changes and test locally:
+
+```bash
+python -m pytest
+```
 
 3. Run compilation check:
+
 ```bash
 python -m py_compile src/rememb/*.py
+python -m py_compile src/rememb/store/*.py
+python -m py_compile src/rememb/storage/*.py
 ```
 
 ## Submitting Changes
 
 1. Push your branch:
+
 ```bash
 git push origin feature/your-feature-name
 ```
@@ -69,7 +100,7 @@ git push origin feature/your-feature-name
 
 3. Describe your changes in the PR description
 
-Release automation and Trusted Publishing are documented in RELEASE.md.
+Release automation and Trusted Publishing are documented in [RELEASE.md](RELEASE.md).
 
 ## Guidelines
 
@@ -84,9 +115,9 @@ Release automation and Trusted Publishing are documented in RELEASE.md.
 - Bug fixes
 - Documentation improvements
 - Performance optimizations
-- Additional file format support (e.g., .docx, .rst)
-- Enhanced semantic search options
-- CLI UX improvements
+- CLI and Web UI UX improvements
+- MCP tool and test coverage
+- Bundled skill maintenance
 
 ## Questions?
 

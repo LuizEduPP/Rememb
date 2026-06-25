@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.4.13] - 2026-06-25
+
+### Removed
+- `sentence-transformers` and `numpy` dependencies; embedding model code, `/api/models`, `fetch-model` CLI, and semantic config keys.
+- Dead embedding cache files (`embeddings.npy`, `embeddings.hash`) from store init, gitignore, and storage listings.
+- `semantic_scope` from write/consolidate APIs and MCP handlers; consolidate is section-scoped exact duplicate cleanup only.
+
+### Changed
+- Install and CI are much lighter without PyTorch or embedding model downloads; search remains keyword/token matching with agent-side relevance.
+- GitHub Actions uses `uv` with dependency caching, Python 3.12 only on PRs, path filters to skip docs-only runs, and Buildx cache for Docker smoke tests.
+- Documentation aligned with keyword-only runtime: README, COMPATIBILITY, SECURITY, and CONTRIBUTING.
+
 ## [0.4.12] - 2026-06-23
 
 ### Added
@@ -18,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web UI consolidate/settings copy reflects literal duplicate cleanup; semantic model settings removed from the UI.
 - Default web UI port is now `18181`.
 - `fetch-model` CLI command is disabled with guidance to use agent-side relevance instead.
+- Documentation aligned with v0.4.12 behavior: README, MCP_TOOLS, COMPATIBILITY, RELEASE, SECURITY, CONTRIBUTING, and `server.json` (keyword search, 17 MCP tools, `~/.rememb` default, disabled `fetch-model`, release workflow dispatch semantics).
 
 ### Fixed
 - Package wheel now ships `style.css` and `app.js` static assets (fixes web UI startup after install).

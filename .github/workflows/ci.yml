@@ -4,7 +4,24 @@ on:
   push:
     branches:
       - main
+      - develop
+    paths:
+      - ".github/workflows/ci.yml"
+      - "Dockerfile"
+      - "pyproject.toml"
+      - "src/**"
+      - "tests/**"
   pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "Dockerfile"
+      - "pyproject.toml"
+      - "src/**"
+      - "tests/**"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -12,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.10", "3.11", "3.12"]') }}
 
     steps:
       - name: Checkout
@@ -23,13 +40,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
       - name: Install package and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       - name: Run tests
-        run: python -m pytest
+        run: python -m pytest -q
 
       - name: Compile Python sources
         run: |
@@ -43,15 +64,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
         with:
-          python-version: "3.12"
+          context: .
+          tags: rememb-ci-smoke:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Install test dependencies
+      - name: Smoke-test MCP CLI in container
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
-
-      - name: Build and smoke-test Docker image
-        run: python -m pytest tests/test_docker.py -q
+          docker run --rm rememb-ci-smoke:latest rememb mcp --help | grep -q -- '--transport'
+          docker image rm -f rememb-ci-smoke:latest

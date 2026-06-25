@@ -6,6 +6,10 @@ on:
       - published
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build release distributions
@@ -24,16 +28,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
       - name: Install build and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       - name: Run tests
-        run: python -m pytest
+        run: python -m pytest -q
 
       - name: Compile Python sources
-        run: python -m py_compile src/rememb/*.py
+        run: |
+          python -m py_compile src/rememb/*.py
+          python -m py_compile src/rememb/store/*.py
+          python -m py_compile src/rememb/storage/*.py
 
       - name: Build distributions
         run: python -m build

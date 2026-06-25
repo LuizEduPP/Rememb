@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . /app
 
-RUN pip install --no-cache-dir -e . -e packages/rememb-skills
+RUN pip install --no-cache-dir -e .
 
 ENV REMEMB_GLOBAL=1
 

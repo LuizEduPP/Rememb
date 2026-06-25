@@ -39,7 +39,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 | Surface | Status | Notes |
 |---------|--------|-------|
 | PyPI package `rememb` | Active | Public package metadata maintained in `pyproject.toml` |
-| Optional package `rememb-skills` | Active | Bundled skills moved out of the core wheel; install with `pip install rememb[skills]` |
+| Bundled skills in `rememb_skills` | Active | Shipped inside the core `rememb` wheel and editable install |
 | MCP registry metadata in `server.json` | Documented | Public metadata file exists in repository |
 | Docker container for MCP | Tested | Dockerfile build and `rememb mcp --help` smoke test covered in CI |
 

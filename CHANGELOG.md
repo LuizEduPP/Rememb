@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.12] - 2026-06-23
+
+### Added
+- MCP utility tools `rememb_get`, `rememb_recent`, and `rememb_list_tags` for targeted reads and tag inventory.
+- Agent-driven routing contract updates in `MCP_TOOLS.md`.
+
+### Changed
+- Search and read tools use keyword/token matching; agents handle semantic relevance and summarization.
+- `rememb_consolidate` is exact-only (normalized content); semantic mode and threshold are deprecated.
+- Write duplicate guard blocks exact same content in a section; `semantic_scope` is deprecated.
+- Web UI consolidate/settings copy reflects literal duplicate cleanup; semantic model settings removed from the UI.
+- Default web UI port is now `18181`.
+- `fetch-model` CLI command is disabled with guidance to use agent-side relevance instead.
+
+### Fixed
+- Package wheel now ships `style.css` and `app.js` static assets (fixes web UI startup after install).
+
+## [0.4.11] - 2026-06-21
+
+### Changed
+- Bundled agent skills now ship inside the core `rememb` package; the separate optional `rememb-skills` PyPI extra was removed.
+
 ## [0.4.10] - 2026-06-20
 
 ### Fixed

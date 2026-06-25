@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+import warnings
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,7 @@ from rememb.helpers import (
     _restore_migrated_entries,
     _sanitize_content,
     _sanitize_tags,
-    _semantic_search,
+    _keyword_search,
     _store_context,
     _sync_meta_sections,
     _validate_config_updates,
@@ -53,13 +54,6 @@ from rememb.utils import (
 logger = logging.getLogger(__name__)
 
 
-def _normalize_semantic_scope(semantic_scope: str) -> str:
-    normalized_scope = semantic_scope.lower().strip()
-    if normalized_scope not in {"global", "section"}:
-        raise RemembValidationError("Invalid semantic_scope. Use 'global' or 'section'.")
-    return normalized_scope
-
-
 def _generate_entry_id(existing_ids: set[str]) -> str:
     new_id = str(uuid.uuid4())[:8]
     max_attempts = 100
@@ -82,17 +76,21 @@ def write_entries(
     semantic_scope: str = "global",
 ) -> list[dict]:
     """Write multiple entries to memory atomically."""
+    if semantic_scope != "global":
+        warnings.warn(
+            "semantic_scope is deprecated and ignored; agents should use rememb_edit instead of near-duplicate writes.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     logger.debug(
-        "write_entries called: items=%s, skip_duplicates=%s, semantic_scope=%s",
+        "write_entries called: items=%s, skip_duplicates=%s",
         len(items),
         skip_duplicates,
-        semantic_scope,
     )
     _assert_initialized(root)
     if not items:
         raise RemembValidationError("At least one entry is required.")
 
-    normalized_scope = _normalize_semantic_scope(semantic_scope)
     prepared_items: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -131,34 +129,6 @@ def write_entries(
                         f"Duplicate entry: same content appears multiple times in section '{item['section']}' within the batch"
                     )
                 seen_batch_keys.add(key)
-
-            try:
-                from rememb.helpers import _check_semantic_conflict
-
-                model = _store_context.get_model(root)
-                for item in prepared_items:
-                    semantic_entries = entries
-                    if normalized_scope == "section":
-                        semantic_entries = [
-                            entry for entry in entries if entry.get("section") == item["section"]
-                        ]
-                    conflict = _check_semantic_conflict(
-                        root,
-                        semantic_entries,
-                        item["content"],
-                        model,
-                        threshold=float(config["semantic_conflict_threshold"]),
-                        persist=(normalized_scope != "section"),
-                    )
-                    if conflict:
-                        raise RemembValidationError(
-                            f"Semantic Bodyguard triggered: You attempted to save something nearly identical to [id: {conflict['id']}] "
-                            f"in section '{conflict['section']}'.\nIf you meant to update a rule, use the 'rememb_edit' tool with this ID instead."
-                        )
-            except ImportError:
-                pass
-            finally:
-                _store_context.schedule_model_release(root)
 
         existing_ids = {entry["id"] for entry in entries}
         now = _now()
@@ -262,7 +232,6 @@ def write_entry(
         content: Entry content (1-3 sentences recommended)
         tags: Optional list of tags for categorization
         skip_duplicates: If True, reject duplicate content in same section
-        semantic_scope: Scope for semantic duplicate guard: "global" or "section"
     
     Returns:
         Created entry dictionary with id, section, content, tags, timestamps
@@ -330,29 +299,32 @@ def consolidate_entries(
     mode: str = "exact",
     similarity_threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
 ) -> dict:
-    """Consolidate entries with exact or semantic duplicate detection.
+    """Consolidate entries with exact duplicate detection.
 
     Args:
         root: Project root path
         section: Optional section filter. When provided, only that section is deduplicated.
-        mode: Consolidation mode. Supported: "exact" or "semantic".
-        similarity_threshold: Cosine similarity threshold used when mode="semantic".
+        mode: Deprecated. Only exact normalized-content matching is supported.
+        similarity_threshold: Deprecated and ignored.
 
     Returns:
         Dictionary with consolidation summary
     """
-    logger.debug(
-        f"consolidate_entries called: section={section}, mode={mode}, similarity_threshold={similarity_threshold}"
-    )
+    if mode.lower().strip() != "exact":
+        warnings.warn(
+            "semantic consolidate mode is deprecated; use exact mode and let the agent review duplicates.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if similarity_threshold != DEFAULT_SEMANTIC_CONFLICT_THRESHOLD:
+        warnings.warn(
+            "similarity_threshold is deprecated and ignored.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    logger.debug("consolidate_entries called: section=%s", section)
     _assert_initialized(root)
     target_section = _validate_section(section, root) if section else None
-    normalized_mode = mode.lower().strip()
-
-    if normalized_mode not in {"exact", "semantic"}:
-        raise RemembValidationError("Invalid consolidation mode. Use 'exact' or 'semantic'.")
-
-    if similarity_threshold <= 0 or similarity_threshold > 1:
-        raise RemembValidationError("similarity_threshold must be > 0 and <= 1.")
 
     def _safe_int(value: object) -> int:
         return value if isinstance(value, int) else 0
@@ -379,93 +351,26 @@ def consolidate_entries(
             return incoming
         return current
 
-    def _cosine_similarity(vec_a: object, vec_b: object) -> float:
-        if not isinstance(vec_a, (list, tuple)) or not isinstance(vec_b, (list, tuple)):
-            return 0.0
-        if len(vec_a) == 0 or len(vec_b) == 0 or len(vec_a) != len(vec_b):
-            return 0.0
-
-        dot = 0.0
-        norm_a = 0.0
-        norm_b = 0.0
-        for a, b in zip(vec_a, vec_b):
-            af = float(a)
-            bf = float(b)
-            dot += af * bf
-            norm_a += af * af
-            norm_b += bf * bf
-
-        if norm_a == 0.0 or norm_b == 0.0:
-            return 0.0
-        return dot / ((norm_a ** 0.5) * (norm_b ** 0.5))
-
     def _consolidate(entries: list[dict]) -> dict:
         total_before = len(entries)
         kept: list[dict] = []
         index_by_key: dict[tuple[str, str], int] = {}
-        semantic_refs: dict[str, list[tuple[int, object]]] = {}
         removed_ids: list[str] = []
         merged_groups = 0
-        model = None
-        embeddings_by_idx: dict[int, object] = {}
 
-        if normalized_mode == "semantic":
-            try:
-                model = _store_context.get_model(root)
-                if model is None:
-                    raise RemembError("Semantic model unavailable")
-            except ImportError as e:
-                raise RemembError(str(e)) from e
-            try:
-                target_indexes = []
-                target_texts = []
-                for idx, entry in enumerate(entries):
-                    entry_section = _safe_str(entry.get("section", "context"))
-                    if target_section and entry_section != target_section:
-                        continue
-                    target_indexes.append(idx)
-                    target_texts.append(_safe_str(entry.get("content")))
-
-                if target_texts:
-                    vectors = model.encode(target_texts, show_progress_bar=False, batch_size=32)
-                    for local_idx, global_idx in enumerate(target_indexes):
-                        embeddings_by_idx[global_idx] = vectors[local_idx].tolist()
-            finally:
-                _store_context.schedule_model_release(root)
-
-        for idx, entry in enumerate(entries):
+        for entry in entries:
             entry_section = _safe_str(entry.get("section", "context"))
             if target_section and entry_section != target_section:
                 kept.append(entry)
                 continue
 
-            existing_idx = None
-            if normalized_mode == "exact":
-                key = _entry_key(entry)
-                existing_idx = index_by_key.get(key)
-            else:
-                entry_vec = embeddings_by_idx.get(idx)
-                if entry_vec is not None:
-                    section_refs = semantic_refs.get(entry_section, [])
-                    best_idx = None
-                    best_score = -1.0
-                    for kept_idx, ref_vec in section_refs:
-                        score = _cosine_similarity(entry_vec, ref_vec)
-                        if score >= similarity_threshold and score > best_score:
-                            best_score = score
-                            best_idx = kept_idx
-                    existing_idx = best_idx
+            key = _entry_key(entry)
+            existing_idx = index_by_key.get(key)
 
             if existing_idx is None:
                 kept_idx = len(kept)
                 kept.append(entry)
-                if normalized_mode == "exact":
-                    key = _entry_key(entry)
-                    index_by_key[key] = kept_idx
-                else:
-                    entry_vec = embeddings_by_idx.get(idx)
-                    if entry_vec is not None:
-                        semantic_refs.setdefault(entry_section, []).append((kept_idx, entry_vec))
+                index_by_key[key] = kept_idx
                 continue
 
             merged_groups += 1
@@ -524,8 +429,7 @@ def consolidate_entries(
             "merged_groups": merged_groups,
             "removed_ids": removed_ids,
             "section": target_section,
-            "mode": normalized_mode,
-            "similarity_threshold": similarity_threshold,
+            "mode": "exact",
         }
 
     return _atomic_modify(root, _consolidate)
@@ -851,17 +755,20 @@ def search_entries(
     *,
     include_deleted: bool = False,
 ) -> list[dict]:
-    """Search entries by semantic similarity.
-    
+    """Search entries by keyword and token overlap.
+
+    Semantic relevance is left to the calling agent. This function performs
+    deterministic lexical matching and returns the top_k highest-scoring entries.
+
     Args:
         root: Project root path
-        query: Search query (natural language or keywords)
+        query: Search query (keywords or short phrases)
         top_k: Maximum number of results to return
-        section: Optional section filter applied before semantic search
-        tag: Optional exact tag filter applied before semantic search
-    
+        section: Optional section filter applied before search
+        tag: Optional exact tag filter applied before search
+
     Returns:
-        List of top-k matching entries ranked by similarity
+        List of top-k matching entries ranked by lexical score
     """
     logger.debug(
         "search_entries called: query='%s', top_k=%s, section=%s, tag=%s",
@@ -881,15 +788,8 @@ def search_entries(
         logger.warning("No entries to search")
         return []
 
-    try:
-        model = _store_context.get_model(root)
-        try:
-            results = _semantic_search(root, entries, query, top_k, model, persist=not bool(section or tag))
-        finally:
-            _store_context.schedule_model_release(root)
-    except ImportError as e:
-        raise RemembError(str(e)) from e
-        
+    results = _keyword_search(entries, query, top_k)
+
     logger.info(f"Search returned {len(results)} results for query '{query}'")
 
     if results:
@@ -1026,6 +926,21 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
     }
 
 
+AGENT_SUMMARIZE_THRESHOLD = 8
+
+
+def agent_summarize_hint(entry_count: int, *, has_more: bool = False) -> str:
+    """Return guidance for the calling agent when a read payload is large."""
+    if entry_count < AGENT_SUMMARIZE_THRESHOLD and not has_more:
+        return ""
+    more = " More pages may remain." if has_more else ""
+    return (
+        f"\n---\nAgent note: {entry_count} entries returned.{more} "
+        "Summarize task-relevant facts in your working context. "
+        "Narrow with section, tag, rememb_search, or smaller rememb_read_page limits when needed."
+    )
+
+
 def format_entries(
     entries: list[dict],
     include_id: bool = False,
@@ -1040,12 +955,19 @@ def format_entries(
         entries: List of entry dictionaries
         include_id: If True, include entry IDs in output
         include_score: If True, include semantic scores when available
-        max_chars: Optional maximum number of content characters per entry
-        summary_only: If True, render a compact one-line summary per entry
+        max_chars: Optional mechanical cap on content characters per entry
+        summary_only: Deprecated. Ignored; agents summarize semantically after reads.
     
     Returns:
         Formatted markdown string
     """
+    if summary_only:
+        warnings.warn(
+            "summary_only is deprecated; rememb returns full entry content and agents summarize semantically.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     if not entries:
         return "No memory entries found."
 
@@ -1066,18 +988,13 @@ def format_entries(
         lines.append(f"## {section.capitalize()}")
         for item in items:
             content = _truncate(str(item.get("content", "")))
-            if summary_only and not content:
-                content = ""
             tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
             score = item.get("score")
             score_text = f" (score: {float(score):.3f})" if include_score and isinstance(score, (int, float)) else ""
             prefix = f"[{item['id']}] " if include_id else ""
-            if summary_only:
-                lines.append(f"- {prefix}{content}{score_text}{tags}")
-            else:
-                ts = (item.get("updated_at") or item.get("created_at") or "")[:10]
-                ts_str = f" [{ts}]" if ts else ""
-                lines.append(f"- {prefix}{content}{score_text}{tags}{ts_str}")
+            ts = (item.get("updated_at") or item.get("created_at") or "")[:10]
+            ts_str = f" [{ts}]" if ts else ""
+            lines.append(f"- {prefix}{content}{score_text}{tags}{ts_str}")
         lines.append("")
 
     return "\n".join(lines)

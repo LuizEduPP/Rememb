@@ -23,6 +23,7 @@ def test_system_info_endpoint(monkeypatch, tmp_path):
     assert "entries.json" in payload["storage_files"]
     assert "version" in payload
     assert "skills_count" in payload
+    assert payload["skills_count"] > 0
 
 
 def test_stats_includes_storage_backend(monkeypatch, tmp_path):

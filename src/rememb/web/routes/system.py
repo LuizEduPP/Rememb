@@ -38,14 +38,6 @@ def _storage_files(root: Path) -> list[str]:
     return [path.name for path in candidates if path.exists()]
 
 
-def _skills_package_info() -> tuple[bool, str]:
-    try:
-        import rememb_skills  # noqa: F401
-    except ImportError:
-        return False, ""
-    return True, "rememb_skills"
-
-
 @router.get("/api/stats")
 async def stats_endpoint() -> dict:
     root = await asyncio.to_thread(deps.get_root)
@@ -117,12 +109,9 @@ async def system_info_endpoint() -> dict:
     root = await asyncio.to_thread(deps.get_root)
     raw = await asyncio.to_thread(get_stats, root)
     skills = await asyncio.to_thread(list_skill_definitions)
-    skills_installed, skills_package = _skills_package_info()
     return {
         "storage_backend": raw.get("storage_backend", "json"),
         "storage_files": _storage_files(root),
-        "skills_installed": skills_installed,
-        "skills_package": skills_package,
         "skills_count": len(skills),
         "version": __version__,
     }

@@ -49,8 +49,6 @@ const api = {
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
 };
 
-let semanticModels = [];
-
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -131,13 +129,6 @@ function readFloatInput(id, fallback) {
   const raw = document.getElementById(id)?.value ?? '';
   const parsed = parseFloat(String(raw).trim());
   return Number.isNaN(parsed) ? fallback : parsed;
-}
-
-function renderModelSelect(currentValue) {
-  const opts = semanticModels.map((m) =>
-    `<option value="${escHtml(m.name)}" ${m.name === currentValue ? 'selected' : ''} title="${escHtml(m.description)}">${escHtml(m.label)}</option>`
-  ).join('');
-  return `<select id="cfg-model" class="input">${opts}</select>`;
 }
 
 function parseUnifiedDiff(diffText) {
@@ -657,9 +648,8 @@ function renderCards(entries, append = false) {
 
 async function loadConfig() {
   try {
-    const [config, modelsData] = await Promise.all([api.config(), api.models()]);
+    const config = await api.config();
     state.config = config;
-    semanticModels = modelsData.models || [];
     state.limit = state.config.entry_batch_size || 24;
     renderSections();
   } catch (e) {
@@ -959,21 +949,12 @@ function openConsolidateModal() {
       <button class="modal-close" type="button">×</button>
     </header>
     <section class="modal-body">
+      <p class="lede">Merge entries with identical normalized content. Near-duplicates stay separate for the agent to review.</p>
       <label class="field">Section <small>(optional)</small>
         <select id="f-cons-section" class="input">
           <option value="">All sections</option>
           ${opts}
         </select>
-      </label>
-      <label class="field">Mode
-        <select id="f-cons-mode" class="input">
-          <option value="exact">Exact (normalized content match)</option>
-          <option value="semantic">Semantic (similarity threshold)</option>
-        </select>
-      </label>
-      <label class="field" id="threshold-group" hidden>Similarity threshold
-        <input type="number" id="f-threshold" value="0.88" step="0.01" min="0.5" max="1.0">
-        <span class="lede">Higher = stricter (less aggressive). Range: 0.5 – 1.0</span>
       </label>
     </section>
     <footer class="modal-foot">
@@ -982,21 +963,11 @@ function openConsolidateModal() {
     </footer>
   `, 'modal-compact'));
 
-  const modeSelect = document.getElementById('f-cons-mode');
-  const thresholdGroup = document.getElementById('threshold-group');
-  if (modeSelect && thresholdGroup) {
-    modeSelect.addEventListener('change', () => {
-      thresholdGroup.hidden = modeSelect.value !== 'semantic';
-    });
-  }
-
   bindEvent('btn-cancel-consolidate', 'click', closeModal);
   bindEvent('btn-run-consolidate', 'click', async () => {
     const section = document.getElementById('f-cons-section').value || null;
-    const mode = modeSelect.value;
-    const threshold = parseFloat(document.getElementById('f-threshold').value) || 0.88;
     try {
-      const data = await api.consolidate({ section, mode, similarity_threshold: threshold });
+      const data = await api.consolidate({ section, mode: 'exact' });
       closeModal();
       const result = data.result || {};
       const removed = result.removed_count ?? result.removed ?? result.merged ?? 0;
@@ -1091,39 +1062,14 @@ function renderSkillsCards(skills) {
   `).join('');
 }
 
-function renderSkillsPackageBanner(info) {
-  const banner = document.getElementById('skills-package-banner');
-  if (!banner) return;
-  if (!info || info.skills_installed) {
-    banner.hidden = true;
-    banner.innerHTML = '';
-    return;
-  }
-  banner.hidden = false;
-  banner.innerHTML = `
-    <p><strong>rememb-skills is not installed.</strong> Install optional skills with
-    <code>pip install rememb-skills</code> or <code>pip install rememb[skills]</code>.</p>`;
-}
-
 async function renderSkillsView() {
   const root = document.getElementById('skills-root');
   root.innerHTML = '<article class="empty empty-loading">Loading…</article>';
   try {
-    const [data, info] = await Promise.all([
-      api.skills(),
-      state.systemInfo ? Promise.resolve(state.systemInfo) : api.systemInfo(),
-    ]);
-    state.systemInfo = info;
-    renderSkillsPackageBanner(info);
+    const data = await api.skills();
     const skills = data.skills || [];
     state.skills = skills;
-    if (!skills.length && !info?.skills_installed) {
-      root.innerHTML = '<article class="empty">No skills available. Install the rememb-skills package to browse bundled agent skills.</article>';
-    } else if (!skills.length) {
-      root.innerHTML = '<article class="empty">No bundled skills found.</article>';
-    } else {
-      root.innerHTML = renderSkillsCards(skills);
-    }
+    root.innerHTML = renderSkillsCards(skills);
     document.getElementById('skills-updated').textContent = `${skills.length} skills · ${relTime(new Date().toISOString())}`;
     root.querySelectorAll('[data-open-skill]').forEach((card) => {
       card.addEventListener('click', () => openSkillModal(card.dataset.openSkill));
@@ -1184,16 +1130,6 @@ function renderSettingsPage() {
           ${state.systemInfo?.storage_files?.length ? `<p class="lede">Active files: ${escHtml(state.systemInfo.storage_files.join(', '))}</p>` : ''}
         </section>
         <section class="surface">
-          ${settingsSectionTitle('Semantic search')}
-          <div class="form-grid">
-            <label class="field">Model
-              ${renderModelSelect(cfg.semantic_model_name || '')}
-            </label>
-            <label class="field">Conflict threshold<input type="number" id="cfg-threshold" step="0.01" min="0.5" max="1.0" value="${escHtml(String(cfg.semantic_conflict_threshold))}"></label>
-            <label class="field">Model idle TTL (s)<input type="number" id="cfg-ttl" value="${escHtml(String(cfg.semantic_model_idle_ttl_seconds))}"></label>
-          </div>
-        </section>
-        <section class="surface">
           ${settingsSectionTitle('Sections')}
           <table class="table">
             <thead><tr><th>Name</th><th>Color</th><th></th></tr></thead>
@@ -1208,7 +1144,7 @@ function renderSettingsPage() {
       <section class="surface surface--split">
         <div>
           <h4>Consolidate duplicates</h4>
-          <p class="lede">Remove semantically duplicate entries from the store.</p>
+          <p class="lede">Remove literal duplicate entries with identical normalized content. Review near-duplicates in the agent before merging.</p>
         </div>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-consolidate-page">Run consolidate</button>
       </section>
@@ -1259,9 +1195,6 @@ function renderSettingsPage() {
       max_tag_length: readIntInput('cfg-max-tag-len', cfg.max_tag_length),
       entry_batch_size: readIntInput('cfg-batch-size', cfg.entry_batch_size),
       entry_load_threshold: readIntInput('cfg-load-threshold', cfg.entry_load_threshold),
-      semantic_model_name: document.getElementById('cfg-model').value.trim() || cfg.semantic_model_name,
-      semantic_conflict_threshold: readFloatInput('cfg-threshold', cfg.semantic_conflict_threshold),
-      semantic_model_idle_ttl_seconds: readIntInput('cfg-ttl', cfg.semantic_model_idle_ttl_seconds),
       storage_backend: document.getElementById('cfg-storage-backend').value,
       sections,
       section_colors,

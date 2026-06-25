@@ -149,17 +149,11 @@ def _parse_simple_frontmatter(content: str) -> dict[str, str]:
 
 
 def _default_skill_roots() -> list[Path]:
-    """Return configured skill roots from the optional rememb-skills package."""
-    roots: list[Path] = []
-    try:
-        import rememb_skills
+    """Return bundled skill roots shipped with rememb."""
+    import rememb_skills
 
-        package_root = Path(rememb_skills.__file__).resolve().parent
-        if package_root.is_dir():
-            roots.append(package_root)
-    except ImportError:
-        pass
-    return roots
+    package_root = Path(rememb_skills.__file__).resolve().parent
+    return [package_root] if package_root.is_dir() else []
 
 
 def list_skill_definitions(skill_roots: list[Path] | None = None) -> list[dict[str, str]]:

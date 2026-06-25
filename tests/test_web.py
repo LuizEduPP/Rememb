@@ -10,6 +10,14 @@ from rememb.store import init, write_entry
 client = TestClient(web.app)
 
 
+def test_static_assets_ship_with_package():
+    from rememb.web.app import _STATIC_DIR
+
+    for name in ("index.html", "style.css", "app.js", "logo.png"):
+        path = _STATIC_DIR / name
+        assert path.is_file(), f"missing static asset: {name} ({path})"
+
+
 def test_index_exposes_deleted_and_history_controls():
     response = client.get("/")
 

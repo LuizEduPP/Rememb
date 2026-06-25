@@ -54,7 +54,7 @@ where = ["src"]
 include = ["rememb*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.md", "*.json", "*.gif", "*.html", "*.png"]
+"*" = ["*.md", "*.json", "*.gif", "*.html", "*.png", "*.css", "*.js"]
 rememb_skills = ["**/*"]
 
 [tool.setuptools]

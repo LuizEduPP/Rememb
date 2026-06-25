@@ -156,7 +156,7 @@ Set `storage_backend` to `sqlite` for larger stores. The Web UI and MCP migrate 
 
 Section names are normalized to lowercase, duplicates are ignored after normalization, and removing a section with existing entries automatically migrates those entries to `uncategorized`. `meta.json` is kept in sync with the current effective section list.
 
-Legacy keys (`semantic_model_name`, `semantic_model_idle_ttl_seconds`, `semantic_conflict_threshold`) may still appear in older stores but are **not used** by search, write guards, or consolidate since v0.4.12.
+Older stores may still contain legacy embedding-related config keys; they are dropped the next time configuration is loaded or saved.
 
 ---
 

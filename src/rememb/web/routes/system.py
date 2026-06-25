@@ -8,14 +8,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from rememb import __version__
-from rememb.config import SEMANTIC_MODEL_CHOICES
 from rememb.store import consolidate_entries, get_config, get_stats, update_config
 from rememb.utils import (
     _config_path,
     _entries_db_path,
     _entries_path,
     _meta_path,
-    _rememb_path,
     list_skill_definitions,
     load_skill_definition,
 )
@@ -32,8 +30,6 @@ def _storage_files(root: Path) -> list[str]:
         _entries_db_path(root),
         _config_path(root),
         _meta_path(root),
-        _rememb_path(root) / "embeddings.npy",
-        _rememb_path(root) / "embeddings.hash",
     ]
     return [path.name for path in candidates if path.exists()]
 
@@ -69,11 +65,6 @@ async def config_update(req: ConfigUpdateRequest) -> dict:
         raise_http_error(exc)
 
 
-@router.get("/api/models")
-async def models_endpoint() -> dict:
-    return {"models": SEMANTIC_MODEL_CHOICES}
-
-
 @router.get("/api/skills")
 async def skills_endpoint() -> dict:
     skills = await asyncio.to_thread(list_skill_definitions)
@@ -96,8 +87,6 @@ async def consolidate(req: ConsolidateRequest) -> dict:
             consolidate_entries,
             root,
             req.section,
-            req.mode,
-            req.similarity_threshold,
         )
         return {"result": result}
     except Exception as exc:

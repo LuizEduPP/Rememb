@@ -40,7 +40,7 @@ src/rememb/
 ├── cli.py               # CLI entrypoints (web UI default, mcp subcommand)
 ├── config.py            # Default config and constants
 ├── exceptions.py        # Custom exceptions
-├── helpers.py           # Store context, keyword search, legacy semantic helpers
+├── helpers.py           # Store context, keyword search, validation helpers
 ├── mcp_server.py        # MCP server (17 public tools)
 ├── utils.py             # Shared utilities and skill discovery
 ├── store/

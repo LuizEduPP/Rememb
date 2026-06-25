@@ -22,7 +22,6 @@ It is intentionally conservative. Anything listed here should be read as one of 
 |-----------|--------|-------|
 | Web UI via `rememb` | Documented | FastAPI + SPA; default `http://127.0.0.1:18181` |
 | CLI version/help output | Tested | Covered by pytest |
-| `rememb fetch-model` | Disabled | Hidden CLI command; exits with guidance (keyword search since v0.4.12) |
 | JSON storage backend | Tested | Default `~/.rememb/entries.json` (home-first) |
 | SQLite storage backend | Tested | Optional `storage_backend: sqlite`; auto-migrates from JSON |
 

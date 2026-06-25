@@ -55,8 +55,7 @@ def test_init_creates_expected_files_and_gitignore(tmp_path):
     assert meta["sections"] == DEFAULT_SECTIONS
 
     gitignore = (root / ".gitignore").read_text(encoding="utf-8")
-    assert ".rememb/embeddings.npy" in gitignore
-    assert ".rememb/embeddings.hash" in gitignore
+    assert ".rememb/entries.db" in gitignore
 
 
 def test_write_entry_roundtrip_and_stats(tmp_path):

@@ -51,8 +51,7 @@ We take security seriously. If you discover a security vulnerability in rememb, 
    - Subscribe to [releases](https://github.com/LuizEduPP/Rememb/releases) for security patches
 
 4. **Dependency Audit**
-   - Core runtime deps: `typer`, `rich`, `fastapi`, `uvicorn`, `mcp`, `numpy`, `pypdf`
-   - `sentence-transformers` remains in the package but is not used by search or write paths since v0.4.12
+   - Core runtime deps: `typer`, `rich`, `fastapi`, `uvicorn`, `mcp`, `pypdf`
    - We monitor for vulnerability alerts via GitHub Dependabot
 
 ## Vulnerability Disclosure Timeline

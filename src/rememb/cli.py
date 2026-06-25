@@ -171,10 +171,3 @@ def mcp(
     except ImportError as e:
         print(f"MCP support requires additional dependencies: {e}")
         raise typer.Exit(1)
-
-@app.command(name="fetch-model", hidden=True)
-def fetch_model():
-    """Disabled: rememb no longer downloads local embedding models."""
-    console.print("[bold yellow]fetch-model is disabled.[/bold yellow]")
-    console.print("[dim]Search uses keyword matching; agents handle semantic relevance.[/dim]")
-    raise typer.Exit(1)

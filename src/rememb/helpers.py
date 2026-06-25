@@ -1,36 +1,14 @@
 """Helper functions and classes for rememb operations."""
 
-import gc
-import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["TQDM_DISABLE"] = "0"
-
-try:
-    import tqdm.std as tqdm_std
-
-    tqdm_write_lock = getattr(tqdm_std, "TqdmDefaultWriteLock", None)
-    if tqdm_write_lock is not None:
-        tqdm_write_lock.create_mp_lock()
-except Exception:
-    pass
-
-import hashlib
 import json
 import logging
+import os
 import platform
 import re
-import threading
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Any, Callable, Protocol, TypeVar, runtime_checkable
-
-try:
-    import numpy as np
-except ImportError:
-    np = None
 
 from rememb.config import (
     DEFAULT_ALL_SECTION_COLOR,
@@ -38,9 +16,6 @@ from rememb.config import (
     DEFAULT_SECTION_COLORS,
     DEFAULT_SECTIONS,
     DEFAULT_CONFIG,
-    DEFAULT_SEMANTIC_MODEL_NAME,
-    DEFAULT_SEMANTIC_CONFLICT_THRESHOLD,
-    DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS,
     NON_NEGATIVE_INT_CONFIG_KEYS,
     POSITIVE_INT_CONFIG_KEYS,
     UNIT_INTERVAL_FLOAT_CONFIG_KEYS,
@@ -255,13 +230,6 @@ def _validate_config_updates(
             next_config[key] = parsed_f
             continue
 
-        if key == "semantic_model_name":
-            model_name = str(value).strip()
-            if not model_name:
-                raise RemembValidationError("semantic_model_name cannot be empty.")
-            next_config[key] = model_name
-            continue
-
         if key == "sections":
             next_config[key] = _validate_sections_config(value)
             continue
@@ -308,7 +276,6 @@ class MemoryStore(Protocol):
         content: str,
         tags: list[str] | None = None,
         skip_duplicates: bool = True,
-        semantic_scope: str = "global",
     ) -> dict:
         """Write a new entry to memory."""
         ...
@@ -318,7 +285,6 @@ class MemoryStore(Protocol):
         root: Path,
         items: list[dict[str, Any]],
         skip_duplicates: bool = True,
-        semantic_scope: str = "global",
     ) -> list[dict]:
         """Write multiple entries to memory atomically."""
         ...
@@ -382,17 +348,11 @@ class MemoryStore(Protocol):
 
 
 class StoreContext:
-    """Encapsulates cache and config for store operations.
-    
-    Manages embedding model cache and configuration cache
-    to enable dependency injection and easier testing.
-    """
+    """Encapsulates configuration cache for store operations."""
+
     def __init__(self):
-        self._model_cache: dict[str, Any] = {}
         self._config_cache: dict[str, dict[str, Any]] = {}
         self._config_cache_mtime: dict[str, float | None] = {}
-        self._model_lock = threading.Lock()
-        self._model_release_timer: threading.Timer | None = None
 
     def clear_config_cache(self, root: Path | None = None) -> None:
         if root is None:
@@ -403,107 +363,6 @@ class StoreContext:
         self._config_cache.pop(root_key, None)
         self._config_cache_mtime.pop(root_key, None)
 
-    @staticmethod
-    def _parse_non_negative_int(value: object) -> int | None:
-        if value is None:
-            return None
-        try:
-            parsed = int(str(value).strip())
-        except (TypeError, ValueError):
-            return None
-        return parsed if parsed >= 0 else None
-
-    def get_semantic_model_name(self, root: Path | None = None) -> str:
-        env_model_name = os.getenv("REMEMB_SEMANTIC_MODEL_NAME")
-        if env_model_name and env_model_name.strip():
-            return env_model_name.strip()
-
-        if root is not None:
-            config = self.get_config(root)
-            config_model_name = str(config.get("semantic_model_name", "")).strip()
-            if config_model_name:
-                return config_model_name
-
-        return DEFAULT_SEMANTIC_MODEL_NAME
-
-    def get_model_idle_ttl_seconds(self, root: Path | None = None) -> int:
-        env_ttl = self._parse_non_negative_int(os.getenv("REMEMB_SEMANTIC_MODEL_IDLE_TTL_SECONDS"))
-        if env_ttl is not None:
-            return env_ttl
-
-        if root is not None:
-            config = self.get_config(root)
-            config_ttl = self._parse_non_negative_int(config.get("semantic_model_idle_ttl_seconds"))
-            if config_ttl is not None:
-                return config_ttl
-
-        return DEFAULT_SEMANTIC_MODEL_IDLE_TTL_SECONDS
-
-    def _cancel_release_timer_locked(self) -> None:
-        if self._model_release_timer is not None:
-            self._model_release_timer.cancel()
-            self._model_release_timer = None
-
-    def release_model(self) -> None:
-        """Release the embedding model cache to free resident memory."""
-        with self._model_lock:
-            self._cancel_release_timer_locked()
-            model = self._model_cache.pop("model", None)
-            self._model_cache.pop("model_name", None)
-
-        if model is not None:
-            del model
-            gc.collect()
-
-    def schedule_model_release(self, root: Path | None = None) -> None:
-        """Schedule embedding model eviction after the configured idle window."""
-        idle_ttl_seconds = self.get_model_idle_ttl_seconds(root)
-        if idle_ttl_seconds == 0:
-            self.release_model()
-            return
-
-        with self._model_lock:
-            if "model" not in self._model_cache:
-                return
-
-            self._cancel_release_timer_locked()
-            timer = threading.Timer(idle_ttl_seconds, self.release_model)
-            timer.daemon = True
-            self._model_release_timer = timer
-            timer.start()
-
-    def get_model(self, root: Path | None = None):
-        """Get or create embedding model.
-        
-        Returns:
-            SentenceTransformer model instance (cached)
-        """
-        model_name = self.get_semantic_model_name(root)
-
-        with self._model_lock:
-            self._cancel_release_timer_locked()
-            cached_model = self._model_cache.get("model")
-            cached_model_name = self._model_cache.get("model_name")
-
-        if cached_model is not None and cached_model_name == model_name:
-            return cached_model
-
-        if cached_model is not None and cached_model_name != model_name:
-            self.release_model()
-
-        if "model" not in self._model_cache:
-            try:
-                import torch
-                torch.set_num_threads(1)
-            except ImportError:
-                pass
-            from sentence_transformers import SentenceTransformer
-            model = SentenceTransformer(model_name)
-            with self._model_lock:
-                self._model_cache["model"] = model
-                self._model_cache["model_name"] = model_name
-                return self._model_cache["model"]
-    
     def get_config(self, root: Path) -> dict[str, Any]:
         """Load configuration from .rememb/config.json or use defaults.
         
@@ -643,18 +502,6 @@ def _atomic_modify(root: Path, modifier: Callable[[list[dict]], _ModifierResult]
 
     return get_storage_backend(root).atomic_modify(root, modifier)
 
-def _compute_entries_hash(entries: list[dict]) -> str:
-    """Compute SHA256 hash of entries for cache validation.
-    
-    Args:
-        entries: List of entry dictionaries
-    
-    Returns:
-        Hexadecimal hash string
-    """
-    content = json.dumps(entries, sort_keys=True)
-    return hashlib.sha256(content.encode()).hexdigest()
-
 
 def _normalize_search_text(value: object) -> str:
     if not isinstance(value, str):
@@ -679,32 +526,6 @@ def _search_document(entry: dict[str, Any]) -> str:
     )
     return " ".join(part for part in (section, tags, content) if part)
 
-
-def _load_or_compute_embeddings(root: Path, texts: list[str], entries: list[dict], model, *, persist: bool = True) -> Any:
-    """Load embeddings from disk cache or compute and persist them."""
-    numpy_module = np
-    if numpy_module is None:
-        raise ImportError(
-            "Semantic search requires numpy and sentence-transformers.\n"
-            "Install with: pip install rememb"
-        )
-
-    current_hash = _compute_entries_hash(entries)
-    embeddings_path = _rememb_path(root) / "embeddings.npy"
-    hash_path = _rememb_path(root) / "embeddings.hash"
-
-    if persist and embeddings_path.exists() and hash_path.exists():
-        try:
-            if hash_path.read_text(encoding="utf-8") == current_hash:
-                return numpy_module.load(str(embeddings_path))
-        except (OSError, ValueError):
-            pass
-
-    embeddings = model.encode(texts, show_progress_bar=False, batch_size=32)
-    if persist:
-        numpy_module.save(str(embeddings_path), embeddings)
-        hash_path.write_text(current_hash, encoding="utf-8")
-    return embeddings
 
 def _keyword_search(
     entries: list[dict],
@@ -765,110 +586,6 @@ def _keyword_search(
         ranked.append(item)
     return ranked
 
-
-def _check_semantic_conflict(root: Path, entries: list[dict], content: str, model, threshold: float = DEFAULT_SEMANTIC_CONFLICT_THRESHOLD, *, persist: bool = True) -> dict | None:
-    """Check if the content is semantically a duplicate of an existing entry.
-
-    .. deprecated::
-        Duplicate detection is exact-only; agents should use rememb_edit instead of near-duplicates.
-    """
-    warnings.warn(
-        "_check_semantic_conflict is deprecated; use exact duplicate checks and let agents handle near-duplicates.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if np is None or not entries:
-        return None
-        
-    texts = [e["content"] for e in entries]
-    embeddings = _load_or_compute_embeddings(root, texts, entries, model, persist=persist)
-        
-    query_vec = model.encode([content], show_progress_bar=False)[0]
-    norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
-    
-    for i, e in enumerate(entries):
-        base_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
-        if base_score > threshold:
-            return e
-    return None
-
-
-def _semantic_search(root: Path, entries: list[dict], query: str, top_k: int, model, *, persist: bool = True) -> list[dict]:
-    """Perform semantic search using embeddings.
-
-    .. deprecated::
-        Search no longer loads embedding models. Use :func:`_keyword_search`
-        and let the calling agent rank semantic relevance.
-    """
-    warnings.warn(
-        "_semantic_search is deprecated; use _keyword_search and let agents handle semantic ranking.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if np is None:
-        raise ImportError(
-            "Semantic search requires numpy and sentence-transformers.\n"
-            "Install with: pip install rememb"
-        )
-    if model is None:
-        raise ImportError(
-            "Semantic search requires sentence-transformers.\n"
-            "Install with: pip install rememb"
-        )
-
-    texts = [_search_document(e) for e in entries]
-    embeddings = _load_or_compute_embeddings(root, texts, entries, model, persist=persist)
-
-    query_vec = model.encode([query], show_progress_bar=False)[0]
-    normalized_query = _normalize_search_text(query)
-    query_tokens = _search_tokens(query)
-
-    norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_vec)
-    scores = np.zeros(len(entries))
-    
-    from datetime import datetime, timezone
-    now_ts = datetime.now(timezone.utc).timestamp()
-    
-    for i, e in enumerate(entries):
-        semantic_score = np.dot(embeddings[i], query_vec) / (norms[i] if norms[i] > 0 else 1e-10)
-        document = texts[i]
-        document_tokens = _search_tokens(document)
-        lexical_score = 0.0
-
-        if normalized_query and normalized_query in document:
-            lexical_score += 0.18
-
-        if query_tokens and document_tokens:
-            overlap_ratio = len(query_tokens & document_tokens) / len(query_tokens)
-            lexical_score += overlap_ratio * 0.22
-
-        tag_tokens: set[str] = set()
-        for tag in e.get("tags", []):
-            tag_tokens.update(_search_tokens(tag))
-        if query_tokens and tag_tokens:
-            tag_overlap_ratio = len(query_tokens & tag_tokens) / len(query_tokens)
-            lexical_score += tag_overlap_ratio * 0.12
-
-        base_score = float(semantic_score) + lexical_score
-
-        try:
-            entry_timestamp = str(e.get("updated_at") or e.get("created_at") or "")
-            pts = datetime.strptime(entry_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
-            days_old = (now_ts - pts) / 86400.0
-            decay = max(0.92, 1.0 - (days_old * 0.0006))
-            base_score *= decay
-        except Exception:
-            pass
-            
-        scores[i] = max(-1.0, base_score)
-
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    ranked: list[dict] = []
-    for index in top_indices:
-        item = dict(entries[index])
-        item["score"] = round(float(scores[index]), 4)
-        ranked.append(item)
-    return ranked
 
 def _sanitize_content(content: str, root: Path) -> str:
     """Sanitize and validate entry content.

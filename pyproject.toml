@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rememb"
-version = "0.4.15"
+version = "0.4.16"
 description = "Persistent memory standard for AI agents — local, portable, zero config"
 readme = "README.md"
 license = "MIT"
@@ -39,6 +39,10 @@ dev = ["build", "twine", "pytest>=8.0.0", "httpx>=0.27.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["-m", "not docker"]
+markers = [
+    "docker: builds the Dockerfile against a registry (opt-in via REMEMB_DOCKER_SMOKE=1)",
+]
 
 [project.urls]
 Homepage = "https://github.com/LuizEduPP/rememb"

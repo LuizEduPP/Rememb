@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-08-01
+
+### Fixed
+- Stop running the Dockerfile smoke build inside the default pytest suite. Registry timeouts on Docker Hub were failing CI; image smoke remains in the dedicated `docker-smoke` GitHub Actions job (Buildx + GHA cache). Opt-in locally with `REMEMB_DOCKER_SMOKE=1 pytest -m docker`.
+
 ## [0.4.15] - 2026-08-01
 
 ### Fixed

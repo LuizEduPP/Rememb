@@ -451,6 +451,10 @@ button.chip { cursor: pointer; }
   border-radius: 0 8px 8px 0;
 }
 .prose code { font-family: var(--mono); font-size: 12px; background: var(--muted-surface); padding: 1px 4px; border-radius: 4px; }
+.prose a { color: #0891b2; text-decoration: underline; text-underline-offset: 2px; }
+.prose .table-wrap { overflow-x: auto; max-width: 100%; }
+.prose .table { margin: 0; min-width: 100%; }
+.prose .table th, .prose .table td { vertical-align: top; word-break: normal; overflow-wrap: anywhere; }
 
 /* versions + diff */
 

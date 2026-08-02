@@ -49,6 +49,7 @@ from rememb.utils import (
     _now,
     _rememb_path,
     _revision_label,
+    _validate_entry_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -815,6 +816,48 @@ def get_stats(root: Path) -> dict:
         "storage_backend": storage_backend,
         "oldest": oldest,
         "newest": newest,
+    }
+
+
+def _export_entry_payload(entry: dict[str, Any], *, include_versions: bool) -> dict[str, Any]:
+    payload = json.loads(json.dumps(entry))
+    if not include_versions:
+        payload.pop("history", None)
+    return payload
+
+
+def export_entries(
+    root: Path,
+    *,
+    entry_id: str | None = None,
+    include_versions: bool = True,
+    include_deleted: bool = False,
+) -> dict[str, Any] | None:
+    _assert_initialized(root)
+    if entry_id is not None:
+        if not _validate_entry_id(entry_id):
+            raise RemembValidationError(
+                f"Invalid entry ID format: {entry_id}. Expected 8 hex characters."
+            )
+        source = _find_entry(_load_entries(root), entry_id.lower())
+        if source is None:
+            return None
+        selected = [source]
+    else:
+        selected = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
+
+    entries = [
+        _export_entry_payload(entry, include_versions=include_versions)
+        for entry in selected
+    ]
+    return {
+        "format": "rememb-export",
+        "format_version": 1,
+        "exported_at": _now(),
+        "include_versions": include_versions,
+        "include_deleted": include_deleted if entry_id is None else _is_deleted_entry(selected[0]),
+        "entry_count": len(entries),
+        "entries": entries,
     }
 
 

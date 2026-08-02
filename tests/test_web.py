@@ -36,6 +36,13 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Version history" in script
     assert "Side-by-side diff" in script
     assert "/api/entries/" in script
+    assert "/api/export" in script
+    assert "Export memory" in script
+    assert "Include version history" in script
+    assert "renderMarkdownTable" in script
+    assert "parseCollapsedMarkdownTable" in script
+    assert "isMarkdownTableSeparator" in script
+    assert "table-wrap" in script
     assert "Overview" in response.text
     assert "Recent memory" in response.text
     assert "View all" in response.text
@@ -125,3 +132,48 @@ def test_versions_diff_and_restore_endpoints(monkeypatch, tmp_path):
     stats_response = client.get("/api/stats")
     assert stats_response.status_code == 200
     assert stats_response.json()["deleted_entries"] == 0
+
+
+def test_export_endpoint_all_and_single(monkeypatch, tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+    monkeypatch.setattr(deps, "get_root", lambda: root)
+
+    first = write_entry(root, "project", "Exportable alpha", ["export"])
+    second = write_entry(root, "user", "Exportable beta", ["export"])
+    client.put(f"/api/entries/{first['id']}", json={"content": "Exportable alpha edited"})
+    client.delete(f"/api/entries/{second['id']}")
+
+    all_current = client.get("/api/export", params={"include_versions": False, "include_deleted": False})
+    assert all_current.status_code == 200
+    assert "attachment" in all_current.headers.get("content-disposition", "")
+    all_payload = all_current.json()
+    assert all_payload["format"] == "rememb-export"
+    assert all_payload["include_versions"] is False
+    assert all_payload["entry_count"] == 1
+    assert all_payload["entries"][0]["id"] == first["id"]
+    assert "history" not in all_payload["entries"][0]
+
+    all_versions = client.get("/api/export", params={"include_versions": True, "include_deleted": True})
+    assert all_versions.status_code == 200
+    versions_payload = all_versions.json()
+    assert versions_payload["entry_count"] == 2
+    by_id = {entry["id"]: entry for entry in versions_payload["entries"]}
+    assert "history" in by_id[first["id"]]
+    assert len(by_id[first["id"]]["history"]) >= 1
+    assert by_id[second["id"]].get("deleted_at")
+
+    single = client.get(
+        "/api/export",
+        params={"entry_id": first["id"], "include_versions": False},
+    )
+    assert single.status_code == 200
+    single_payload = single.json()
+    assert single_payload["entry_count"] == 1
+    assert single_payload["entries"][0]["content"] == "Exportable alpha edited"
+    assert "history" not in single_payload["entries"][0]
+    assert first["id"] in single.headers.get("content-disposition", "")
+
+    missing = client.get("/api/export", params={"entry_id": "deadbeef"})
+    assert missing.status_code == 404

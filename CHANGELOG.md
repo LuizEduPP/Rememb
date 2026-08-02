@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-08-01
+
+### Fixed
+- Pin `mcp` to `>=1.0.0,<2` so CI/install does not pull MCP SDK v2, which removed low-level `@server.list_tools()` / `@server.call_tool()` decorators and broke server startup.
+
 ## [0.4.14] - 2026-08-01
 
 ### Added

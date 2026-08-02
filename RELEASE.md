@@ -53,7 +53,7 @@ Important:
 
 - The PyPI project name is lowercase: `rememb`.
 - The GitHub repository name must match the repository claims exactly: `Rememb`.
-- The tag must point to a commit whose `pyproject.toml` version matches the release tag (e.g. tag `v0.4.14` → `version = "0.4.14"`).
+- The tag must point to a commit whose `pyproject.toml` version matches the release tag (e.g. tag `v0.4.15` → `version = "0.4.15"`).
 
 Strongly recommended:
 

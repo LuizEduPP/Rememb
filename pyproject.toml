@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rememb"
-version = "0.4.14"
+version = "0.4.15"
 description = "Persistent memory standard for AI agents — local, portable, zero config"
 readme = "README.md"
 license = "MIT"
@@ -28,7 +28,7 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
     "pypdf>=4.0.0",
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2",
 ]
 
 [project.scripts]

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-08-01
+
+### Added
+- Web UI export for all memories or a single entry as JSON, with optional version history and deleted entries (`GET /api/export`).
+- Skill panel file browser: list every file in a bundled skill and open contents via `GET /api/skills/{id}/file?path=`.
+- Relative markdown links inside skill docs navigate to other files in the same skill.
+
+### Fixed
+- Markdown rendering for GFM tables, including collapsed single-line tables common in skill docs, plus inline links.
+
 ## [0.4.13] - 2026-06-25
 
 ### Removed

@@ -16,6 +16,8 @@ from rememb.store import (
     diff_entry_versions,
     delete_entries,
     edit_entries,
+    edit_entry,
+    export_entries,
     format_entries,
     get_stats,
     init,
@@ -403,3 +405,35 @@ def test_agent_summarize_hint_thresholds():
     assert agent_summarize_hint(3) == ""
     assert "Agent note" in agent_summarize_hint(8)
     assert "More pages may remain" in agent_summarize_hint(3, has_more=True)
+
+
+def test_export_entries_all_and_single(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    init(root)
+
+    first = write_entry(root, "project", "Original content", ["keep"])
+    second = write_entry(root, "user", "Other content", ["drop"])
+    edit_entry(root, first["id"], content="Updated content")
+    delete_entries(root, [second["id"]])
+
+    all_current = export_entries(root, include_versions=False, include_deleted=False)
+    assert all_current is not None
+    assert all_current["format"] == "rememb-export"
+    assert all_current["entry_count"] == 1
+    assert all_current["entries"][0]["content"] == "Updated content"
+    assert "history" not in all_current["entries"][0]
+
+    with_history = export_entries(root, entry_id=first["id"], include_versions=True)
+    assert with_history is not None
+    assert with_history["entry_count"] == 1
+    assert "history" in with_history["entries"][0]
+    assert len(with_history["entries"][0]["history"]) == 1
+
+    with_deleted = export_entries(root, include_versions=True, include_deleted=True)
+    assert with_deleted is not None
+    assert with_deleted["entry_count"] == 2
+
+    assert export_entries(root, entry_id="deadbeef") is None
+    with pytest.raises(RemembValidationError):
+        export_entries(root, entry_id="bad")

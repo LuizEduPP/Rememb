@@ -35,6 +35,7 @@ const api = {
   systemInfo: () => apiFetch('/api/system/info'),
   skills: () => apiFetch('/api/skills'),
   skill: (id) => apiFetch(`/api/skills/${encodeURIComponent(id)}`),
+  skillFile: (id, path) => apiFetch(`/api/skills/${encodeURIComponent(id)}/file?` + new URLSearchParams({ path })),
   entries: (p) => apiFetch('/api/entries?' + new URLSearchParams(p)),
   search: (p) => apiFetch('/api/search?' + new URLSearchParams(p)),
   writeEntry: (body) => apiFetch('/api/entries', { method: 'POST', body: JSON.stringify(body) }),
@@ -47,6 +48,32 @@ const api = {
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
 };
+
+async function downloadExport({ entryId = null, includeVersions = true, includeDeleted = false } = {}) {
+  const params = new URLSearchParams({
+    include_versions: String(includeVersions),
+    include_deleted: String(includeDeleted),
+  });
+  if (entryId) params.set('entry_id', entryId);
+  const res = await fetch('/api/export?' + params);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] || 'rememb-export.json';
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return filename;
+}
 
 function escHtml(s) {
   return String(s)
@@ -242,9 +269,92 @@ function renderSideBySideDiff(diffText) {
 function formatInlineMarkdown(text) {
   let html = escHtml(text || '');
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" rel="noopener noreferrer">$1</a>');
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   return html;
+}
+
+function splitMarkdownTableCells(line) {
+  let trimmed = String(line || '').trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+  return trimmed.split('|').map((cell) => cell.trim());
+}
+
+function isMarkdownTableSeparator(line) {
+  const cells = splitMarkdownTableCells(line);
+  if (!cells.length) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function isMarkdownTableRow(line) {
+  const trimmed = String(line || '').trim();
+  return Boolean(trimmed) && trimmed.includes('|') && !isMarkdownTableSeparator(trimmed);
+}
+
+function markdownTableRowPattern(columnCount) {
+  return new RegExp(`\\|(?:[^|]*\\|){${columnCount}}`, 'g');
+}
+
+function parseCollapsedMarkdownTable(text) {
+  const source = String(text || '');
+  const separator = source.match(/\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|/);
+  if (!separator) return null;
+
+  const columnCount = splitMarkdownTableCells(separator[0]).length;
+  if (columnCount < 1) return null;
+
+  const before = source.slice(0, separator.index);
+  const after = source.slice(separator.index + separator[0].length);
+  const rowPattern = markdownTableRowPattern(columnCount);
+  const headerMatches = before.match(rowPattern);
+  if (!headerMatches || !headerMatches.length) return null;
+
+  const headerRow = headerMatches[headerMatches.length - 1];
+  const headerCells = splitMarkdownTableCells(headerRow);
+  if (headerCells.length !== columnCount) return null;
+
+  const bodyRows = [];
+  let match;
+  const bodyPattern = markdownTableRowPattern(columnCount);
+  while ((match = bodyPattern.exec(after)) !== null) {
+    bodyRows.push(splitMarkdownTableCells(match[0]));
+  }
+
+  const headerAt = before.lastIndexOf(headerRow);
+  const prefix = before.slice(0, headerAt).trim();
+  let suffix = after;
+  if (bodyRows.length) {
+    const lastRow = after.match(markdownTableRowPattern(columnCount));
+    if (lastRow) {
+      const last = lastRow[lastRow.length - 1];
+      suffix = after.slice(after.lastIndexOf(last) + last.length).trim();
+    }
+  } else {
+    suffix = after.trim();
+  }
+
+  return { prefix, suffix, headerCells, bodyRows };
+}
+
+function renderMarkdownTable(headerCells, bodyRows) {
+  const head = headerCells.map((cell) => `<th>${formatInlineMarkdown(cell)}</th>`).join('');
+  const body = bodyRows.map((row) => {
+    const cells = headerCells.map((_, index) => formatInlineMarkdown(row[index] || ''));
+    return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table class="table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function pushMarkdownTable(blocks, parsed) {
+  if (parsed.prefix) {
+    blocks.push(`<p>${formatInlineMarkdown(parsed.prefix)}</p>`);
+  }
+  blocks.push(renderMarkdownTable(parsed.headerCells, parsed.bodyRows));
+  if (parsed.suffix) {
+    blocks.push(`<p>${formatInlineMarkdown(parsed.suffix)}</p>`);
+  }
 }
 
 function renderMarkdown(text) {
@@ -258,7 +368,13 @@ function renderMarkdown(text) {
 
   function flushParagraph() {
     if (!paragraph.length) return;
-    blocks.push(`<p>${formatInlineMarkdown(paragraph.join(' '))}</p>`);
+    const joined = paragraph.join(' ');
+    const collapsed = parseCollapsedMarkdownTable(joined);
+    if (collapsed) {
+      pushMarkdownTable(blocks, collapsed);
+    } else {
+      blocks.push(`<p>${formatInlineMarkdown(joined)}</p>`);
+    }
     paragraph = [];
   }
 
@@ -276,7 +392,8 @@ function renderMarkdown(text) {
     codeFence = null;
   }
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (line.startsWith('```')) {
       flushParagraph();
       flushList();
@@ -297,6 +414,32 @@ function renderMarkdown(text) {
     if (!trimmed) {
       flushParagraph();
       flushList();
+      continue;
+    }
+
+    const collapsed = parseCollapsedMarkdownTable(trimmed);
+    if (collapsed) {
+      flushParagraph();
+      flushList();
+      pushMarkdownTable(blocks, collapsed);
+      continue;
+    }
+
+    if (
+      isMarkdownTableRow(trimmed)
+      && index + 1 < lines.length
+      && isMarkdownTableSeparator(lines[index + 1])
+    ) {
+      flushParagraph();
+      flushList();
+      const headerCells = splitMarkdownTableCells(trimmed);
+      index += 1;
+      const bodyRows = [];
+      while (index + 1 < lines.length && isMarkdownTableRow(lines[index + 1])) {
+        index += 1;
+        bodyRows.push(splitMarkdownTableCells(lines[index]));
+      }
+      blocks.push(renderMarkdownTable(headerCells, bodyRows));
       continue;
     }
 
@@ -838,12 +981,62 @@ function openViewModal(entry) {
     </section>
     <footer class="modal-foot">
       <button class="btn btn-ghost" id="btn-view-history" type="button">Version history</button>
+      <button class="btn btn-ghost" id="btn-export-entry" type="button">Export</button>
     </footer>
   `));
   const historyBtn = document.getElementById('btn-view-history');
   if (historyBtn) {
     historyBtn.addEventListener('click', () => { closeModal(); openVersionsModal(entry); });
   }
+  const exportBtn = document.getElementById('btn-export-entry');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => { closeModal(); openExportModal({ entryId: entry.id }); });
+  }
+}
+
+function openExportModal({ entryId = null } = {}) {
+  const isSingle = Boolean(entryId);
+  const title = isSingle ? `Export ${entryId}` : 'Export memory';
+  const subtitle = isSingle
+    ? 'Download this entry as JSON'
+    : 'Download the store as JSON';
+  openModal(modalShell(`
+    <header class="modal-head">
+      <div>
+        <h3>${escHtml(title)}</h3>
+        <p>${escHtml(subtitle)}</p>
+      </div>
+      <button class="modal-close" type="button">×</button>
+    </header>
+    <section class="modal-body">
+      <label class="check"><input id="export-include-versions" type="checkbox" checked><span>Include version history</span></label>
+      ${isSingle ? '' : '<label class="check"><input id="export-include-deleted" type="checkbox"><span>Include deleted entries</span></label>'}
+    </section>
+    <footer class="modal-foot">
+      <button class="btn btn-ghost" type="button" id="btn-cancel-export">Cancel</button>
+      <button class="btn btn-primary" type="button" id="btn-run-export">Download JSON</button>
+    </footer>
+  `, 'modal-compact'));
+
+  bindEvent('btn-cancel-export', 'click', closeModal);
+  bindEvent('btn-run-export', 'click', async () => {
+    const includeVersions = document.getElementById('export-include-versions')?.checked ?? true;
+    const includeDeleted = document.getElementById('export-include-deleted')?.checked ?? false;
+    const button = document.getElementById('btn-run-export');
+    if (button) button.disabled = true;
+    try {
+      const filename = await downloadExport({
+        entryId,
+        includeVersions,
+        includeDeleted,
+      });
+      closeModal();
+      toast(`Exported ${filename}`, 'success');
+    } catch (e) {
+      toast('Export failed: ' + e.message, 'error');
+      if (button) button.disabled = false;
+    }
+  });
 }
 
 async function openDiffModal(entry, fromVersion, toVersion) {
@@ -1022,26 +1215,127 @@ async function renderStatsView() {
   }
 }
 
-async function openSkillModal(skillId) {
+function resolveSkillRelativePath(currentPath, href) {
+  const baseDir = currentPath.includes('/')
+    ? currentPath.slice(0, currentPath.lastIndexOf('/') + 1)
+    : '';
+  const stack = [];
+  for (const part of `${baseDir}${href}`.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  return stack.join('/');
+}
+
+function isSkillMarkdownPath(path) {
+  return String(path || '').toLowerCase().endsWith('.md');
+}
+
+function renderSkillFileList(files, currentPath) {
+  if (!files.length) {
+    return '<p class="lede">No files in this skill.</p>';
+  }
+  return files.map((file) => {
+    const active = file.path === currentPath ? ' is-active' : '';
+    return `<button class="skill-file${active}" type="button" data-skill-path="${escHtml(file.path)}" title="${escHtml(file.path)}">${escHtml(file.path)}</button>`;
+  }).join('');
+}
+
+function renderSkillFileDocument(path, content, description = '') {
+  if (!content) {
+    return '<article class="empty">This file has no readable text content.</article>';
+  }
+  if (isSkillMarkdownPath(path)) {
+    const parsed = parseFrontmatter(content);
+    const intro = path === 'SKILL.md' && description
+      ? `<p>${escHtml(description)}</p>`
+      : '';
+    return `
+      ${intro}
+      ${renderSkillFrontmatter(parsed.attributes)}
+      ${renderMarkdown(parsed.body || content)}
+    `;
+  }
+  return `<pre><code>${escHtml(content)}</code></pre>`;
+}
+
+function bindSkillPanelNavigation(skillId, files, currentPath) {
+  const fileList = document.getElementById('skill-file-list');
+  const docRoot = document.getElementById('skill-doc');
+  const pathLabel = document.getElementById('skill-current-path');
+  if (!fileList || !docRoot) return;
+
+  async function showSkillPath(nextPath) {
+    const target = files.some((file) => file.path === nextPath) ? nextPath : 'SKILL.md';
+    fileList.querySelectorAll('[data-skill-path]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.skillPath === target);
+    });
+    if (pathLabel) pathLabel.textContent = target;
+    docRoot.innerHTML = '<article class="empty empty-loading">Loading…</article>';
+    try {
+      const data = await api.skillFile(skillId, target);
+      const file = data.file || {};
+      const skillMeta = (state.skills || []).find((item) => item.id === skillId);
+      docRoot.innerHTML = renderSkillFileDocument(
+        file.path || target,
+        file.content || '',
+        skillMeta?.description || '',
+      );
+      docRoot.querySelectorAll('a[href]').forEach((anchor) => {
+        const href = anchor.getAttribute('href') || '';
+        if (!href || /^(https?:|mailto:|#|\/\/)/i.test(href)) return;
+        anchor.addEventListener('click', (event) => {
+          event.preventDefault();
+          const resolved = resolveSkillRelativePath(target, href);
+          if (files.some((fileItem) => fileItem.path === resolved)) {
+            showSkillPath(resolved);
+            return;
+          }
+          toast(`File not found in skill: ${resolved}`, 'error');
+        });
+      });
+    } catch (error) {
+      docRoot.innerHTML = `<article class="empty empty-error">${escHtml(error.message)}</article>`;
+    }
+  }
+
+  fileList.querySelectorAll('[data-skill-path]').forEach((button) => {
+    button.addEventListener('click', () => showSkillPath(button.dataset.skillPath));
+  });
+
+  showSkillPath(currentPath || 'SKILL.md');
+}
+
+async function openSkillModal(skillId, initialPath = 'SKILL.md') {
   try {
     const data = await api.skill(skillId);
     const skill = data.skill;
-    const parsed = parseFrontmatter(skill?.content || '');
-    const body = parsed.body || '';
+    const files = skill.files || [];
+    const currentPath = files.some((file) => file.path === initialPath)
+      ? initialPath
+      : (files.find((file) => file.path === 'SKILL.md')?.path || files[0]?.path || 'SKILL.md');
     openModal(modalShell(`
       <header class="modal-head">
         <div>
           <h3>${escHtml(skill.name || skill.id || 'Skill')}</h3>
-          <p>${escHtml(skill.path || '')}</p>
+          <p id="skill-current-path">${escHtml(currentPath)}</p>
         </div>
         <button class="modal-close" type="button">✕</button>
       </header>
-      <section class="modal-body prose">
-        <p>${escHtml(skill.description || '')}</p>
-        ${renderSkillFrontmatter(parsed.attributes)}
-        ${renderMarkdown(body)}
+      <section class="modal-body skill-panel">
+        <aside class="skill-files" id="skill-file-list">
+          ${renderSkillFileList(files, currentPath)}
+        </aside>
+        <section class="skill-doc prose" id="skill-doc">
+          <article class="empty empty-loading">Loading…</article>
+        </section>
       </section>
     `, 'modal-xl'));
+    bindSkillPanelNavigation(skill.id || skillId, files, currentPath);
   } catch (e) {
     toast('Skills error: ' + e.message, 'error');
   }
@@ -1147,6 +1441,13 @@ function renderSettingsPage() {
         </div>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-consolidate-page">Run consolidate</button>
       </section>
+      <section class="surface surface--split">
+        <div>
+          <h4>Export memory</h4>
+          <p class="lede">Download all entries as JSON. Choose whether to keep version history and soft-deleted entries.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-export-all-page">Export all</button>
+      </section>
       <footer class="actions settings-foot">
         <button class="btn btn-primary" type="button" id="btn-save-config-page">Save settings</button>
       </footer>
@@ -1177,6 +1478,7 @@ function renderSettingsPage() {
   });
 
   document.getElementById('btn-consolidate-page').addEventListener('click', openConsolidateModal);
+  document.getElementById('btn-export-all-page').addEventListener('click', () => openExportModal());
 
   document.getElementById('btn-save-config-page').addEventListener('click', async () => {
     const rows = document.querySelectorAll('#cfg-sections-tbody-page tr');

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-08-01
+
+### Fixed
+- Stop running the Dockerfile smoke build inside the default pytest suite. Registry timeouts on Docker Hub were failing CI; image smoke remains in the dedicated `docker-smoke` GitHub Actions job (Buildx + GHA cache). Opt-in locally with `REMEMB_DOCKER_SMOKE=1 pytest -m docker`.
+
+## [0.4.15] - 2026-08-01
+
+### Fixed
+- Pin `mcp` to `>=1.0.0,<2` so CI/install does not pull MCP SDK v2, which removed low-level `@server.list_tools()` / `@server.call_tool()` decorators and broke server startup.
+
+## [0.4.14] - 2026-08-01
+
+### Added
+- Web UI export for all memories or a single entry as JSON, with optional version history and deleted entries (`GET /api/export`).
+- Skill panel file browser: list every file in a bundled skill and open contents via `GET /api/skills/{id}/file?path=`.
+- Relative markdown links inside skill docs navigate to other files in the same skill.
+
+### Fixed
+- Markdown rendering for GFM tables, including collapsed single-line tables common in skill docs, plus inline links.
+
 ## [0.4.13] - 2026-06-25
 
 ### Removed

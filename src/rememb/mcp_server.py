@@ -80,7 +80,7 @@ class MCPContext:
                 }
             except ImportError as e:
                 raise ImportError(
-                    "MCP server requires: pip install mcp>=1.0.0\n"
+                    "MCP server requires: pip install 'mcp>=1.0.0,<2'\n"
                     "Install with: pip install rememb"
                 ) from e
         return self._mcp_modules

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from rememb import __version__
-from rememb.store import consolidate_entries, get_config, get_stats, update_config
+from rememb.store import consolidate_entries, export_entries, get_config, get_stats, update_config
 from rememb.utils import (
     _config_path,
     _entries_db_path,
@@ -16,6 +19,7 @@ from rememb.utils import (
     _meta_path,
     list_skill_definitions,
     load_skill_definition,
+    load_skill_file,
 )
 from rememb.web import deps
 from rememb.web.deps import raise_http_error
@@ -79,6 +83,17 @@ async def skill_detail_endpoint(skill_id: str) -> dict:
     return {"skill": skill}
 
 
+@router.get("/api/skills/{skill_id}/file")
+async def skill_file_endpoint(skill_id: str, path: str = Query(...)) -> dict:
+    try:
+        skill_file = await asyncio.to_thread(load_skill_file, skill_id, path)
+    except Exception as exc:
+        raise_http_error(exc)
+    if not skill_file:
+        raise HTTPException(status_code=404, detail="Skill file not found.")
+    return {"file": skill_file}
+
+
 @router.post("/api/consolidate")
 async def consolidate(req: ConsolidateRequest) -> dict:
     root = await asyncio.to_thread(deps.get_root)
@@ -104,3 +119,39 @@ async def system_info_endpoint() -> dict:
         "skills_count": len(skills),
         "version": __version__,
     }
+
+
+def _export_filename(payload: dict, entry_id: str | None) -> str:
+    stamp = re.sub(r"[^0-9T]", "", str(payload.get("exported_at", "")))[:15]
+    versions_suffix = "with-versions" if payload.get("include_versions") else "current"
+    if entry_id:
+        return f"rememb-{entry_id}-{versions_suffix}.json"
+    return f"rememb-export-{stamp or 'now'}-{versions_suffix}.json"
+
+
+@router.get("/api/export")
+async def export_endpoint(
+    entry_id: str | None = Query(None),
+    include_versions: bool = Query(True),
+    include_deleted: bool = Query(False),
+) -> Response:
+    root = await asyncio.to_thread(deps.get_root)
+    try:
+        payload = await asyncio.to_thread(
+            export_entries,
+            root,
+            entry_id=entry_id,
+            include_versions=include_versions,
+            include_deleted=include_deleted,
+        )
+    except Exception as exc:
+        raise_http_error(exc)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    filename = _export_filename(payload, entry_id)
+    return Response(
+        content=body,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

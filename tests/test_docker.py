@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 
+
+@pytest.mark.docker
 def test_dockerfile_builds_and_runs_mcp_help() -> None:
+    if os.environ.get("REMEMB_DOCKER_SMOKE") != "1":
+        pytest.skip("Set REMEMB_DOCKER_SMOKE=1 to run the Docker registry smoke test")
+
     if shutil.which("docker") is None:
-        return
+        pytest.skip("docker CLI is not available")
 
     repo_root = Path(__file__).resolve().parents[1]
     image_tag = "rememb-ci-smoke:latest"

@@ -49,6 +49,9 @@ def test_index_exposes_deleted_and_history_controls():
     assert "Storage backend" in script
     assert "Save settings" in script
     assert "No bundled skills found" in script
+    assert "skill-file-list" in script
+    assert "bindSkillPanelNavigation" in script
+    assert "/api/skills/" in script
     assert "Skills" in response.text
 
 

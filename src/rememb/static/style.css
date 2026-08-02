@@ -550,6 +550,57 @@ button.chip { cursor: pointer; }
 }
 .modal-close { font-size: 20px; color: var(--muted); padding: 0 4px; flex-shrink: 0; }
 .modal-body { display: grid; gap: 12px; min-width: 0; overflow-x: hidden; }
+
+.skill-panel {
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+.skill-files {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  max-height: min(64vh, 720px);
+  overflow: auto;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+.skill-file {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  word-break: break-word;
+}
+.skill-file:hover { background: var(--muted-surface); color: var(--text); }
+.skill-file.is-active {
+  background: var(--muted-surface);
+  color: var(--text);
+  font-weight: 600;
+}
+.skill-doc {
+  max-height: min(64vh, 720px);
+  overflow: auto;
+  min-width: 0;
+  padding-right: 2px;
+}
+@media (max-width: 800px) {
+  .skill-panel { grid-template-columns: 1fr; }
+  .skill-files {
+    max-height: 160px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding-right: 0;
+    padding-bottom: 8px;
+  }
+}
 .modal-body .tags,
 .modal-foot {
   min-width: 0;

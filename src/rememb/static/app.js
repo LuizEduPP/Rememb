@@ -35,6 +35,7 @@ const api = {
   systemInfo: () => apiFetch('/api/system/info'),
   skills: () => apiFetch('/api/skills'),
   skill: (id) => apiFetch(`/api/skills/${encodeURIComponent(id)}`),
+  skillFile: (id, path) => apiFetch(`/api/skills/${encodeURIComponent(id)}/file?` + new URLSearchParams({ path })),
   entries: (p) => apiFetch('/api/entries?' + new URLSearchParams(p)),
   search: (p) => apiFetch('/api/search?' + new URLSearchParams(p)),
   writeEntry: (body) => apiFetch('/api/entries', { method: 'POST', body: JSON.stringify(body) }),
@@ -1214,26 +1215,127 @@ async function renderStatsView() {
   }
 }
 
-async function openSkillModal(skillId) {
+function resolveSkillRelativePath(currentPath, href) {
+  const baseDir = currentPath.includes('/')
+    ? currentPath.slice(0, currentPath.lastIndexOf('/') + 1)
+    : '';
+  const stack = [];
+  for (const part of `${baseDir}${href}`.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  return stack.join('/');
+}
+
+function isSkillMarkdownPath(path) {
+  return String(path || '').toLowerCase().endsWith('.md');
+}
+
+function renderSkillFileList(files, currentPath) {
+  if (!files.length) {
+    return '<p class="lede">No files in this skill.</p>';
+  }
+  return files.map((file) => {
+    const active = file.path === currentPath ? ' is-active' : '';
+    return `<button class="skill-file${active}" type="button" data-skill-path="${escHtml(file.path)}" title="${escHtml(file.path)}">${escHtml(file.path)}</button>`;
+  }).join('');
+}
+
+function renderSkillFileDocument(path, content, description = '') {
+  if (!content) {
+    return '<article class="empty">This file has no readable text content.</article>';
+  }
+  if (isSkillMarkdownPath(path)) {
+    const parsed = parseFrontmatter(content);
+    const intro = path === 'SKILL.md' && description
+      ? `<p>${escHtml(description)}</p>`
+      : '';
+    return `
+      ${intro}
+      ${renderSkillFrontmatter(parsed.attributes)}
+      ${renderMarkdown(parsed.body || content)}
+    `;
+  }
+  return `<pre><code>${escHtml(content)}</code></pre>`;
+}
+
+function bindSkillPanelNavigation(skillId, files, currentPath) {
+  const fileList = document.getElementById('skill-file-list');
+  const docRoot = document.getElementById('skill-doc');
+  const pathLabel = document.getElementById('skill-current-path');
+  if (!fileList || !docRoot) return;
+
+  async function showSkillPath(nextPath) {
+    const target = files.some((file) => file.path === nextPath) ? nextPath : 'SKILL.md';
+    fileList.querySelectorAll('[data-skill-path]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.skillPath === target);
+    });
+    if (pathLabel) pathLabel.textContent = target;
+    docRoot.innerHTML = '<article class="empty empty-loading">Loading…</article>';
+    try {
+      const data = await api.skillFile(skillId, target);
+      const file = data.file || {};
+      const skillMeta = (state.skills || []).find((item) => item.id === skillId);
+      docRoot.innerHTML = renderSkillFileDocument(
+        file.path || target,
+        file.content || '',
+        skillMeta?.description || '',
+      );
+      docRoot.querySelectorAll('a[href]').forEach((anchor) => {
+        const href = anchor.getAttribute('href') || '';
+        if (!href || /^(https?:|mailto:|#|\/\/)/i.test(href)) return;
+        anchor.addEventListener('click', (event) => {
+          event.preventDefault();
+          const resolved = resolveSkillRelativePath(target, href);
+          if (files.some((fileItem) => fileItem.path === resolved)) {
+            showSkillPath(resolved);
+            return;
+          }
+          toast(`File not found in skill: ${resolved}`, 'error');
+        });
+      });
+    } catch (error) {
+      docRoot.innerHTML = `<article class="empty empty-error">${escHtml(error.message)}</article>`;
+    }
+  }
+
+  fileList.querySelectorAll('[data-skill-path]').forEach((button) => {
+    button.addEventListener('click', () => showSkillPath(button.dataset.skillPath));
+  });
+
+  showSkillPath(currentPath || 'SKILL.md');
+}
+
+async function openSkillModal(skillId, initialPath = 'SKILL.md') {
   try {
     const data = await api.skill(skillId);
     const skill = data.skill;
-    const parsed = parseFrontmatter(skill?.content || '');
-    const body = parsed.body || '';
+    const files = skill.files || [];
+    const currentPath = files.some((file) => file.path === initialPath)
+      ? initialPath
+      : (files.find((file) => file.path === 'SKILL.md')?.path || files[0]?.path || 'SKILL.md');
     openModal(modalShell(`
       <header class="modal-head">
         <div>
           <h3>${escHtml(skill.name || skill.id || 'Skill')}</h3>
-          <p>${escHtml(skill.path || '')}</p>
+          <p id="skill-current-path">${escHtml(currentPath)}</p>
         </div>
         <button class="modal-close" type="button">✕</button>
       </header>
-      <section class="modal-body prose">
-        <p>${escHtml(skill.description || '')}</p>
-        ${renderSkillFrontmatter(parsed.attributes)}
-        ${renderMarkdown(body)}
+      <section class="modal-body skill-panel">
+        <aside class="skill-files" id="skill-file-list">
+          ${renderSkillFileList(files, currentPath)}
+        </aside>
+        <section class="skill-doc prose" id="skill-doc">
+          <article class="empty empty-loading">Loading…</article>
+        </section>
       </section>
     `, 'modal-xl'));
+    bindSkillPanelNavigation(skill.id || skillId, files, currentPath);
   } catch (e) {
     toast('Skills error: ' + e.message, 'error');
   }

@@ -19,6 +19,7 @@ from rememb.utils import (
     _meta_path,
     list_skill_definitions,
     load_skill_definition,
+    load_skill_file,
 )
 from rememb.web import deps
 from rememb.web.deps import raise_http_error
@@ -80,6 +81,17 @@ async def skill_detail_endpoint(skill_id: str) -> dict:
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found.")
     return {"skill": skill}
+
+
+@router.get("/api/skills/{skill_id}/file")
+async def skill_file_endpoint(skill_id: str, path: str = Query(...)) -> dict:
+    try:
+        skill_file = await asyncio.to_thread(load_skill_file, skill_id, path)
+    except Exception as exc:
+        raise_http_error(exc)
+    if not skill_file:
+        raise HTTPException(status_code=404, detail="Skill file not found.")
+    return {"file": skill_file}
 
 
 @router.post("/api/consolidate")

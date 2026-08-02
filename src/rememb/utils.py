@@ -189,8 +189,42 @@ def list_skill_definitions(skill_roots: list[Path] | None = None) -> list[dict[s
     return definitions
 
 
-def load_skill_definition(skill_name: str, skill_roots: list[Path] | None = None) -> dict[str, str] | None:
-    """Load a single local skill by identifier or declared frontmatter name."""
+_SKILL_SKIP_DIR_NAMES = {".git", "__pycache__", ".venv", "node_modules", ".mypy_cache", ".pytest_cache"}
+_SKILL_TEXT_SUFFIXES = {
+    ".md",
+    ".txt",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".py",
+    ".pyi",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".css",
+    ".html",
+    ".htm",
+    ".xml",
+    ".csv",
+    ".sql",
+    ".rs",
+    ".go",
+    ".java",
+    ".rb",
+    ".php",
+    ".mdc",
+    ".example",
+}
+
+
+def _match_skill_definition(skill_name: str, skill_roots: list[Path] | None = None) -> dict[str, str] | None:
     normalized = skill_name.strip().lower()
     if not normalized:
         return None
@@ -207,10 +241,112 @@ def load_skill_definition(skill_name: str, skill_roots: list[Path] | None = None
     matches = exact_id_matches or exact_name_matches
     if len(matches) != 1:
         return None
+    return dict(matches[0])
 
-    match = dict(matches[0])
+
+def _skill_directory(definition: dict[str, str]) -> Path:
+    return Path(definition["path"]).resolve().parent
+
+
+def _is_skipped_skill_path(path: Path, skill_dir: Path) -> bool:
+    try:
+        relative_parts = path.relative_to(skill_dir).parts
+    except ValueError:
+        return True
+    return any(part in _SKILL_SKIP_DIR_NAMES for part in relative_parts)
+
+
+def _safe_skill_file(skill_dir: Path, relative_path: str) -> Path | None:
+    if not isinstance(relative_path, str) or not relative_path.strip():
+        raise RemembValidationError("Skill file path is required.")
+    normalized = relative_path.replace("\\", "/").strip().lstrip("/")
+    if not normalized:
+        raise RemembValidationError("Skill file path is required.")
+    candidate = (skill_dir / normalized).resolve()
+    root = skill_dir.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise RemembValidationError("Invalid skill file path.") from exc
+    if _is_skipped_skill_path(candidate, root):
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
+def _read_skill_file_text(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return _read_file_content(path)
+    if suffix in _SKILL_TEXT_SUFFIXES or suffix == "":
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    if b"\x00" in data[:1024]:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+def list_skill_files(skill_name: str, skill_roots: list[Path] | None = None) -> list[dict[str, Any]] | None:
+    definition = _match_skill_definition(skill_name, skill_roots)
+    if definition is None:
+        return None
+    skill_dir = _skill_directory(definition)
+    files: list[dict[str, Any]] = []
+    for path in sorted(skill_dir.rglob("*")):
+        if not path.is_file() or _is_skipped_skill_path(path, skill_dir):
+            continue
+        relative = path.relative_to(skill_dir).as_posix()
+        files.append(
+            {
+                "path": relative,
+                "name": path.name,
+                "suffix": path.suffix.lower(),
+                "bytes": path.stat().st_size,
+            }
+        )
+    return files
+
+
+def load_skill_file(
+    skill_name: str,
+    relative_path: str,
+    skill_roots: list[Path] | None = None,
+) -> dict[str, Any] | None:
+    definition = _match_skill_definition(skill_name, skill_roots)
+    if definition is None:
+        return None
+    skill_dir = _skill_directory(definition)
+    path = _safe_skill_file(skill_dir, relative_path)
+    if path is None:
+        return None
+    relative = path.relative_to(skill_dir).as_posix()
+    return {
+        "skill_id": definition["id"],
+        "skill_name": definition["name"],
+        "path": relative,
+        "name": path.name,
+        "suffix": path.suffix.lower(),
+        "bytes": path.stat().st_size,
+        "content": _read_skill_file_text(path),
+    }
+
+
+def load_skill_definition(skill_name: str, skill_roots: list[Path] | None = None) -> dict[str, Any] | None:
+    """Load a single local skill by identifier or declared frontmatter name."""
+    match = _match_skill_definition(skill_name, skill_roots)
+    if match is None:
+        return None
     skill_path = Path(match["path"])
     match["content"] = _read_file_content(skill_path)
+    match["files"] = list_skill_files(match["id"], skill_roots) or []
+    match["current_path"] = "SKILL.md"
     return match
 
 

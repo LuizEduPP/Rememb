@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-09-10
+
+### Fixed
+- Windows `PermissionError` (`Errno 13`) when unlocking `entries.json` after a full read: `msvcrt.locking` unlocks at the current file position, so seek to the start before `LK_UNLCK`.
+
 ## [0.4.16] - 2026-08-01
 
 ### Fixed

@@ -301,6 +301,15 @@ def test_file_lock_read_mode_does_not_create_missing_file(tmp_path):
     assert not missing_path.exists()
 
 
+def test_file_lock_read_unlock_after_full_read(tmp_path):
+    """Windows msvcrt unlock fails if the file cursor stays at EOF."""
+    entries_path = tmp_path / "entries.json"
+    entries_path.write_text("[]", encoding="utf-8")
+
+    with _file_lock(entries_path, mode="r") as handle:
+        assert handle.read() == "[]"
+
+
 def test_search_and_stats_require_initialization(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()

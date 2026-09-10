@@ -38,7 +38,17 @@ def file_lock(filepath: Path, mode: str = "r+"):
         if is_windows:
             import msvcrt
 
-            getattr(msvcrt, "locking")(f.fileno(), getattr(msvcrt, "LK_UNLCK", 1), 1)
+            # msvcrt.locking acts at the current file position. After a full
+            # read the cursor is at EOF, so unlock must seek(0) first or it
+            # raises PermissionError (Errno 13) on Windows.
+            try:
+                f.seek(0)
+            except OSError:
+                pass
+            try:
+                getattr(msvcrt, "locking")(f.fileno(), getattr(msvcrt, "LK_UNLCK", 1), 1)
+            except OSError:
+                pass
         else:
             import fcntl
 

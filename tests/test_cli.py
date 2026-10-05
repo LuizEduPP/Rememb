@@ -30,6 +30,8 @@ def test_cli_help_lists_current_commands():
     assert "--transport" in output
     assert "--host" in output
     assert "--port" in output
+    assert "--project" in output
+    assert "-P" in output
 
 
 def test_cli_mcp_rejects_invalid_transport():

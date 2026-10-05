@@ -41,7 +41,7 @@ src/rememb/
 ├── config.py            # Default config and constants
 ├── exceptions.py        # Custom exceptions
 ├── helpers.py           # Store context, keyword search, validation helpers
-├── mcp_server.py        # MCP server (17 public tools)
+├── mcp_server.py        # MCP server (18 public tools)
 ├── utils.py             # Shared utilities and skill discovery
 ├── store/
 │   ├── __init__.py      # Public store API

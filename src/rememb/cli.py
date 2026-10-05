@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import typer
 from rich import box
@@ -138,15 +139,31 @@ def mcp(
         max=65535,
         help="Port for persistent SSE transport.",
     ),
+    project: list[Path] | None = typer.Option(
+        None,
+        "--project",
+        "-P",
+        help=(
+            "Extra project root with its own .rememb store (repeatable). "
+            "Global (~/.rememb) is always included."
+        ),
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+        writable=False,
+        resolve_path=False,
+    ),
 ):
     """Start MCP server for AI agent integration."""
     import asyncio
     try:
-        from rememb.mcp_server import run_server as mcp_run_server
+        from rememb.mcp_server import configure_mcp_stores, run_server as mcp_run_server
         normalized_transport = transport.lower().strip()
         if normalized_transport not in {"stdio", "sse"}:
             typer.echo("Error: Unsupported transport. Use stdio or sse.", err=True)
             raise typer.Exit(1)
+
+        configure_mcp_stores(project or [])
 
         if normalized_transport == "sse":
             if not sys.stdout.isatty():
@@ -167,7 +184,14 @@ def mcp(
                 err=True,
             )
 
-        asyncio.run(mcp_run_server(transport=normalized_transport, host=host, port=port))
+        asyncio.run(
+            mcp_run_server(
+                transport=normalized_transport,
+                host=host,
+                port=port,
+                projects=project or [],
+            )
+        )
     except ImportError as e:
         print(f"MCP support requires additional dependencies: {e}")
         raise typer.Exit(1)

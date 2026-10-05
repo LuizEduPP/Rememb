@@ -32,10 +32,13 @@ from rememb.store import (
     write_entry,
 )
 from rememb.exceptions import RemembError, rememb_error_response_text
+from rememb.mcp_stores import (
+    GLOBAL_STORE_ID,
+    StoreRegistry,
+    ensure_store_root,
+)
 from rememb.utils import (
     _validate_entry_id,
-    ensure_global_root,
-    global_root,
     is_initialized,
     list_skill_definitions,
     load_skill_definition,
@@ -51,12 +54,13 @@ DEFAULT_MESSAGE_PATH = "/messages/"
 class MCPContext:
     """Encapsulates MCP-specific cache and state.
 
-    Manages MCP module imports and root cache for MCP server operations.
+    Manages MCP module imports and store registry for MCP server operations.
     """
 
     def __init__(self):
         self._mcp_modules = None
-        self._root_cache: dict[str, Any] = {}
+        self._store_registry = StoreRegistry()
+        self._root_cache: dict[str, Path] = {}
 
     def get_mcp_modules(self):
         """Get or load MCP modules.
@@ -85,12 +89,12 @@ class MCPContext:
                 ) from e
         return self._mcp_modules
 
-    def get_root_cache(self) -> dict[str, Any]:
-        """Get root cache dictionary.
-        
-        Returns:
-            Root cache dictionary
-        """
+    def get_store_registry(self) -> StoreRegistry:
+        """Return the MCP store registry for this process."""
+        return self._store_registry
+
+    def get_root_cache(self) -> dict[str, Path]:
+        """Get root cache dictionary keyed by store id."""
         return self._root_cache
 
     def clear_root_cache(self):
@@ -101,34 +105,53 @@ class MCPContext:
 _mcp_context = MCPContext()
 
 
-def _get_root() -> Path:
-    """Get global root path with cache invalidation.
+def configure_mcp_stores(projects: list[Path] | None = None) -> StoreRegistry:
+    """Configure global + optional project stores for this MCP process."""
+    registry = _mcp_context.get_store_registry()
+    registry.configure(projects)
+    _mcp_context.clear_root_cache()
+    return registry
 
-    Returns:
-        Global root path
-    """
-    root = global_root()
 
-    if not is_initialized(root):
-        init(root, project_name="global", global_mode=True)
-
-    if not is_initialized(root):
-        raise RemembError("Global rememb not initialized.")
+def _get_root(store_id: str | None = None) -> Path:
+    """Resolve and initialize the selected MCP store root."""
+    registry = _mcp_context.get_store_registry()
+    store = registry.get(store_id)
+    root = ensure_store_root(store)
 
     root_cache = _mcp_context.get_root_cache()
-    if "root" in root_cache and root_cache["root"] != root:
-        _mcp_context.clear_root_cache()
-        root_cache = _mcp_context.get_root_cache()
-
-    root_cache["root"] = root
+    cached = root_cache.get(store.id)
+    if cached is not None and cached != root:
+        root_cache.pop(store.id, None)
+    root_cache[store.id] = root
     return root
 
 
 def _get_mcp_sections() -> list[str]:
-    """Return the current section list for MCP schemas, with safe fallback."""
+    """Return the union of section lists across configured stores.
+
+    Global is always resolved (and auto-initialized). Project stores only
+    contribute sections when already initialized, so listing tools does not
+    create `.rememb` directories as a side effect.
+    """
     try:
-        root = _get_root()
-        return list(get_config(root)["sections"])
+        registry = _mcp_context.get_store_registry()
+        registry.ensure_configured()
+        seen: list[str] = []
+        for store in registry.all():
+            try:
+                if store.kind == "global":
+                    root = _get_root(store.id)
+                elif is_initialized(store.root):
+                    root = store.root
+                else:
+                    continue
+                for section in get_config(root)["sections"]:
+                    if section not in seen:
+                        seen.append(section)
+            except Exception:
+                continue
+        return seen or list(DEFAULT_SECTIONS)
     except Exception:
         return list(DEFAULT_SECTIONS)
 
@@ -138,6 +161,32 @@ def _get_default_mcp_section() -> str:
     if "context" in sections:
         return "context"
     return sections[0]
+
+
+def _store_ids() -> list[str]:
+    registry = _mcp_context.get_store_registry()
+    registry.ensure_configured()
+    return registry.ids()
+
+
+def _store_property() -> dict[str, Any]:
+    store_ids = _store_ids()
+    return {
+        "type": "string",
+        "enum": store_ids,
+        "default": GLOBAL_STORE_ID,
+        "description": (
+            "Memory store id. 'global' is the ~/.rememb store. "
+            "Other ids are project stores passed via repeated --project MCP args."
+        ),
+    }
+
+
+def _with_store_prefix(store_id: str, text: str) -> str:
+    registry = _mcp_context.get_store_registry()
+    if len(registry) <= 1:
+        return text
+    return f"[store={store_id}]\n{text}"
 
 
 def _tool_error_text(exc: Exception) -> str:
@@ -157,19 +206,46 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     Returns:
         List of TextContent responses
     """
-    root = await asyncio.to_thread(_get_root)
+    store_id = arguments.get("store", GLOBAL_STORE_ID)
+    if isinstance(store_id, str):
+        store_id = store_id.strip() or GLOBAL_STORE_ID
+    else:
+        store_id = GLOBAL_STORE_ID
+
+    root: Path | None = None
+    if name not in {"rememb_list_skills", "rememb_use_skill", "rememb_list_stores"}:
+        try:
+            root = await asyncio.to_thread(_get_root, store_id)
+        except RemembError as e:
+            return [TextContent(type="text", text=_tool_error_text(e))]
+        except Exception as e:
+            return [TextContent(type="text", text=_tool_error_text(e))]
+
+    def _text(body: str):
+        return [TextContent(type="text", text=_with_store_prefix(store_id, body))]
+
+    async def rememb_list_stores():
+        registry = _mcp_context.get_store_registry()
+        registry.ensure_configured()
+        lines = ["Stores:"]
+        for store in registry.all():
+            initialized = await asyncio.to_thread(is_initialized, store.root)
+            lines.append(
+                f"- {store.id} ({store.kind}) path={store.root} initialized={initialized}"
+            )
+        return [TextContent(type="text", text="\n".join(lines))]
 
     async def rememb_get():
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
         entry = await asyncio.to_thread(get_entry, root, entry_id, include_deleted=include_deleted)
         if entry is None:
-            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(f"Entry {entry_id} not found")
         body = format_entries([entry], include_id=True, max_chars=max_chars)
-        return [TextContent(type="text", text=body)]
+        return _text(body)
 
     async def rememb_recent():
         limit = arguments.get("limit", 10)
@@ -185,17 +261,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         )
         body = format_entries(entries, include_id=True, max_chars=max_chars)
         hint = agent_summarize_hint(len(entries))
-        return [TextContent(type="text", text=f"{body}{hint}")]
+        return _text(f"{body}{hint}")
 
     async def rememb_list_tags():
         limit = arguments.get("limit", 50)
         include_deleted = arguments.get("include_deleted", False)
         tags = await asyncio.to_thread(list_entry_tags, root, include_deleted=include_deleted, limit=limit)
         if not tags:
-            return [TextContent(type="text", text="No tags found.")]
+            return _text("No tags found.")
         lines = ["Tags (count):"]
         lines.extend(f"- {item['tag']}: {item['count']}" for item in tags)
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text("\n".join(lines))
 
     async def rememb_read():
         section = arguments.get("section")
@@ -204,7 +280,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
         body = format_entries(entries, include_id=True, max_chars=max_chars)
         hint = agent_summarize_hint(len(entries))
-        return [TextContent(type="text", text=f"{body}{hint}")]
+        return _text(f"{body}{hint}")
 
     async def rememb_read_page():
         section = arguments.get("section")
@@ -232,7 +308,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         )
         body = format_entries(page["items"], include_id=True, max_chars=max_chars)
         hint = agent_summarize_hint(len(page["items"]), has_more=page["has_more"])
-        return [TextContent(type="text", text=f"{header}\n\n{body}{hint}")]
+        return _text(f"{header}\n\n{body}{hint}")
 
     async def rememb_search():
         query = arguments["query"]
@@ -244,16 +320,16 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
         body = format_entries(entries, include_id=True, include_score=True, max_chars=max_chars)
         hint = agent_summarize_hint(len(entries))
-        return [TextContent(type="text", text=f"{body}{hint}")]
+        return _text(f"{body}{hint}")
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
         include_deleted = arguments.get("include_deleted", True)
         versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
         if not versions:
-            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(f"Entry {entry_id} not found")
         lines = [f"Versions for {entry_id} ({len(versions)} total):"]
         for revision in versions:
             deleted_marker = " [deleted]" if str(revision.get("deleted_at", "")).strip() else ""
@@ -262,47 +338,47 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 f"- v{revision['version']} section={revision.get('section', '')}{deleted_marker}"
                 f" tags=[{tags}] updated={revision.get('updated_at', '')}"
             )
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text("\n".join(lines))
 
     async def rememb_restore():
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
         version = arguments.get("version")
         if version is None:
             restored = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
             if restored is None:
-                return [TextContent(type="text", text=f"Deleted entry {entry_id} not found")]
-            return [TextContent(type="text", text=f"Restored deleted entry {entry_id} (now v{restored['version']})")]
+                return _text(f"Deleted entry {entry_id} not found")
+            return _text(f"Restored deleted entry {entry_id} (now v{restored['version']})")
         restored = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
         if restored is None:
-            return [TextContent(type="text", text=f"Entry {entry_id} or version {version} not found")]
-        return [TextContent(type="text", text=f"Restored {entry_id} to version {version} (now v{restored['version']})")]
+            return _text(f"Entry {entry_id} or version {version} not found")
+        return _text(f"Restored {entry_id} to version {version} (now v{restored['version']})")
 
     async def rememb_diff():
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
         from_version = arguments["from_version"]
         to_version = arguments["to_version"]
         result = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
         if result is None:
-            return [TextContent(type="text", text=f"Entry {entry_id} or requested versions not found")]
+            return _text(f"Entry {entry_id} or requested versions not found")
         diff_text = result["diff"] or "(no content changes)"
-        return [TextContent(type="text", text=f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")]
+        return _text(f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")
 
     async def rememb_write():
         entries = arguments.get("entries")
         if entries is not None:
             if not isinstance(entries, list) or not entries:
-                return [TextContent(type="text", text="Provide a non-empty entries array.")]
+                return _text("Provide a non-empty entries array.")
             default_section = _get_default_mcp_section()
             prepared_entries: list[dict[str, Any]] = []
             for item in entries:
                 if not isinstance(item, dict):
-                    return [TextContent(type="text", text="Each batch entry must be an object.")]
+                    return _text("Each batch entry must be an object.")
                 if item.get("content") is None:
-                    return [TextContent(type="text", text="Each batch entry must include content.")]
+                    return _text("Each batch entry must include content.")
                 prepared_entries.append(
                     {
                         "content": item["content"],
@@ -312,11 +388,11 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 )
             created = await asyncio.to_thread(write_entries, root, prepared_entries, True)
             summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
-            return [TextContent(type="text", text=f"Saved {len(created)} entries\n{summary}")]
+            return _text(f"Saved {len(created)} entries\n{summary}")
 
         content = arguments.get("content")
         if content is None:
-            return [TextContent(type="text", text="Provide content for a single entry or entries for batch write.")]
+            return _text("Provide content for a single entry or entries for batch write.")
         section = arguments.get("section", _get_default_mcp_section())
         tags = arguments.get("tags", [])
         entry = await asyncio.to_thread(
@@ -327,21 +403,21 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             tags,
             True,
         )
-        return [TextContent(type="text", text=f"Saved [{entry['section']}] id={entry['id']}")]
+        return _text(f"Saved [{entry['section']}] id={entry['id']}")
 
     async def rememb_edit():
         updates = arguments.get("updates")
         if updates is not None:
             if not isinstance(updates, list) or not updates:
-                return [TextContent(type="text", text="Provide a non-empty updates array.")]
+                return _text("Provide a non-empty updates array.")
             for update in updates:
                 if not isinstance(update, dict):
-                    return [TextContent(type="text", text="Each batch update must be an object.")]
+                    return _text("Each batch update must be an object.")
                 entry_id = update.get("entry_id")
                 if entry_id is None or not _validate_entry_id(entry_id):
-                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+                    return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
                 if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
-                    return [TextContent(type="text", text=f"Provide at least one field to update for {entry_id}: content, section, or tags.")]
+                    return _text(f"Provide at least one field to update for {entry_id}: content, section, or tags.")
             results = await asyncio.to_thread(edit_entries, root, updates)
             lines = []
             updated_count = 0
@@ -351,16 +427,16 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                     lines.append(f"- Updated {update['entry_id']}")
                 else:
                     lines.append(f"- Entry {update['entry_id']} not found")
-            return [TextContent(type="text", text=f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))]
+            return _text(f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
         content = arguments.get("content")
         section = arguments.get("section")
         tags = arguments.get("tags")
         if content is None and section is None and tags is None:
-            return [TextContent(type="text", text="Provide at least one field to update: content, section, or tags.")]
+            return _text("Provide at least one field to update: content, section, or tags.")
         result = await asyncio.to_thread(
             edit_entry,
             root,
@@ -370,17 +446,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             tags,
         )
         if result:
-            return [TextContent(type="text", text=f"Updated {entry_id}")]
-        return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(f"Updated {entry_id}")
+        return _text(f"Entry {entry_id} not found")
 
     async def rememb_delete():
         entry_ids = arguments.get("entry_ids")
         if entry_ids is not None:
             if not isinstance(entry_ids, list) or not entry_ids:
-                return [TextContent(type="text", text="Provide a non-empty entry_ids array.")]
+                return _text("Provide a non-empty entry_ids array.")
             for entry_id in entry_ids:
                 if not _validate_entry_id(entry_id):
-                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+                    return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
             deleted_ids = await asyncio.to_thread(delete_entries, root, entry_ids)
             deleted_set = set(deleted_ids)
             lines = []
@@ -389,21 +465,21 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                     lines.append(f"- Deleted {entry_id}")
                 else:
                     lines.append(f"- Entry {entry_id} not found")
-            return [TextContent(type="text", text=f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))]
+            return _text(f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
         if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
         if await asyncio.to_thread(delete_entry, root, entry_id):
-            return [TextContent(type="text", text=f"Deleted {entry_id}")]
-        return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(f"Deleted {entry_id}")
+        return _text(f"Entry {entry_id} not found")
 
     async def rememb_clear():
         confirm = arguments.get("confirm", False)
         if not confirm:
-            return [TextContent(type="text", text="Clear cancelled. Set confirm=true to proceed.")]
+            return _text("Clear cancelled. Set confirm=true to proceed.")
         count = await asyncio.to_thread(clear_entries, root, confirm=True)
-        return [TextContent(type="text", text=f"Cleared {count} entries")]
+        return _text(f"Cleared {count} entries")
 
     async def rememb_stats():
         stats = await asyncio.to_thread(get_stats, root)
@@ -415,7 +491,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Newest entry: {stats['newest']}",
             "",
         ] + [f"{sec}: {count}" for sec, count in stats["by_section"].items()]
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text("\n".join(lines))
 
     async def rememb_consolidate():
         section = arguments.get("section")
@@ -425,15 +501,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             section,
         )
         target = result["section"] if result["section"] else "all sections"
-        return [TextContent(
-            type="text",
-            text=(
+        return _text(
+            (
                 f"Consolidation completed for {target}. "
                 f"Using mode=exact. "
                 f"Removed {result['removed_count']} duplicate entries "
                 f"({result['total_before']} -> {result['total_after']})."
             ),
-        )]
+        )
 
 
     async def rememb_list_skills():
@@ -469,6 +544,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         )]
 
     tool_handlers = {
+        "rememb_list_stores": rememb_list_stores,
         "rememb_get": rememb_get,
         "rememb_recent": rememb_recent,
         "rememb_list_tags": rememb_list_tags,
@@ -501,10 +577,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
 
 def _build_tools(Tool):
-    """Run MCP stdio server.
-    
-    Starts the MCP server and handles stdio communication.
-    """
+    """Build the public MCP tool list for the current store registry."""
     def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
         schema: dict[str, Any] = {
             "type": "object",
@@ -519,17 +592,31 @@ def _build_tools(Tool):
         description: str,
         properties: dict[str, Any] | None = None,
         required: list[str] | None = None,
+        *,
+        include_store: bool = True,
     ):
+        props = dict(properties or {})
+        if include_store:
+            props = {"store": _store_property(), **props}
         return Tool(
             name=name,
             description=description,
-            inputSchema=_schema(properties or {}, required),
+            inputSchema=_schema(props, required),
         )
 
     sections = _get_mcp_sections()
     default_section = _get_default_mcp_section()
 
     return [
+        _tool(
+            name="rememb_list_stores",
+            description=(
+                "List configured memory stores for this MCP process: global (~/.rememb) "
+                "plus any project stores passed via --project. Safe, read-only."
+            ),
+            properties={},
+            include_store=False,
+        ),
         _tool(
             name="rememb_get",
             description="Fetch one memory entry by ID with full content. Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID.",
@@ -885,10 +972,11 @@ def _build_tools(Tool):
             name="rememb_list_skills",
             description="List bundled rememb skills discovered from the installed package contents. Safe, read-only operation.",
             properties={},
+            include_store=False,
         ),
         _tool(
             name="rememb_use_skill",
-            description="Load one bundled rememb skill by identifier or exact declared name and return its instructions. Safe, read-only operation. Use rememb_list_skills first to inspect available skills.",
+            description="Load one bundled rememb skill by identifier or exact declared name and return its instructions. Safe, read-only operation. Use rememb_list_skills first to inspect available local skills.",
             properties={
                 "skill": {
                     "type": "string",
@@ -896,6 +984,7 @@ def _build_tools(Tool):
                 }
             },
             required=["skill"],
+            include_store=False,
         ),
     ]
 
@@ -968,8 +1057,14 @@ async def run_server(
     transport: str = "stdio",
     host: str = DEFAULT_SSE_HOST,
     port: int = DEFAULT_SSE_PORT,
+    projects: list[Path] | None = None,
 ):
     """Run the MCP server over stdio or a persistent local SSE transport."""
+    if projects is not None:
+        configure_mcp_stores(projects)
+    else:
+        _mcp_context.get_store_registry().ensure_configured()
+
     mcp = _mcp_context.get_mcp_modules()
     Server = mcp["Server"]
     stdio_server = mcp["stdio_server"]

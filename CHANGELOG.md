@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- MCP multi-store: global (`~/.rememb`) is always available, plus optional project stores via repeatable `--project` / `-P` args. Tools accept `store` (default `global`); new `rememb_list_stores` lists configured stores.
+
 ## [0.4.17] - 2026-09-10
 
 ### Fixed

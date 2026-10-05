@@ -65,6 +65,25 @@ Zero friction. No CLI commands. Native IDE integration.
 }
 ```
 
+To expose project-local stores alongside the global `~/.rememb` store, pass one or more project roots:
+
+```json
+{
+  "mcpServers": {
+    "rememb": {
+      "command": "rememb",
+      "args": [
+        "mcp",
+        "--project", "/path/to/project-a",
+        "--project", "/path/to/project-b"
+      ]
+    }
+  }
+}
+```
+
+Each project uses its own `.rememb` directory. Memory tools take an optional `store` argument (`global` by default, or the project directory name). Use `rememb_list_stores` to inspect the configured set.
+
 **2. Restart your IDE.**
 
 The agent can read stored context at session start, write durable memory when something changes, and search only when targeted recall is needed.
@@ -80,9 +99,9 @@ In both cases, keep the scope explicit: these rules are about how the agent shou
 
 For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
 
-No extra storage setup, server config, or schema migration is required. In MCP mode, rememb resolves storage home-first and auto-initializes `~/.rememb` when needed.
+No extra storage setup, server config, or schema migration is required. In MCP mode, rememb always includes the global store (`~/.rememb`, auto-initialized) and optional project stores via `--project`.
 
-For the current public MCP tool list (17 tools) and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
+For the current public MCP tool list (18 tools) and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
 
@@ -234,7 +253,7 @@ The current compatibility surface is tracked explicitly in [COMPATIBILITY.md](CO
 Short version:
 
 - Python 3.10 to 3.12 are covered by CI
-- CLI contract and MCP tool schema (17 tools) have automated test coverage
+- CLI contract and MCP tool schema (18 tools) have automated test coverage
 - stdio MCP is the primary documented integration path
 - SSE MCP is documented and partially tested at the route level
 - release automation and Trusted Publishing are documented in [RELEASE.md](RELEASE.md)

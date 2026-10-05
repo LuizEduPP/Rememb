@@ -1,6 +1,16 @@
 # MCP Tools
 
-This file documents the **17 public MCP tools** exposed by `src/rememb/mcp_server.py`.
+This file documents the **18 public MCP tools** exposed by `src/rememb/mcp_server.py`.
+
+## Multi-store
+
+The MCP process always includes the **global** store (`~/.rememb`). Extra project stores can be added with repeatable CLI args:
+
+```bash
+rememb mcp --project /path/to/project-a --project /path/to/project-b
+```
+
+Memory tools accept optional `store` (default `global`). Project store ids are derived from the project directory name. Use `rememb_list_stores` to list ids and paths.
 
 ## Recommended agent rules
 
@@ -67,11 +77,16 @@ These rules are the canonical agent-driven routing contract. The documented tool
 
 ## Core memory tools
 
+### rememb_list_stores
+
+List configured stores for this MCP process (global plus any `--project` stores). Safe and read-only.
+
 ### rememb_get
 
 Fetch one entry by ID with full content. Safe and read-only.
 
 Key parameters:
+- store (optional; default global)
 - entry_id (required)
 - include_deleted
 - max_chars

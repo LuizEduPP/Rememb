@@ -31,7 +31,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 |---------|--------|-------|
 | stdio MCP via `rememb mcp` | Documented and partially tested | CLI contract and tool schema covered by pytest |
 | SSE MCP via `rememb mcp --transport sse` | Tested at app level | pytest verifies SSE route wiring; default port `8765` |
-| MCP tool set (17 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults |
+| MCP tool set (18 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults |
 
 Public tools: `rememb_get`, `rememb_recent`, `rememb_list_tags`, `rememb_read`, `rememb_read_page`, `rememb_search`, `rememb_versions`, `rememb_restore`, `rememb_diff`, `rememb_write`, `rememb_edit`, `rememb_delete`, `rememb_clear`, `rememb_stats`, `rememb_consolidate`, `rememb_list_skills`, `rememb_use_skill`.
 

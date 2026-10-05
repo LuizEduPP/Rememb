@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import warnings
 from pathlib import Path
 from typing import Any
 
 from rememb.config import DEFAULT_SECTIONS
-from rememb.store import (
+from rememb.store.crud import (
     agent_summarize_hint,
     clear_entries,
     get_entry,
@@ -21,7 +20,6 @@ from rememb.store import (
     format_entries,
     get_config,
     get_stats,
-    init,
     list_entry_versions,
     read_entries,
     read_entries_page,
@@ -60,7 +58,6 @@ class MCPContext:
     def __init__(self):
         self._mcp_modules = None
         self._store_registry = StoreRegistry()
-        self._root_cache: dict[str, Path] = {}
 
     def get_mcp_modules(self):
         """Get or load MCP modules.
@@ -93,14 +90,6 @@ class MCPContext:
         """Return the MCP store registry for this process."""
         return self._store_registry
 
-    def get_root_cache(self) -> dict[str, Path]:
-        """Get root cache dictionary keyed by store id."""
-        return self._root_cache
-
-    def clear_root_cache(self):
-        """Clear root cache dictionary."""
-        self._root_cache.clear()
-
 
 _mcp_context = MCPContext()
 
@@ -109,22 +98,12 @@ def configure_mcp_stores(projects: list[Path] | None = None) -> StoreRegistry:
     """Configure global + optional project stores for this MCP process."""
     registry = _mcp_context.get_store_registry()
     registry.configure(projects)
-    _mcp_context.clear_root_cache()
     return registry
 
 
 def _get_root(store_id: str | None = None) -> Path:
     """Resolve and initialize the selected MCP store root."""
-    registry = _mcp_context.get_store_registry()
-    store = registry.get(store_id)
-    root = ensure_store_root(store)
-
-    root_cache = _mcp_context.get_root_cache()
-    cached = root_cache.get(store.id)
-    if cached is not None and cached != root:
-        root_cache.pop(store.id, None)
-    root_cache[store.id] = root
-    return root
+    return ensure_store_root(_mcp_context.get_store_registry().get(store_id))
 
 
 def _get_mcp_sections() -> list[str]:
@@ -163,17 +142,12 @@ def _get_default_mcp_section() -> str:
     return sections[0]
 
 
-def _store_ids() -> list[str]:
+def _store_property() -> dict[str, Any]:
     registry = _mcp_context.get_store_registry()
     registry.ensure_configured()
-    return registry.ids()
-
-
-def _store_property() -> dict[str, Any]:
-    store_ids = _store_ids()
     return {
         "type": "string",
-        "enum": store_ids,
+        "enum": registry.ids(),
         "default": GLOBAL_STORE_ID,
         "description": (
             "Memory store id. 'global' is the ~/.rememb store. "

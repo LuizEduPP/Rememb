@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import rememb.mcp_server as mcp_server
-from rememb.store import (
+from rememb.store.crud import (
     edit_entry,
     get_entry,
     init,
@@ -43,7 +43,7 @@ def test_read_recent_entries_orders_by_update_time(tmp_path):
 
 
 def test_handle_tool_get_and_list_tags(monkeypatch, tmp_path):
-    monkeypatch.setattr(mcp_server, "_get_root", lambda: tmp_path)
+    monkeypatch.setattr(mcp_server, "_get_root", lambda store_id=None: tmp_path)
     init(tmp_path)
     entry = write_entry(tmp_path, "project", "Tagged note.", ["alpha"])
 

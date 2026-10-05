@@ -6,7 +6,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from rememb.store import (
+from rememb.store.crud import (
     delete_entry,
     diff_entry_versions,
     edit_entry,

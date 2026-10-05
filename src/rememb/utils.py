@@ -1,8 +1,6 @@
 """Utility functions for rememb."""
 
-import html
 import logging
-import os
 import re
 import warnings
 from collections.abc import Callable
@@ -51,20 +49,6 @@ def _validate_entry_id(entry_id: str) -> bool:
         True if entry_id matches 8 hex characters, False otherwise
     """
     return bool(re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE))
-
-
-def _parse_tags(tags: str | None) -> list[str] | None:
-    """Parse comma-separated tags string into list.
-    
-    Args:
-        tags: Comma-separated tags string or None
-    
-    Returns:
-        List of tags or None if tags is None or empty
-    """
-    if not tags:
-        return None
-    return [t.strip() for t in tags.split(",")]
 
 
 def _extract_summary(content: str) -> str:
@@ -355,35 +339,6 @@ def global_root() -> Path:
     return Path.home()
 
 
-def find_root(start: Path | None = None, local: bool = False) -> Path:
-    """Find the .rememb directory by searching upward from start path.
-    
-    Args:
-        start: Starting path for search (default: current directory)
-        local: If True, use current directory even if .rememb not found
-    
-    Returns:
-        Path to directory containing .rememb
-    
-    Raises:
-        RemembNotInitializedError: If .rememb not found and local=False
-        PermissionError: If local=True but directory not writable
-    """
-    current = (start or Path.cwd()).resolve()
-    for parent in [current, *current.parents]:
-        if (parent / REMEMB_DIR).is_dir():
-            logger.debug(f"Found .rememb at {parent}")
-            return parent
-
-    if local:
-        if not os.access(current, os.W_OK):
-            raise PermissionError(f"Cannot write to directory: {current}")
-        logger.debug(f"Using local mode at {current}")
-        return current
-
-    raise RemembNotInitializedError(f"No .rememb directory found. Run 'rememb init' first.")
-
-
 def is_initialized(root: Path) -> bool:
     """Check if rememb is initialized at the given root."""
     rememb_dir = _rememb_path(root)
@@ -491,7 +446,3 @@ def _normalize_version_number(version: object) -> int:
     if parsed <= 0:
         raise RemembValidationError("version must be a positive integer.")
     return parsed
-
-def escape(text: str) -> str:
-    """Escape markup-like characters for safe terminal output."""
-    return html.escape(text)

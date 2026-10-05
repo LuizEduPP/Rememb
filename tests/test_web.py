@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-import rememb.web as web
 from rememb.web import deps
-from rememb.store import init, write_entry
+from rememb.web.app import app
+from rememb.store.crud import init, write_entry
 
 
-client = TestClient(web.app)
+client = TestClient(app)
 
 
 def test_static_assets_ship_with_package():

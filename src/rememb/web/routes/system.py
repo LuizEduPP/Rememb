@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from rememb import __version__
-from rememb.store import consolidate_entries, export_entries, get_config, get_stats, update_config
+from rememb.store.crud import consolidate_entries, export_entries, get_config, get_stats, update_config
 from rememb.utils import (
     _config_path,
     _entries_db_path,

@@ -24,6 +24,7 @@ Use rememb as the authoritative local memory layer for this project.
 ## Targeted Reads
 
 * Use `rememb_get` when you already know an entry ID from search or recent reads.
+* Use `rememb_list_stores` when multiple `--project` stores are configured; pass `store` on memory tools (`global` by default).
 * Use `rememb_recent` to catch up on what changed since the last session.
 * Use `rememb_list_tags` to discover tag filters before search or paginated reads.
 * Use `rememb_stats` for store size and section totals at session start.

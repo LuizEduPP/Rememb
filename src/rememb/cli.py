@@ -112,7 +112,7 @@ def main(
 ) -> None:
     if ctx.invoked_subcommand is None:
         try:
-            from rememb.web import run_web
+            from rememb.web.app import run_web
             run_web(host=host, port=port, open_browser=not no_browser)
         except ImportError as e:
             print(f"Error loading web UI: {e}")
@@ -157,13 +157,11 @@ def mcp(
     """Start MCP server for AI agent integration."""
     import asyncio
     try:
-        from rememb.mcp_server import configure_mcp_stores, run_server as mcp_run_server
+        from rememb.mcp_server import run_server as mcp_run_server
         normalized_transport = transport.lower().strip()
         if normalized_transport not in {"stdio", "sse"}:
             typer.echo("Error: Unsupported transport. Use stdio or sse.", err=True)
             raise typer.Exit(1)
-
-        configure_mcp_stores(project or [])
 
         if normalized_transport == "sse":
             if not sys.stdout.isatty():

@@ -24,7 +24,6 @@ def normalize_storage_backend(value: object) -> str:
 
 
 def _effective_storage_backend(root: Path, configured: str) -> str:
-    """Resolve the backend whose store file is actually present on disk."""
     from rememb.utils import _entries_db_path, _entries_path
 
     configured = normalize_storage_backend(configured)
@@ -39,7 +38,6 @@ def _effective_storage_backend(root: Path, configured: str) -> str:
 
 
 def get_storage_backend(root: Path | None = None, *, backend: str | None = None) -> EntryStorageBackend:
-    """Resolve the configured storage backend for a rememb root."""
     if backend is not None:
         return _BACKENDS[normalize_storage_backend(backend)]
 
@@ -54,16 +52,10 @@ def get_storage_backend(root: Path | None = None, *, backend: str | None = None)
     return _BACKENDS[selected]
 
 
-def migrate_json_to_sqlite(root: Path) -> int:
-    """Migrate legacy JSON entries into SQLite storage."""
-    return SqliteEntryStorage.migrate_from_json(root)
-
-
 __all__ = [
     "EntryStorageBackend",
     "JsonEntryStorage",
     "SqliteEntryStorage",
     "get_storage_backend",
-    "migrate_json_to_sqlite",
     "normalize_storage_backend",
 ]

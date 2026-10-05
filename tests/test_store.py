@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from rememb.helpers import _file_lock
+from rememb.storage.locking import file_lock
 from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
-from rememb.store import (
+from rememb.store.crud import (
     agent_summarize_hint,
     clear_entries,
     diff_entry_versions,
@@ -34,7 +34,7 @@ from rememb.store import (
 
 
 def _hold_file_lock(path_str: str, mode: str, entered_conn, release_conn) -> None:
-    with _file_lock(Path(path_str), mode=mode):
+    with file_lock(Path(path_str), mode=mode):
         entered_conn.send("entered")
         release_conn.recv()
     entered_conn.close()
@@ -295,7 +295,7 @@ def test_file_lock_read_mode_does_not_create_missing_file(tmp_path):
     missing_path = tmp_path / "missing.json"
 
     with pytest.raises(FileNotFoundError):
-        with _file_lock(missing_path, mode="r"):
+        with file_lock(missing_path, mode="r"):
             pass
 
     assert not missing_path.exists()
@@ -306,7 +306,7 @@ def test_file_lock_read_unlock_after_full_read(tmp_path):
     entries_path = tmp_path / "entries.json"
     entries_path.write_text("[]", encoding="utf-8")
 
-    with _file_lock(entries_path, mode="r") as handle:
+    with file_lock(entries_path, mode="r") as handle:
         assert handle.read() == "[]"
 
 

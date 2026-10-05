@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import rememb.web as web
-from rememb.store import init
-from rememb.web import app
+from rememb.store.crud import init
 from rememb.web import deps
+from rememb.web.app import app
 
 client = TestClient(app)
 

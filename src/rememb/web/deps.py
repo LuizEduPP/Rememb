@@ -8,7 +8,7 @@ from typing import NoReturn
 from fastapi import HTTPException
 
 from rememb.exceptions import RemembError, rememb_error_http_status, rememb_error_response_text
-from rememb.store import init
+from rememb.store.crud import init
 from rememb.utils import ensure_global_root
 
 

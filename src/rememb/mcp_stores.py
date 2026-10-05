@@ -1,5 +1,3 @@
-"""MCP multi-store registry: global (~/.rememb) plus optional project stores."""
-
 from __future__ import annotations
 
 import re
@@ -8,8 +6,8 @@ from pathlib import Path
 
 from rememb.config import REMEMB_DIR
 from rememb.exceptions import RemembError, RemembNotInitializedError
-from rememb.store import init
-from rememb.utils import global_root, is_initialized
+from rememb.store.crud import init
+from rememb.utils import ensure_global_root, global_root, is_initialized
 
 
 GLOBAL_STORE_ID = "global"
@@ -20,7 +18,6 @@ class McpStore:
     id: str
     root: Path
     kind: str
-    label: str
 
 
 def normalize_project_root(path: Path) -> Path:
@@ -61,7 +58,6 @@ class StoreRegistry:
                 id=GLOBAL_STORE_ID,
                 root=global_root(),
                 kind="global",
-                label="global",
             )
         }
         used_ids = {GLOBAL_STORE_ID}
@@ -69,9 +65,7 @@ class StoreRegistry:
 
         for raw in projects or []:
             root = normalize_project_root(Path(raw))
-            if root in seen_roots:
-                continue
-            if root == global_root().resolve():
+            if root in seen_roots or root == global_root().resolve():
                 continue
             store_id = _unique_store_id(_slug_store_id(root.name), used_ids)
             used_ids.add(store_id)
@@ -80,7 +74,6 @@ class StoreRegistry:
                 id=store_id,
                 root=root,
                 kind="project",
-                label=root.name,
             )
 
         self._stores = stores
@@ -115,11 +108,7 @@ class StoreRegistry:
 def ensure_store_root(store: McpStore) -> Path:
     root = store.root
     if store.kind == "global":
-        if not is_initialized(root):
-            init(root, project_name="global", global_mode=True)
-        if not is_initialized(root):
-            raise RemembNotInitializedError("Global rememb not initialized.")
-        return root
+        return ensure_global_root(init)
 
     if not root.exists():
         raise RemembError(f"Project store '{store.id}' path does not exist: {root}")

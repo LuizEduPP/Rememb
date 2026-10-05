@@ -65,24 +65,7 @@ Zero friction. No CLI commands. Native IDE integration.
 }
 ```
 
-To expose project-local stores alongside the global `~/.rememb` store, pass one or more project roots:
-
-```json
-{
-  "mcpServers": {
-    "rememb": {
-      "command": "rememb",
-      "args": [
-        "mcp",
-        "--project", "/path/to/project-a",
-        "--project", "/path/to/project-b"
-      ]
-    }
-  }
-}
-```
-
-Each project uses its own `.rememb` directory. Memory tools take an optional `store` argument (`global` by default, or the project directory name). Use `rememb_list_stores` to inspect the configured set.
+Add repeatable `--project /path/to/repo` args for per-project stores alongside global `~/.rememb`. Details: [MCP_TOOLS.md](MCP_TOOLS.md#multi-store).
 
 **2. Restart your IDE.**
 
@@ -99,7 +82,7 @@ In both cases, keep the scope explicit: these rules are about how the agent shou
 
 For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
 
-No extra storage setup, server config, or schema migration is required. In MCP mode, rememb always includes the global store (`~/.rememb`, auto-initialized) and optional project stores via `--project`.
+No extra storage setup, server config, or schema migration is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use.
 
 For the current public MCP tool list (18 tools) and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
 

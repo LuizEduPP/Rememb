@@ -42,11 +42,11 @@ src/rememb/
 ├── exceptions.py        # Custom exceptions
 ├── helpers.py           # Store context, keyword search, validation helpers
 ├── mcp_server.py        # MCP server (18 public tools)
+├── mcp_stores.py        # MCP global + project store registry
 ├── utils.py             # Shared utilities and skill discovery
 ├── store/
-│   ├── __init__.py      # Public store API
-│   ├── crud.py          # CRUD, search, consolidate
-│   └── agent_tools.py   # Agent-facing store helpers
+│   ├── __init__.py      # package marker
+│   └── crud.py          # public store API (CRUD, search, consolidate)
 ├── storage/
 │   ├── __init__.py      # JSON / SQLite backend resolution
 │   ├── base.py

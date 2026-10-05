@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from rememb.store import init, read_entries, update_config, write_entry
+from rememb.store.crud import init, read_entries, update_config, write_entry
 
 
 def test_sqlite_backend_roundtrip(tmp_path: Path) -> None:
@@ -41,7 +41,7 @@ def test_sqlite_reads_after_external_backend_switch(tmp_path: Path) -> None:
     import json
 
     from rememb.helpers import _store_context
-    from rememb.storage import migrate_json_to_sqlite
+    from rememb.storage.sqlite_backend import SqliteEntryStorage
     from rememb.utils import _config_path, _entries_path
 
     root = tmp_path / "project"
@@ -54,7 +54,7 @@ def test_sqlite_reads_after_external_backend_switch(tmp_path: Path) -> None:
     config = json.loads(_config_path(root).read_text(encoding="utf-8"))
     config["storage_backend"] = "sqlite"
     _config_path(root).write_text(json.dumps(config, indent=2), encoding="utf-8")
-    migrate_json_to_sqlite(root)
+    SqliteEntryStorage.migrate_from_json(root)
 
     assert not _entries_path(root).exists()
     entries = read_entries(root)

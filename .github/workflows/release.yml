@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build release distributions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 
@@ -63,7 +63,7 @@ jobs:
     if: github.event_name == 'release'
     needs:
       - build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
     environment:

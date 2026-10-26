@@ -29,7 +29,7 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
     "pypdf>=4.0.0",
-    "mcp>=1.0.0,<2",
+    "mcp>=1.0.0,<3",
 ]
 
 [project.scripts]

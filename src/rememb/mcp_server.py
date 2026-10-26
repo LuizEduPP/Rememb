@@ -472,14 +472,12 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     handler = tool_handlers.get(name)
     if not handler:
-        return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return _text(TextContent, f"Unknown tool: {name}")
 
     try:
         return await handler()
-    except RemembError as e:
-        return [TextContent(type="text", text=_tool_error_text(e))]
     except Exception as e:
-        return [TextContent(type="text", text=_tool_error_text(e))]
+        return _text(TextContent, _tool_error_text(e))
 
 
 def _build_tools(Tool):
@@ -510,25 +508,44 @@ def _build_tools(Tool):
 
     sections = _get_mcp_sections()
     default_section = _get_default_mcp_section()
+    joined = ", ".join(sections)
+
+    def _entry_id(description: str | None = None) -> dict[str, Any]:
+        return {
+            "type": "string",
+            "description": description or f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
+        }
+
+    def _include_deleted(default: bool = False, description: str = "Include soft-deleted entries") -> dict[str, Any]:
+        return {"type": "boolean", "default": default, "description": description}
+
+    def _max_chars(per_entry: bool = True) -> dict[str, Any]:
+        suffix = " per entry" if per_entry else ""
+        return {"type": "integer", "description": f"Optional mechanical cap on content characters{suffix}"}
+
+    def _section(description: str, *, default: str | None = None) -> dict[str, Any]:
+        prop: dict[str, Any] = {"type": "string", "enum": sections, "description": description}
+        if default is not None:
+            prop["default"] = default
+        return prop
+
+    def _limit(default: int, description: str) -> dict[str, Any]:
+        return {"type": "integer", "default": default, "description": description}
+
+    def _tag(description: str) -> dict[str, Any]:
+        return {"type": "string", "description": description}
+
+    def _tags(description: str) -> dict[str, Any]:
+        return {"type": "array", "items": {"type": "string"}, "description": description}
 
     return [
         _tool(
             name="rememb_get",
             description="Fetch one memory entry by ID with full content. Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include the entry even if it is soft-deleted",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters",
-                },
+                "entry_id": _entry_id(),
+                "include_deleted": _include_deleted(description="Include the entry even if it is soft-deleted"),
+                "max_chars": _max_chars(per_entry=False),
             },
             required=["entry_id"],
         ),
@@ -536,91 +553,38 @@ def _build_tools(Tool):
             name="rememb_recent",
             description="Return recently updated entries, newest first. Safe, read-only. Useful for catching up on what changed since the last session.",
             properties={
-                "limit": {
-                    "type": "integer",
-                    "default": DEFAULT_RECENT_LIMIT,
-                    "description": "Maximum number of entries to return",
-                },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "limit": _limit(DEFAULT_RECENT_LIMIT, "Maximum number of entries to return"),
+                "section": _section(f"Optional section filter: {joined}"),
+                "include_deleted": _include_deleted(),
+                "max_chars": _max_chars(),
             },
         ),
         _tool(
             name="rememb_list_tags",
             description="List tags used in the store with usage counts. Safe, read-only. Use to discover filters before rememb_search or rememb_read_page.",
             properties={
-                "limit": {
-                    "type": "integer",
-                    "default": DEFAULT_TAG_LIMIT,
-                    "description": "Maximum number of tags to return",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include tags from soft-deleted entries",
-                },
+                "limit": _limit(DEFAULT_TAG_LIMIT, "Maximum number of tags to return"),
+                "include_deleted": _include_deleted(description="Include tags from soft-deleted entries"),
             },
         ),
         _tool(
             name="rememb_read",
             description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Returns full entry content; summarize task-relevant facts in your working context after large reads.",
             properties={
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Filter by section: {', '.join(sections)}",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries in the response",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "section": _section(f"Filter by section: {joined}"),
+                "include_deleted": _include_deleted(description="Include soft-deleted entries in the response"),
+                "max_chars": _max_chars(),
             },
         ),
         _tool(
             name="rememb_read_page",
             description="Read a paginated slice of entries with optional section or tag filtering. Returns full entry content; summarize task-relevant facts in your working context after each page.",
             properties={
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "tag": {
-                    "type": "string",
-                    "description": "Optional exact tag filter applied before pagination",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries in the response",
-                },
-                "offset": {
-                    "type": "integer",
-                    "default": 0,
-                    "description": "Zero-based page offset",
-                },
-                "limit": {
-                    "type": "integer",
-                    "default": DEFAULT_PAGE_LIMIT,
-                    "description": "Maximum entries to return",
-                },
+                "section": _section(f"Optional section filter: {joined}"),
+                "tag": _tag("Optional exact tag filter applied before pagination"),
+                "include_deleted": _include_deleted(description="Include soft-deleted entries in the response"),
+                "offset": _limit(0, "Zero-based page offset"),
+                "limit": _limit(DEFAULT_PAGE_LIMIT, "Maximum entries to return"),
                 "sort_by": {
                     "type": "string",
                     "enum": ["storage", "recent"],
@@ -632,10 +596,7 @@ def _build_tools(Tool):
                     "default": False,
                     "description": "Reverse the selected sort order",
                 },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "max_chars": _max_chars(),
             },
         ),
         _tool(
@@ -646,29 +607,13 @@ def _build_tools(Tool):
                     "type": "string",
                     "description": "Search query - keywords or short phrases",
                 },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "tag": {
-                    "type": "string",
-                    "description": "Optional exact tag filter applied before keyword search",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries in the search corpus and results",
-                },
-                "top_k": {
-                    "type": "integer",
-                    "default": DEFAULT_SEARCH_TOP_K,
-                    "description": "Maximum number of results",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "section": _section(f"Optional section filter: {joined}"),
+                "tag": _tag("Optional exact tag filter applied before keyword search"),
+                "include_deleted": _include_deleted(
+                    description="Include soft-deleted entries in the search corpus and results"
+                ),
+                "top_k": _limit(DEFAULT_SEARCH_TOP_K, "Maximum number of results"),
+                "max_chars": _max_chars(),
             },
             required=["query"],
         ),
@@ -676,15 +621,11 @@ def _build_tools(Tool):
             name="rememb_versions",
             description="List all revisions known for an entry, including prior content snapshots and deleted states when requested. Safe, read-only operation.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Keep deleted revisions visible when the current entry is soft-deleted",
-                },
+                "entry_id": _entry_id(),
+                "include_deleted": _include_deleted(
+                    default=True,
+                    description="Keep deleted revisions visible when the current entry is soft-deleted",
+                ),
             },
             required=["entry_id"],
         ),
@@ -692,10 +633,7 @@ def _build_tools(Tool):
             name="rememb_restore",
             description="Restore a soft-deleted entry, or restore a specific prior version as the new current head. Restores are non-destructive: they append a new head revision rather than rewriting history.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
-                },
+                "entry_id": _entry_id(),
                 "version": {
                     "type": "integer",
                     "description": "Optional historical version to restore. If omitted, restores the current soft-deleted entry.",
@@ -707,10 +645,7 @@ def _build_tools(Tool):
             name="rememb_diff",
             description="Show a unified diff between two revisions of the same entry. Safe, read-only operation.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
-                },
+                "entry_id": _entry_id(),
                 "from_version": {
                     "type": "integer",
                     "description": "Older or source version",
@@ -740,65 +675,34 @@ def _build_tools(Tool):
                                 "type": "string",
                                 "description": "Content to remember (1-3 sentences)",
                             },
-                            "section": {
-                                "type": "string",
-                                "enum": sections,
-                                "description": f"Section: {', '.join(sections)}",
-                            },
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Tags to categorize this entry",
-                            },
+                            "section": _section(f"Section: {joined}"),
+                            "tags": _tags("Tags to categorize this entry"),
                         },
                         "required": ["content"],
                     },
                 },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "default": default_section,
-                    "description": f"Section: {', '.join(sections)}",
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Tags to categorize this entry",
-                },
+                "section": _section(f"Section: {joined}", default=default_section),
+                "tags": _tags("Tags to categorize this entry"),
             },
         ),
         _tool(
             name="rememb_edit",
             description="Update one existing memory entry by ID or multiple entries in one call via updates[]. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove them.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
-                },
+                "entry_id": _entry_id(),
                 "updates": {
                     "type": "array",
                     "description": "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "entry_id": {
-                                "type": "string",
-                                "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
-                            },
+                            "entry_id": _entry_id(),
                             "content": {
                                 "type": "string",
                                 "description": "New content",
                             },
-                            "section": {
-                                "type": "string",
-                                "enum": sections,
-                                "description": "Move to different section",
-                            },
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Replace tags",
-                            },
+                            "section": _section("Move to different section"),
+                            "tags": _tags("Replace tags"),
                         },
                         "required": ["entry_id"],
                     },
@@ -807,26 +711,15 @@ def _build_tools(Tool):
                     "type": "string",
                     "description": "New content",
                 },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": "Move to different section",
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Replace tags",
-                },
+                "section": _section("Move to different section"),
+                "tags": _tags("Replace tags"),
             },
         ),
         _tool(
             name="rememb_delete",
             description="Soft-delete one memory entry by its ID or multiple entries via entry_ids[]. Deleted entries are hidden by default from reads and search, but can be restored later. Use rememb_restore to undo a deletion. Use rememb_clear to permanently delete all entries at once.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID to delete",
-                },
+                "entry_id": _entry_id("Entry ID to delete"),
                 "entry_ids": {
                     "type": "array",
                     "description": "Batch deletion IDs.",
@@ -856,11 +749,7 @@ def _build_tools(Tool):
             name="rememb_consolidate",
             description="Consolidate literal duplicate entries and merge metadata (tags and access data). Exact normalized-content match only; review near-duplicates with the agent before consolidating.",
             properties={
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
+                "section": _section(f"Optional section filter: {joined}"),
             },
         ),
         _tool(

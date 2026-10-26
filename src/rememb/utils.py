@@ -23,28 +23,38 @@ logger = logging.getLogger(__name__)
 
 
 def _rememb_path(root: Path) -> Path:
-    """Get path to .rememb directory."""
     return root / REMEMB_DIR
 
 
+def _store_file(root: Path, name: str) -> Path:
+    return _rememb_path(root) / name
+
+
 def _entries_path(root: Path) -> Path:
-    """Get path to entries.json file."""
-    return _rememb_path(root) / ENTRIES_FILE
+    return _store_file(root, ENTRIES_FILE)
 
 
 def _entries_db_path(root: Path) -> Path:
-    """Get path to entries.db file."""
-    return _rememb_path(root) / ENTRIES_DB_FILE
+    return _store_file(root, ENTRIES_DB_FILE)
 
 
 def _meta_path(root: Path) -> Path:
-    """Get path to meta.json file."""
-    return _rememb_path(root) / META_FILE
+    return _store_file(root, META_FILE)
 
 
 def _config_path(root: Path) -> Path:
-    """Get path to config.json file."""
-    return _rememb_path(root) / CONFIG_FILE
+    return _store_file(root, CONFIG_FILE)
+
+
+def parse_int(value: object, *, name: str, minimum: int) -> int:
+    kind = "positive integer" if minimum > 0 else "non-negative integer"
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise RemembValidationError(f"{name} must be a {kind}.") from None
+    if parsed < minimum:
+        raise RemembValidationError(f"{name} must be a {kind}.")
+    return parsed
 
 
 def _validate_entry_id(entry_id: str) -> bool:
@@ -63,22 +73,40 @@ def require_entry_id(entry_id: object) -> str:
     return text.lower()
 
 
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+
+
+def _frontmatter_body(content: str) -> tuple[str, str]:
+    match = _FRONTMATTER_RE.match(content)
+    if not match:
+        return "", content
+    return match.group(1), content[match.end():].lstrip()
+
+
+def _frontmatter_pairs(block: str) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    for line in block.splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            pairs.append((key.strip(), value.strip().strip("\"'")))
+    return pairs
+
+
+def _parse_simple_frontmatter(content: str) -> dict[str, str]:
+    block, _ = _frontmatter_body(content)
+    return {key: value for key, value in _frontmatter_pairs(block)}
+
+
 def _extract_summary(content: str) -> str:
     """Extract summary from content, skipping frontmatter and markdown."""
-    fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if fm_match:
-        for line in fm_match.group(1).splitlines():
-            key, sep, value = line.partition(":")
-            if not sep:
-                continue
-            v = value.strip().strip("\"'")
-            if v:
-                return v
-        content = content[fm_match.end():].strip()
+    block, body = _frontmatter_body(content)
+    for _, value in _frontmatter_pairs(block):
+        if value:
+            return value
 
     skip = re.compile(r"^(#+\s|[-*+]\s|>\s|```|\s*$)", re.IGNORECASE)
     lines = []
-    for line in content.splitlines():
+    for line in body.splitlines():
         if skip.match(line):
             if lines:
                 break
@@ -87,7 +115,7 @@ def _extract_summary(content: str) -> str:
 
     if lines:
         return " ".join(lines)
-    return content.strip().replace("\n", " ").strip()
+    return body.strip().replace("\n", " ").strip()
 
 
 def _read_file_content(path: Path) -> str:
@@ -120,21 +148,6 @@ def _read_file_content(path: Path) -> str:
         except (pypdf.PdfReadError, pypdf.PdfStreamError, ValueError) as e:
             return ""
     return ""
-
-
-def _parse_simple_frontmatter(content: str) -> dict[str, str]:
-    """Parse simple YAML-like frontmatter key/value pairs."""
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
-    if not match:
-        return {}
-
-    metadata: dict[str, str] = {}
-    for line in match.group(1).splitlines():
-        key, sep, value = line.partition(":")
-        if not sep:
-            continue
-        metadata[key.strip()] = value.strip().strip('"\'')
-    return metadata
 
 
 def _default_skill_roots() -> list[Path]:
@@ -237,6 +250,24 @@ def _skill_directory(definition: dict[str, str]) -> Path:
     return Path(definition["path"]).resolve().parent
 
 
+def _skill_context(
+    skill_name: str, skill_roots: list[Path] | None = None
+) -> tuple[dict[str, str], Path] | None:
+    definition = _match_skill_definition(skill_name, skill_roots)
+    if definition is None:
+        return None
+    return definition, _skill_directory(definition)
+
+
+def _skill_file_info(path: Path, skill_dir: Path) -> dict[str, Any]:
+    return {
+        "path": path.relative_to(skill_dir).as_posix(),
+        "name": path.name,
+        "suffix": path.suffix.lower(),
+        "bytes": path.stat().st_size,
+    }
+
+
 def _is_skipped_skill_path(path: Path, skill_dir: Path) -> bool:
     try:
         relative_parts = path.relative_to(skill_dir).parts
@@ -283,23 +314,14 @@ def _read_skill_file_text(path: Path) -> str:
 
 
 def list_skill_files(skill_name: str, skill_roots: list[Path] | None = None) -> list[dict[str, Any]] | None:
-    definition = _match_skill_definition(skill_name, skill_roots)
-    if definition is None:
+    context = _skill_context(skill_name, skill_roots)
+    if context is None:
         return None
-    skill_dir = _skill_directory(definition)
+    _, skill_dir = context
     files: list[dict[str, Any]] = []
     for path in sorted(skill_dir.rglob("*")):
-        if not path.is_file() or _is_skipped_skill_path(path, skill_dir):
-            continue
-        relative = path.relative_to(skill_dir).as_posix()
-        files.append(
-            {
-                "path": relative,
-                "name": path.name,
-                "suffix": path.suffix.lower(),
-                "bytes": path.stat().st_size,
-            }
-        )
+        if path.is_file() and not _is_skipped_skill_path(path, skill_dir):
+            files.append(_skill_file_info(path, skill_dir))
     return files
 
 
@@ -308,21 +330,17 @@ def load_skill_file(
     relative_path: str,
     skill_roots: list[Path] | None = None,
 ) -> dict[str, Any] | None:
-    definition = _match_skill_definition(skill_name, skill_roots)
-    if definition is None:
+    context = _skill_context(skill_name, skill_roots)
+    if context is None:
         return None
-    skill_dir = _skill_directory(definition)
+    definition, skill_dir = context
     path = _safe_skill_file(skill_dir, relative_path)
     if path is None:
         return None
-    relative = path.relative_to(skill_dir).as_posix()
     return {
         "skill_id": definition["id"],
         "skill_name": definition["name"],
-        "path": relative,
-        "name": path.name,
-        "suffix": path.suffix.lower(),
-        "bytes": path.stat().st_size,
+        **_skill_file_info(path, skill_dir),
         "content": _read_skill_file_text(path),
     }
 
@@ -444,10 +462,4 @@ def _revision_label(entry_id: str, version: int) -> str:
 
 
 def _normalize_version_number(version: object) -> int:
-    try:
-        parsed = int(str(version).strip())
-    except (TypeError, ValueError):
-        raise RemembValidationError("version must be a positive integer.") from None
-    if parsed <= 0:
-        raise RemembValidationError("version must be a positive integer.")
-    return parsed
+    return parse_int(version, name="version", minimum=1)

@@ -10,6 +10,7 @@ from typing import Any
 
 from rememb.config import (
     DEFAULT_CONFIG,
+    DEFAULT_MCP_SECTION,
     DEFAULT_PAGE_LIMIT,
     DEFAULT_RECENT_LIMIT,
     DEFAULT_SEARCH_TOP_K,
@@ -57,6 +58,25 @@ from rememb.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _active_entries(root: Path, *, include_deleted: bool = False) -> list[dict]:
+    _assert_initialized(root)
+    return _filter_deleted(_load_entries(root), include_deleted=include_deleted)
+
+
+def _in_section(entries: list[dict], section: str | None) -> list[dict]:
+    if not section:
+        return entries
+    wanted = section.lower()
+    return [entry for entry in entries if entry.get("section") == wanted]
+
+
+def _with_tag(entries: list[dict], tag: str | None) -> list[dict]:
+    if not tag:
+        return entries
+    wanted = tag.lower().strip()
+    return [entry for entry in entries if wanted in entry.get("tags", [])]
 
 
 def _generate_entry_id(existing_ids: set[str]) -> str:
@@ -609,10 +629,7 @@ def read_entries(root: Path, section: str | None = None, *, include_deleted: boo
         RemembNotInitializedError: If rememb not initialized
     """
     logger.debug(f"read_entries called: section={section}")
-    _assert_initialized(root)
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    if section:
-        entries = [e for e in entries if e["section"] == section.lower()]
+    entries = _in_section(_active_entries(root, include_deleted=include_deleted), section)
     logger.info(f"Read {len(entries)} entries" + (f" from section '{section}'" if section else ""))
     return entries
 
@@ -656,8 +673,6 @@ def read_entries_page(
         sort_by,
         descending,
     )
-    _assert_initialized(root)
-
     if offset < 0:
         raise RemembValidationError("offset must be >= 0")
     if limit <= 0:
@@ -667,12 +682,7 @@ def read_entries_page(
     if normalized_sort not in {"storage", "recent"}:
         raise RemembValidationError("sort_by must be 'storage' or 'recent'")
 
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    if section:
-        entries = [e for e in entries if e["section"] == section.lower()]
-    if tag:
-        normalized_tag = tag.lower().strip()
-        entries = [e for e in entries if normalized_tag in e.get("tags", [])]
+    entries = _with_tag(_in_section(_active_entries(root, include_deleted=include_deleted), section), tag)
 
     if normalized_sort == "recent":
         entries = sorted(
@@ -739,13 +749,7 @@ def search_entries(
         section,
         tag,
     )
-    _assert_initialized(root)
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    if section:
-        entries = [entry for entry in entries if entry.get("section") == section.lower()]
-    if tag:
-        normalized_tag = tag.lower().strip()
-        entries = [entry for entry in entries if normalized_tag in entry.get("tags", [])]
+    entries = _with_tag(_in_section(_active_entries(root, include_deleted=include_deleted), section), tag)
     if not entries:
         logger.warning("No entries to search")
         return []
@@ -787,7 +791,7 @@ def get_stats(root: Path) -> dict:
     total = len(active_entries)
     by_section = {s: 0 for s in _get_sections(root)}
     for e in active_entries:
-        sec = e.get("section", "context")
+        sec = e.get("section", DEFAULT_MCP_SECTION)
         if sec not in by_section:
             by_section[sec] = 0
         by_section[sec] += 1
@@ -829,15 +833,14 @@ def export_entries(
     include_versions: bool = True,
     include_deleted: bool = False,
 ) -> dict[str, Any] | None:
-    _assert_initialized(root)
     if entry_id is not None:
         require_entry_id(entry_id)
-        source = _find_entry(_load_entries(root), entry_id.lower())
+        source = _find_entry(_active_entries(root, include_deleted=True), entry_id.lower())
         if source is None:
             return None
         selected = [source]
     else:
-        selected = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
+        selected = _active_entries(root, include_deleted=include_deleted)
 
     entries = [
         _export_entry_payload(entry, include_versions=include_versions)
@@ -941,16 +944,13 @@ def agent_summarize_hint(entry_count: int, *, has_more: bool = False) -> str:
 def get_entry(root: Path, entry_id: str, *, include_deleted: bool = False) -> dict[str, Any] | None:
     """Return one entry by ID."""
     normalized = require_entry_id(entry_id)
-    _assert_initialized(root)
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    return _find_entry(entries, normalized)
+    return _find_entry(_active_entries(root, include_deleted=include_deleted), normalized)
 
 
 def list_entry_tags(root: Path, *, include_deleted: bool = False, limit: int = DEFAULT_TAG_LIMIT) -> list[dict[str, Any]]:
     """Return tags with usage counts, sorted by frequency."""
-    _assert_initialized(root)
     counts: dict[str, int] = {}
-    for entry in _filter_deleted(_load_entries(root), include_deleted=include_deleted):
+    for entry in _active_entries(root, include_deleted=include_deleted):
         for tag in entry.get("tags", []):
             if isinstance(tag, str) and tag.strip():
                 normalized = tag.strip().lower()

@@ -17,7 +17,7 @@ from rememb.config import (
     NON_NEGATIVE_INT_CONFIG_KEYS,
     POSITIVE_INT_CONFIG_KEYS,
 )
-from rememb.utils import _config_path, _meta_path, _now, is_initialized
+from rememb.utils import _config_path, _meta_path, _now, is_initialized, parse_int
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
@@ -192,23 +192,11 @@ def _validate_config_updates(
             raise RemembValidationError(f"Unknown config key: {key}")
 
         if key in POSITIVE_INT_CONFIG_KEYS:
-            try:
-                parsed = int(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a positive integer.") from None
-            if parsed <= 0:
-                raise RemembValidationError(f"{key} must be a positive integer.")
-            next_config[key] = parsed
+            next_config[key] = parse_int(value, name=key, minimum=1)
             continue
 
         if key in NON_NEGATIVE_INT_CONFIG_KEYS:
-            try:
-                parsed = int(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a non-negative integer.") from None
-            if parsed < 0:
-                raise RemembValidationError(f"{key} must be a non-negative integer.")
-            next_config[key] = parsed
+            next_config[key] = parse_int(value, name=key, minimum=0)
             continue
 
         if key == "sections":

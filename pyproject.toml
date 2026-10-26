@@ -54,7 +54,7 @@ dependencies = [
 rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pytest>=8.0.0", "httpx2>=2.0.0", "ruff>=0.11"]
+dev = ["build", "twine", "pytest>=8.0.0", "httpx2>=2.16.0", "ruff>=0.11"]
 
 [tool.ruff]
 target-version = "py311"

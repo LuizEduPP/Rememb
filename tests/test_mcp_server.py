@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 import rememb.mcp_server as mcp_server
-from rememb.mcp_server import _build_tools
+from rememb.mcp_server import _build_tools, configure_mcp_stores
+from rememb.mcp_stores import GLOBAL_STORE_ID, normalize_project_root
 from rememb.store import delete_entries, edit_entry, read_entries, write_entry
 from rememb.utils import list_skill_definitions
 
@@ -26,6 +27,7 @@ class FakeTextContent:
 
 
 EXPECTED_TOOLS = {
+    "rememb_list_stores",
     "rememb_get",
     "rememb_recent",
     "rememb_list_tags",
@@ -48,7 +50,7 @@ EXPECTED_TOOLS = {
 
 @pytest.fixture
 def handle(monkeypatch: pytest.MonkeyPatch, store: Path):
-    monkeypatch.setattr(mcp_server, "_get_root", lambda: store)
+    monkeypatch.setattr(mcp_server, "_get_root", lambda store_id=None: store)
 
     def run(name: str, arguments: dict | None = None) -> str:
         result = asyncio.run(mcp_server._handle_tool(name, arguments or {}, FakeTextContent))
@@ -58,6 +60,7 @@ def handle(monkeypatch: pytest.MonkeyPatch, store: Path):
 
 
 def test_build_tools_exposes_current_contract():
+    configure_mcp_stores([])
     by_name = {tool.name: tool for tool in _build_tools(FakeTool)}
 
     assert set(by_name) == EXPECTED_TOOLS
@@ -65,9 +68,12 @@ def test_build_tools_exposes_current_contract():
     assert by_name["rememb_search"].inputSchema["required"] == ["query"]
     assert by_name["rememb_diff"].inputSchema["required"] == ["entry_id", "from_version", "to_version"]
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
-    assert {"content", "entries"} <= set(by_name["rememb_write"].inputSchema["properties"])
-    assert {"entry_id", "updates"} <= set(by_name["rememb_edit"].inputSchema["properties"])
+    assert {"store", "content", "entries"} <= set(by_name["rememb_write"].inputSchema["properties"])
+    assert {"store", "entry_id", "updates"} <= set(by_name["rememb_edit"].inputSchema["properties"])
     assert "entry_ids" in by_name["rememb_delete"].inputSchema["properties"]
+    assert "store" not in by_name["rememb_list_stores"].inputSchema["properties"]
+    assert "store" not in by_name["rememb_list_skills"].inputSchema["properties"]
+    assert by_name["rememb_stats"].inputSchema["properties"]["store"]["default"] == GLOBAL_STORE_ID
 
 
 def test_handle_read_tools(handle, store: Path):
@@ -126,6 +132,41 @@ def test_handle_versions_restore_diff_and_consolidate(handle, store: Path):
     delete_entries(store, [entry["id"]])
     assert "Restored deleted entry" in handle("rememb_restore", {"entry_id": entry["id"]})
     assert "Removed 1 duplicate" in handle("rememb_consolidate")
+
+
+def test_configure_mcp_stores_and_route_by_store(tmp_path: Path):
+    project_a = tmp_path / "mavsa"
+    project_b = tmp_path / "other"
+    project_a.mkdir()
+    project_b.mkdir()
+    rememb_dir = (tmp_path / "proj" / ".rememb")
+    rememb_dir.mkdir(parents=True)
+
+    registry = configure_mcp_stores([project_a, project_b, project_a])
+    assert registry.ids() == [GLOBAL_STORE_ID, "mavsa", "other"]
+    assert registry.get("mavsa").root == project_a.resolve()
+    assert normalize_project_root(rememb_dir) == rememb_dir.parent.resolve()
+
+    configure_mcp_stores([tmp_path / "proj"])
+    listed = asyncio.run(mcp_server._handle_tool("rememb_list_stores", {}, FakeTextContent))[0].text
+    assert "global" in listed
+    assert "proj" in listed
+
+    written = asyncio.run(
+        mcp_server._handle_tool(
+            "rememb_write",
+            {"store": "proj", "content": "Project-only fact", "section": "project", "tags": ["t"]},
+            FakeTextContent,
+        )
+    )[0].text
+    assert "[store=proj]" in written
+    stats = asyncio.run(mcp_server._handle_tool("rememb_stats", {"store": "proj"}, FakeTextContent))[0].text
+    assert "[store=proj]" in stats
+    assert "Total entries: 1" in stats
+
+    configure_mcp_stores([])
+    missing = asyncio.run(mcp_server._handle_tool("rememb_stats", {"store": "missing"}, FakeTextContent))[0].text
+    assert "Unknown store 'missing'" in missing
 
 
 def test_handle_skills_and_unknown_tool(handle):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import typer
 from rich import box
@@ -112,7 +113,7 @@ def main(
 ) -> None:
     if ctx.invoked_subcommand is None:
         try:
-            from rememb.web import run_web
+            from rememb.web.app import run_web
             run_web(host=host, port=port, open_browser=not no_browser)
         except ImportError as e:
             print(f"Error loading web UI: {e}")
@@ -138,6 +139,20 @@ def mcp(
         min=1,
         max=65535,
         help="Port for persistent SSE transport.",
+    ),
+    project: list[Path] | None = typer.Option(
+        None,
+        "--project",
+        "-P",
+        help=(
+            "Extra project root with its own .rememb store (repeatable). "
+            "Global (~/.rememb) is always included."
+        ),
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+        writable=False,
+        resolve_path=False,
     ),
 ):
     """Start MCP server for AI agent integration."""
@@ -168,7 +183,14 @@ def mcp(
                 err=True,
             )
 
-        asyncio.run(mcp_run_server(transport=normalized_transport, host=host, port=port))
+        asyncio.run(
+            mcp_run_server(
+                transport=normalized_transport,
+                host=host,
+                port=port,
+                projects=project or [],
+            )
+        )
     except ImportError as e:
         print(f"MCP support requires additional dependencies: {e}")
         raise typer.Exit(1)

@@ -368,7 +368,6 @@ def _assert_initialized(root) -> None:
     if not is_initialized(root):
         raise RemembNotInitializedError("rememb not initialized. Run `rememb init` first.")
 
-
 def _backend(root: Path, backend: str | None = None):
     from rememb.storage import get_storage_backend
 

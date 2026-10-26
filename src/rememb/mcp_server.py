@@ -32,7 +32,6 @@ from rememb.store import (
     format_entries,
     get_config,
     get_stats,
-    init,
     list_entry_versions,
     read_entries,
     read_entries_page,
@@ -43,20 +42,29 @@ from rememb.store import (
     write_entry,
 )
 from rememb.exceptions import RemembError, rememb_error_response_text
+from rememb.mcp_stores import (
+    GLOBAL_STORE_ID,
+    StoreRegistry,
+    ensure_store_root,
+)
 from rememb.utils import (
     _validate_entry_id,
-    ensure_global_root,
     invalid_entry_id_message,
+    is_initialized,
     list_skill_definitions,
     load_skill_definition,
 )
 
 
 class MCPContext:
-    """Lazy import cache for the MCP SDK."""
+    """Lazy MCP SDK import cache and per-process store registry."""
 
     def __init__(self):
         self._mcp_modules = None
+        self._store_registry = StoreRegistry()
+
+    def get_store_registry(self) -> StoreRegistry:
+        return self._store_registry
 
     def get_mcp_modules(self):
         if self._mcp_modules is None:
@@ -81,14 +89,38 @@ class MCPContext:
 _mcp_context = MCPContext()
 
 
-def _get_root() -> Path:
-    return ensure_global_root(init)
+def configure_mcp_stores(projects: list[Path] | None = None) -> StoreRegistry:
+    """Configure global + optional project stores for this MCP process."""
+    registry = _mcp_context.get_store_registry()
+    registry.configure(projects)
+    return registry
+
+
+def _get_root(store_id: str | None = None) -> Path:
+    """Resolve and initialize the selected MCP store root."""
+    return ensure_store_root(_mcp_context.get_store_registry().get(store_id))
 
 
 def _get_mcp_sections() -> list[str]:
-    """Return the current section list for MCP schemas, with safe fallback."""
+    """Return the union of section lists across configured stores."""
     try:
-        return list(get_config(_get_root())["sections"])
+        registry = _mcp_context.get_store_registry()
+        registry.ensure_configured()
+        seen: list[str] = []
+        for store in registry.all():
+            try:
+                if store.kind == "global":
+                    root = _get_root(store.id)
+                elif is_initialized(store.root):
+                    root = store.root
+                else:
+                    continue
+                for section in get_config(root)["sections"]:
+                    if section not in seen:
+                        seen.append(section)
+            except Exception:
+                continue
+        return seen or list(DEFAULT_SECTIONS)
     except Exception:
         return list(DEFAULT_SECTIONS)
 
@@ -98,6 +130,27 @@ def _get_default_mcp_section() -> str:
     if DEFAULT_MCP_SECTION in sections:
         return DEFAULT_MCP_SECTION
     return sections[0]
+
+
+def _store_property() -> dict[str, Any]:
+    registry = _mcp_context.get_store_registry()
+    registry.ensure_configured()
+    return {
+        "type": "string",
+        "enum": registry.ids(),
+        "default": GLOBAL_STORE_ID,
+        "description": (
+            "Memory store id. 'global' is the ~/.rememb store. "
+            "Other ids are project stores passed via repeated --project MCP args."
+        ),
+    }
+
+
+def _with_store_prefix(store_id: str, text: str) -> str:
+    registry = _mcp_context.get_store_registry()
+    if len(registry) <= 1:
+        return text
+    return f"[store={store_id}]\n{text}"
 
 
 def _tool_error_text(exc: Exception) -> str:
@@ -159,9 +212,21 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     Returns:
         List of TextContent responses
     """
-    root = await asyncio.to_thread(_get_root)
-    reply = lambda text: _text(TextContent, text)
+    store_id = arguments.get("store", GLOBAL_STORE_ID)
+    if isinstance(store_id, str):
+        store_id = store_id.strip() or GLOBAL_STORE_ID
+    else:
+        store_id = GLOBAL_STORE_ID
+
+    reply = lambda text: _text(TextContent, _with_store_prefix(store_id, text))
     arg = arguments.get
+
+    root: Path | None = None
+    if name not in {"rememb_list_skills", "rememb_use_skill", "rememb_list_stores"}:
+        try:
+            root = await asyncio.to_thread(_get_root, store_id)
+        except Exception as e:
+            return reply(_tool_error_text(e))
 
     def need_id(entry_id):
         return _need_id(entry_id, reply)
@@ -171,6 +236,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     def not_found(entry_id, extra=""):
         return reply(f"Entry {entry_id}{extra} not found")
+
+    async def rememb_list_stores():
+        registry = _mcp_context.get_store_registry()
+        registry.ensure_configured()
+        lines = ["Stores:"]
+        for store in registry.all():
+            initialized = await asyncio.to_thread(is_initialized, store.root)
+            lines.append(
+                f"- {store.id} ({store.kind}) path={store.root} initialized={initialized}"
+            )
+        return reply("\n".join(lines))
 
     async def rememb_get():
         entry_id = arguments["entry_id"]
@@ -435,6 +511,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         )
 
     tool_handlers = {
+        "rememb_list_stores": rememb_list_stores,
         "rememb_get": rememb_get,
         "rememb_recent": rememb_recent,
         "rememb_list_tags": rememb_list_tags,
@@ -483,11 +560,16 @@ def _build_tools(Tool):
         description: str,
         properties: dict[str, Any] | None = None,
         required: list[str] | None = None,
+        *,
+        include_store: bool = True,
     ):
+        props = dict(properties or {})
+        if include_store:
+            props = {"store": _store_property(), **props}
         return Tool(
             name=name,
             description=description,
-            inputSchema=_schema(properties or {}, required),
+            inputSchema=_schema(props, required),
         )
 
     sections = _get_mcp_sections()
@@ -540,6 +622,15 @@ def _build_tools(Tool):
     filter_section = _section(f"Optional section filter: {joined}")
 
     return [
+        _tool(
+            name="rememb_list_stores",
+            description=(
+                "List configured memory stores for this MCP process: global (~/.rememb) "
+                "plus any project stores passed via --project. Safe, read-only."
+            ),
+            properties={},
+            include_store=False,
+        ),
         _tool(
             name="rememb_get",
             description="Fetch one memory entry by ID with full content. Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID.",
@@ -730,6 +821,7 @@ def _build_tools(Tool):
             name="rememb_list_skills",
             description="List bundled rememb skills discovered from the installed package contents. Safe, read-only operation.",
             properties={},
+            include_store=False,
         ),
         _tool(
             name="rememb_use_skill",
@@ -741,6 +833,7 @@ def _build_tools(Tool):
                 }
             },
             required=["skill"],
+            include_store=False,
         ),
     ]
 
@@ -813,8 +906,14 @@ async def run_server(
     transport: str = "stdio",
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_SSE_PORT,
+    projects: list[Path] | None = None,
 ):
     """Run the MCP server over stdio or a persistent local SSE transport."""
+    if projects is not None:
+        configure_mcp_stores(projects)
+    else:
+        _mcp_context.get_store_registry().ensure_configured()
+
     mcp = _mcp_context.get_mcp_modules()
     Server = mcp["Server"]
     stdio_server = mcp["stdio_server"]

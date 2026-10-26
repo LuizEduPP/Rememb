@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-10-05
+
+### Added
+- MCP multi-store: global (`~/.rememb`) plus optional project stores via repeatable `--project` / `-P`. Tools accept `store` (default `global`); new `rememb_list_stores`.
+
+### Changed
+- MCP multi-store cleanup: remove unused store `label`/root cache, configure stores only in `run_server`, and keep multi-store detail in MCP_TOOLS (README links there).
+- Remove dead store wrappers/reexports: `MemoryStore` protocol assert, `_file_lock`/`_save_entries` helpers, `web._get_root` alias; fold `agent_tools` into `store/crud.py`.
+- Second pass: drop dead `find_root`/`escape`/`_parse_tags`, remove `migrate_json_to_sqlite` and package reexports (`store`/`web` `__init__`); import `store.crud` / `web.app` directly; global MCP root uses `ensure_global_root`.
+
+## [0.4.17] - 2026-09-10
+
+### Fixed
+- Windows `PermissionError` (`Errno 13`) when unlocking `entries.json` after a full read: `msvcrt.locking` unlocks at the current file position, so seek to the start before `LK_UNLCK`.
+
 ## [0.4.16] - 2026-08-01
 
 ### Fixed

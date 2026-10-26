@@ -7,9 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-- README Roadmap. The door, search excerpt, installer, and handoff are current product, documented in README, MCP_TOOLS, and the CLI.
-
 ## [0.4.19] - 2026-10-26
 
 ### Added
@@ -20,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `rememb_search` defaults to a short excerpt (`search_excerpt_chars`, 160). `max_chars=0` returns the full body; `rememb_get` / `rememb_read` stay full-body.
+
+### Removed
+- README Roadmap. The door, search excerpt, installer, and handoff are current product, documented in README, MCP_TOOLS, and the CLI.
 
 ### Fixed
 - Dev extra uses `httpx2` so FastAPI/Starlette `TestClient` no longer warns about deprecated `httpx`.

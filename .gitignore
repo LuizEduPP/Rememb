@@ -14,3 +14,4 @@ venv/
 .asset-workspace/
 .mcpregistry_*_token
 scripts/capture_web_ui_assets.py
+tmp/

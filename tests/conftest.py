@@ -6,8 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from rememb.store import init
-from rememb.web import app
-from rememb.web import deps
+from rememb.web import app, deps
 
 
 @pytest.fixture

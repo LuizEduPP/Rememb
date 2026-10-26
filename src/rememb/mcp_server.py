@@ -5,48 +5,48 @@ from pathlib import Path
 from typing import Any
 
 from rememb.config import (
+    DEFAULT_HOST,
     DEFAULT_MCP_SECTION,
     DEFAULT_MESSAGE_PATH,
     DEFAULT_PAGE_LIMIT,
     DEFAULT_RECENT_LIMIT,
     DEFAULT_SEARCH_TOP_K,
     DEFAULT_SECTIONS,
-    DEFAULT_HOST,
     DEFAULT_SSE_PATH,
     DEFAULT_SSE_PORT,
     DEFAULT_TAG_LIMIT,
     ENTRY_ID_LENGTH,
     SEARCH_EXCERPT_CHARS,
 )
-from rememb.store import (
-    agent_summarize_hint,
-    clear_entries,
-    get_entry,
-    list_entry_tags,
-    read_recent_entries,
-    consolidate_entries,
-    diff_entry_versions,
-    delete_entries,
-    delete_entry,
-    edit_entries,
-    edit_entry,
-    format_entries,
-    get_config,
-    get_stats,
-    list_entry_versions,
-    read_entries,
-    read_entries_page,
-    restore_deleted_entry,
-    restore_entry_version,
-    search_entries,
-    write_entries,
-    write_entry,
-)
 from rememb.exceptions import RemembError, RemembValidationError, rememb_error_response_text
 from rememb.mcp_stores import (
     GLOBAL_STORE_ID,
     StoreRegistry,
     ensure_store_root,
+)
+from rememb.store import (
+    agent_summarize_hint,
+    clear_entries,
+    consolidate_entries,
+    delete_entries,
+    delete_entry,
+    diff_entry_versions,
+    edit_entries,
+    edit_entry,
+    format_entries,
+    get_config,
+    get_entry,
+    get_stats,
+    list_entry_tags,
+    list_entry_versions,
+    read_entries,
+    read_entries_page,
+    read_recent_entries,
+    restore_deleted_entry,
+    restore_entry_version,
+    search_entries,
+    write_entries,
+    write_entry,
 )
 from rememb.utils import (
     is_initialized,
@@ -72,7 +72,7 @@ class MCPContext:
             try:
                 from mcp.server import Server
                 from mcp.server.stdio import stdio_server
-                from mcp.types import Tool, TextContent
+                from mcp.types import TextContent, Tool
                 self._mcp_modules = {
                     "Server": Server,
                     "stdio_server": stdio_server,
@@ -552,7 +552,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
 def _build_tools(Tool):
     """Run MCP stdio server.
-    
+
     Starts the MCP server and handles stdio communication.
     """
     def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:

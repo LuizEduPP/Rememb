@@ -17,7 +17,6 @@ from rememb.config import DEFAULT_HOST, DEFAULT_SSE_PORT, DEFAULT_WEB_PORT
 from rememb.hooks import HOOK_EVENTS
 from rememb.install import HOSTS, run_install
 
-
 console = Console()
 
 
@@ -27,7 +26,7 @@ def _version_callback(value: bool) -> None:
         version_text.append("🧠 ", style="bold bright_cyan")
         version_text.append("rememb\n", style="bold bright_cyan")
         version_text.append(f"v{__version__}", style="cyan")
-        
+
         console.print(Panel(
             version_text,
             title="[bold cyan]Version[/bold cyan]",
@@ -60,7 +59,7 @@ def _show_help():
     header_text.append("🧠 ", style="bold bright_cyan")
     header_text.append("rememb\n", style="bold bright_cyan")
     header_text.append(f"v{__version__}", style="cyan")
-    
+
     console.print(Panel(
         header_text,
         title="[bold cyan]rememb[/bold cyan]",
@@ -70,7 +69,7 @@ def _show_help():
         width=30
     ))
     console.print("[dim italic]Persistent memory for AI agents — local, portable, zero config.[/dim italic]\n")
-    
+
     cmd_table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", border_style="green")
     cmd_table.add_column("Command", style="bold green", width=16)
     cmd_table.add_column("Description", style="white")
@@ -78,7 +77,7 @@ def _show_help():
     cmd_table.add_row("mcp", "Start MCP server (stdio or local SSE)")
     cmd_table.add_row("hook", "Host hooks: post-tool, stop, session-start")
     cmd_table.add_row("install", "Write MCP, rules, and hooks for an IDE")
-    
+
     console.print(Panel(
         cmd_table,
         title="[bold green]:sparkles: Commands[/bold green]",
@@ -86,13 +85,13 @@ def _show_help():
         box=box.ROUNDED,
         padding=(1, 2)
     ))
-    
+
     opts_table = Table(box=box.ROUNDED, show_header=True, header_style="bold yellow", border_style="yellow")
     opts_table.add_column("Option", style="bold yellow", width=16)
     opts_table.add_column("Description", style="white")
     opts_table.add_row("--version, -v", "Show version and exit")
     opts_table.add_row("--help, -h", "Show this help message")
-    
+
     console.print(Panel(
         opts_table,
         title="[bold yellow]:gear: Options[/bold yellow]",
@@ -100,14 +99,14 @@ def _show_help():
         box=box.ROUNDED,
         padding=(1, 2)
     ))
-    
+
     console.print("\n[dim]Tip: Run without arguments to open the web UI in your browser.[/dim]\n")
 
 
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    version: bool | None = typer.Option(
+    _version: bool | None = typer.Option(
         None, "--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
     host: str = typer.Option(DEFAULT_HOST, "--host", help="Host to bind the web UI server."),

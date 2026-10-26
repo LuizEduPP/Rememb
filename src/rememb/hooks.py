@@ -32,7 +32,6 @@ from rememb.store import (
 from rememb.store.crud import _entry_stamp
 from rememb.utils import clip_text, ensure_global_root, global_root, is_initialized
 
-
 HOOK_EVENTS = ("post-tool", "stop", "session-start")
 _TOOL_NAME_KEYS = ("tool_name", "toolName", "tool")
 _CWD_KEYS = ("cwd", "working_directory")

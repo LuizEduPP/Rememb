@@ -7,7 +7,6 @@ from typer.testing import CliRunner
 from rememb import __version__
 from rememb.cli import app
 
-
 runner = CliRunner()
 
 

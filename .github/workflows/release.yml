@@ -37,6 +37,9 @@ jobs:
       - name: Install build and test dependencies
         run: uv pip install --system -e ".[dev]"
 
+      - name: Lint
+        run: python -m ruff check src/rememb tests
+
       - name: Run tests
         run: python -m pytest -q
 

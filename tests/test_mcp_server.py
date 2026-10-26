@@ -51,7 +51,7 @@ EXPECTED_TOOLS = {
 
 @pytest.fixture
 def handle(monkeypatch: pytest.MonkeyPatch, store: Path):
-    monkeypatch.setattr(mcp_server, "_get_root", lambda store_id=None: store)
+    monkeypatch.setattr(mcp_server, "_get_root", lambda _store_id=None: store)
 
     def run(name: str, arguments: dict | None = None) -> str:
         result = asyncio.run(mcp_server._handle_tool(name, arguments or {}, FakeTextContent))

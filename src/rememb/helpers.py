@@ -4,23 +4,24 @@ import json
 import os
 import re
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from rememb.config import (
     DEFAULT_ALL_SECTION_COLOR,
+    DEFAULT_CONFIG,
     DEFAULT_REMOVED_SECTION_NAME,
     DEFAULT_SECTION_COLORS,
     DEFAULT_SECTIONS,
-    DEFAULT_CONFIG,
     NON_NEGATIVE_INT_CONFIG_KEYS,
     POSITIVE_INT_CONFIG_KEYS,
 )
-from rememb.utils import _config_path, _meta_path, _now, is_initialized, parse_int
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
 )
+from rememb.utils import _config_path, _meta_path, _now, is_initialized, parse_int
 
 _SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
 _ModifierResult = TypeVar("_ModifierResult")
@@ -265,10 +266,10 @@ class StoreContext:
 
     def get_config(self, root: Path) -> dict[str, Any]:
         """Load configuration from .rememb/config.json or use defaults.
-        
+
         Args:
             root: Project root path
-        
+
         Returns:
             Configuration dictionary with limits and settings
         """
@@ -309,7 +310,7 @@ class StoreContext:
 
         if config_needs_write:
             _write_json(config_path, config)
-        
+
         self._config_cache[root_key] = config
         self._config_cache_mtime[root_key] = current_mtime
         return config
@@ -453,76 +454,76 @@ def _keyword_search(
 
 def _sanitize_content(content: str, root: Path) -> str:
     """Sanitize and validate entry content.
-    
+
     Args:
         content: Raw content to sanitize
         root: Project root path for config lookup
-    
+
     Returns:
         Sanitized content with control chars removed and normalized whitespace
-    
+
     Raises:
         RemembValidationError: If content is not a string, empty, or exceeds max length
     """
     if not isinstance(content, str):
         raise RemembValidationError(f"Content must be string, got {type(content).__name__}")
-    
+
     content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
     normalized_lines = [" ".join(line.split()) for line in content.splitlines()]
     content = "\n".join(normalized_lines).strip()
-    
+
     if not content.strip():
         raise RemembValidationError("Content cannot be empty")
-    
+
     config = _store_context.get_config(root)
     max_length = config["max_content_length"]
     if len(content) > max_length:
         raise RemembValidationError(f"Content too long ({len(content)} chars, max {max_length})")
-    
+
     return content
 
 
 def _sanitize_tags(tags: list[str], root: Path) -> list[str]:
     """Sanitize and validate entry tags.
-    
+
     Args:
         tags: List of tags to sanitize
         root: Project root path for config lookup
-    
+
     Returns:
         Sanitized list of lowercase alphanumeric tags
-    
+
     Raises:
         RemembValidationError: If tags is None, not a list, or too many tags
     """
     if tags is None:
         return []
-    
+
     if not isinstance(tags, list):
         raise RemembValidationError(f"Tags must be list, got {type(tags).__name__}")
-    
+
     config = _store_context.get_config(root)
     max_tags = config["max_tags_per_entry"]
     max_tag_length = config["max_tag_length"]
-    
+
     if len(tags) > max_tags:
         raise RemembValidationError(f"Too many tags ({len(tags)}, max {max_tags})")
-    
+
     sanitized = []
     for tag in tags:
         if not isinstance(tag, str):
             warnings.warn(f"Tag is not a string (type: {type(tag).__name__}), skipping. Tag: {tag}")
             continue
-        
+
         tag = tag.lower().strip()
         tag = "".join(c for c in tag if c.isalnum() or c in "-_:")
-        
+
         if len(tag) > max_tag_length:
             tag = tag[:max_tag_length]
-        
+
         if tag and tag not in sanitized:
             sanitized.append(tag)
-    
+
     return sanitized
 
 

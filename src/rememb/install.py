@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rememb.agent_rules import RULES_BEGIN, RULES_END, marked_rules
 from rememb.helpers import _json_text
-
 
 MCP_COMMAND = "rememb"
 MCP_ARGS = ["mcp"]

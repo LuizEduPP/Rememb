@@ -28,6 +28,7 @@ pip install -e ".[dev]"
 
 - Use Python 3.11+ type hints (`list[str]` instead of `List[str]`)
 - Follow PEP 8 guidelines
+- Lint with Ruff (`pyproject.toml`): `python -m ruff check src/rememb tests`
 - Use snake_case for function and variable names
 - Add docstrings to all public functions
 - Keep functions focused and under 50 lines when possible
@@ -77,9 +78,10 @@ tests/                   # pytest suite
 git checkout -b feature/your-feature-name
 ```
 
-2. Make your changes and test locally:
+2. Make your changes, lint, and test locally:
 
 ```bash
+python -m ruff check src/rememb tests
 python -m pytest
 ```
 

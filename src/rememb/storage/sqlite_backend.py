@@ -6,8 +6,9 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from rememb.config import DEFAULT_MCP_SECTION
 from rememb.exceptions import RemembStorageError

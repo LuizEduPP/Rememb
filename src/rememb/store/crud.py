@@ -24,17 +24,17 @@ from rememb.exceptions import (
     RemembValidationError,
 )
 from rememb.helpers import (
-    _atomic_modify,
     _assert_initialized,
+    _atomic_modify,
     _get_sections,
+    _keyword_search,
     _load_entries,
     _migrate_entries_to_section,
+    _normalize_search_text,
     _read_json_dict,
     _restore_migrated_entries,
     _sanitize_content,
     _sanitize_tags,
-    _keyword_search,
-    _normalize_search_text,
     _store_context,
     _sync_meta_sections,
     _validate_config_updates,
@@ -42,22 +42,13 @@ from rememb.helpers import (
     _write_json,
 )
 from rememb.utils import (
-    clip_text,
-    _apply_revision,
     _config_path,
-    _current_entry_version,
     _entries_db_path,
     _entries_path,
-    _entry_history,
-    _entry_revision_list,
-    _entry_revision_snapshot,
-    _find_entry,
-    _find_entry_revision,
-    _is_deleted_entry,
-    _normalize_version_number,
     _now,
     _rememb_path,
-    _revision_label,
+    clip_text,
+    parse_int,
     require_entry_id,
 )
 
@@ -66,6 +57,80 @@ logger = logging.getLogger(__name__)
 
 def _entry_stamp(entry: dict) -> str:
     return str(entry.get("updated_at") or entry.get("created_at") or "")
+
+
+def _current_entry_version(entry: dict[str, Any]) -> int:
+    raw_version = entry.get("version", 1)
+    try:
+        parsed_version = int(str(raw_version).strip())
+    except (TypeError, ValueError):
+        return 1
+    return parsed_version if parsed_version > 0 else 1
+
+
+def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_history = entry.get("history")
+    if not isinstance(raw_history, list):
+        return []
+    return [dict(item) for item in raw_history if isinstance(item, dict)]
+
+
+def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "version": _current_entry_version(entry),
+        "section": str(entry.get("section", "")),
+        "content": str(entry.get("content", "")),
+        "tags": list(entry.get("tags", [])) if isinstance(entry.get("tags"), list) else [],
+        "created_at": str(entry.get("created_at", "")),
+        "updated_at": str(entry.get("updated_at", "")),
+        "deleted_at": str(entry.get("deleted_at", "")),
+    }
+
+
+def _deleted_at(entry: dict[str, Any]) -> str | None:
+    value = str(entry.get("deleted_at", "")).strip()
+    return value or None
+
+
+def _is_deleted_entry(entry: dict[str, Any]) -> bool:
+    return _deleted_at(entry) is not None
+
+
+def _entry_revision_list(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    revisions = _entry_history(entry)
+    revisions.append(_entry_revision_snapshot(entry))
+    revisions.sort(key=lambda revision: int(revision.get("version", 1)))
+    return revisions
+
+
+def _find_entry(entries: list[dict[str, Any]], entry_id: str) -> dict[str, Any] | None:
+    for entry in entries:
+        if str(entry.get("id", "")) == entry_id:
+            return entry
+    return None
+
+
+def _find_entry_revision(entry: dict[str, Any], version: int) -> dict[str, Any] | None:
+    for revision in _entry_revision_list(entry):
+        if int(revision.get("version", 0)) == version:
+            return dict(revision)
+    return None
+
+
+def _apply_revision(entry: dict[str, Any], revision: dict[str, Any], *, restore_deleted: bool = False) -> None:
+    entry["section"] = str(revision.get("section", ""))
+    entry["content"] = str(revision.get("content", ""))
+    entry["tags"] = list(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else []
+    if restore_deleted:
+        entry.pop("deleted_at", None)
+
+
+def _revision_label(entry_id: str, version: int) -> str:
+    return f"{entry_id}@v{version}"
+
+
+def _normalize_version_number(version: object) -> int:
+    return parse_int(version, name="version", minimum=1)
 
 
 def _active_entries(root: Path, *, include_deleted: bool = False) -> list[dict]:
@@ -203,12 +268,12 @@ def write_entries(
 
 def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     """Initialize rememb at the given root directory.
-    
+
     Args:
         root: Project root path
         project_name: Optional project name for metadata
         global_mode: If True, initialize in global home directory
-    
+
     Returns:
         Path to .rememb directory
     """
@@ -224,7 +289,11 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
 
     _write_json(config_file, config_data)
 
-    from rememb.storage import get_storage_backend, migrate_json_to_sqlite, normalize_storage_backend
+    from rememb.storage import (
+        get_storage_backend,
+        migrate_json_to_sqlite,
+        normalize_storage_backend,
+    )
 
     backend_name = normalize_storage_backend(config_data.get("storage_backend", DEFAULT_STORAGE_BACKEND))
     backend = get_storage_backend(root, backend=backend_name)
@@ -247,7 +316,7 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
         try:
             content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
             existing_lines = {line.strip() for line in content.splitlines()}
-            additions = "".join(l for l in gitignore_lines if l.strip() not in existing_lines)
+            additions = "".join(line for line in gitignore_lines if line.strip() not in existing_lines)
             if additions:
                 gitignore.write_text((content.rstrip() + "\n" + additions) if content else additions, encoding="utf-8")
         except (OSError, PermissionError):
@@ -265,17 +334,17 @@ def write_entry(
     skip_duplicates: bool = True,
 ) -> dict:
     """Write a new entry to memory.
-    
+
     Args:
         root: Project root path
         section: Section name (one of the configured sections)
         content: Entry content (1-3 sentences recommended)
         tags: Optional list of tags for categorization
         skip_duplicates: If True, reject duplicate content in same section
-    
+
     Returns:
         Created entry dictionary with id, section, content, tags, timestamps
-    
+
     Raises:
         RemembNotInitializedError: If rememb not initialized
         RemembValidationError: If section invalid or duplicate detected
@@ -451,11 +520,11 @@ def consolidate_entries(
 
 def delete_entry(root: Path, entry_id: str) -> bool:
     """Delete an entry by ID.
-    
+
     Args:
         root: Project root path
         entry_id: Hexadecimal entry ID
-    
+
     Returns:
         True if entry was deleted, False if not found
     """
@@ -510,14 +579,14 @@ def restore_deleted_entry(root: Path, entry_id: str) -> dict | None:
 
 def clear_entries(root: Path, *, confirm: bool = False) -> int:
     """Clear all entries from memory.
-    
+
     Args:
         root: Project root path
         confirm: Must be True to proceed (safety guard)
-    
+
     Returns:
         Number of entries cleared
-    
+
     Raises:
         RemembValidationError: If confirm=False
         RemembNotInitializedError: If rememb not initialized
@@ -542,17 +611,17 @@ def edit_entry(
     tags: list[str] | None = None,
 ) -> dict | None:
     """Edit an existing entry by ID.
-    
+
     Args:
         root: Project root path
         entry_id: Hexadecimal entry ID
         content: New content (optional)
         section: New section (optional)
         tags: New tags list (optional)
-    
+
     Returns:
         Updated entry dictionary if found, None otherwise
-    
+
     Raises:
         RemembValidationError: If section invalid
     """
@@ -624,15 +693,15 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
 
 def read_entries(root: Path, section: str | None = None, *, include_deleted: bool = False) -> list[dict]:
     """Read entries from memory.
-    
+
     Args:
         root: Project root path
         section: Optional section filter
         include_deleted: If True, include soft-deleted entries
-    
+
     Returns:
         List of entry dictionaries
-    
+
     Raises:
         RemembNotInitializedError: If rememb not initialized
     """
@@ -785,10 +854,10 @@ def search_entries(
 
 def get_stats(root: Path) -> dict:
     """Compute memory statistics.
-    
+
     Args:
         root: Project root path
-    
+
     Returns:
         Dictionary with total, by_section, size_kb, oldest, newest
     """
@@ -980,14 +1049,14 @@ def format_entries(
     summary_only: bool = False,
 ) -> str:
     """Format entries for display.
-    
+
     Args:
         entries: List of entry dictionaries
         include_id: If True, include entry IDs in output
         include_score: If True, include semantic scores when available
         max_chars: Optional mechanical cap on content characters per entry
         summary_only: Deprecated. Ignored; agents summarize semantically after reads.
-    
+
     Returns:
         Formatted markdown string
     """

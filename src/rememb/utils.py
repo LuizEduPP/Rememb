@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -129,13 +129,13 @@ def _extract_summary(content: str) -> str:
 
 def _read_file_content(path: Path) -> str:
     """Read content from file based on extension.
-    
+
     Args:
         path: File path to read
-    
+
     Returns:
         File content as string, or empty string if error
-    
+
     Supports:
         .md, .txt: Plain text
         .pdf: PDF text extraction (requires pypdf)
@@ -390,78 +390,4 @@ def ensure_global_root(initializer: Callable[[Path, str, bool], object]) -> Path
 
 def _now() -> str:
     """Get current UTC timestamp."""
-    return datetime.now(timezone.utc).strftime(TIMESTAMP_FORMAT)
-
-
-def _current_entry_version(entry: dict[str, Any]) -> int:
-    raw_version = entry.get("version", 1)
-    try:
-        parsed_version = int(str(raw_version).strip())
-    except (TypeError, ValueError):
-        return 1
-    return parsed_version if parsed_version > 0 else 1
-
-
-def _entry_history(entry: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_history = entry.get("history")
-    if not isinstance(raw_history, list):
-        return []
-    return [dict(item) for item in raw_history if isinstance(item, dict)]
-
-
-def _entry_revision_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "version": _current_entry_version(entry),
-        "section": str(entry.get("section", "")),
-        "content": str(entry.get("content", "")),
-        "tags": list(entry.get("tags", [])) if isinstance(entry.get("tags"), list) else [],
-        "created_at": str(entry.get("created_at", "")),
-        "updated_at": str(entry.get("updated_at", "")),
-        "deleted_at": str(entry.get("deleted_at", "")),
-    }
-
-
-def _deleted_at(entry: dict[str, Any]) -> str | None:
-    value = str(entry.get("deleted_at", "")).strip()
-    return value or None
-
-
-def _is_deleted_entry(entry: dict[str, Any]) -> bool:
-    return _deleted_at(entry) is not None
-
-
-def _entry_revision_list(entry: dict[str, Any]) -> list[dict[str, Any]]:
-    revisions = _entry_history(entry)
-    revisions.append(_entry_revision_snapshot(entry))
-    revisions.sort(key=lambda revision: int(revision.get("version", 1)))
-    return revisions
-
-
-def _find_entry(entries: list[dict[str, Any]], entry_id: str) -> dict[str, Any] | None:
-    for entry in entries:
-        if str(entry.get("id", "")) == entry_id:
-            return entry
-    return None
-
-
-def _find_entry_revision(entry: dict[str, Any], version: int) -> dict[str, Any] | None:
-    for revision in _entry_revision_list(entry):
-        if int(revision.get("version", 0)) == version:
-            return dict(revision)
-    return None
-
-
-def _apply_revision(entry: dict[str, Any], revision: dict[str, Any], *, restore_deleted: bool = False) -> None:
-    entry["section"] = str(revision.get("section", ""))
-    entry["content"] = str(revision.get("content", ""))
-    entry["tags"] = list(revision.get("tags", [])) if isinstance(revision.get("tags"), list) else []
-    if restore_deleted:
-        entry.pop("deleted_at", None)
-
-
-def _revision_label(entry_id: str, version: int) -> str:
-    return f"{entry_id}@v{version}"
-
-
-def _normalize_version_number(version: object) -> int:
-    return parse_int(version, name="version", minimum=1)
+    return datetime.now(UTC).strftime(TIMESTAMP_FORMAT)

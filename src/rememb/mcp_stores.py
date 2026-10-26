@@ -9,7 +9,6 @@ from rememb.exceptions import RemembError, RemembNotInitializedError
 from rememb.store.crud import init
 from rememb.utils import ensure_global_root, global_root, is_initialized
 
-
 GLOBAL_STORE_ID = "global"
 
 

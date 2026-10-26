@@ -5,26 +5,43 @@ import os
 import re
 import warnings
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
 from rememb.config import (
+    CONFIG_FILE,
     DEFAULT_ALL_SECTION_COLOR,
     DEFAULT_CONFIG,
     DEFAULT_REMOVED_SECTION_NAME,
     DEFAULT_SECTION_COLORS,
     DEFAULT_SECTIONS,
+    META_FILE,
     NON_NEGATIVE_INT_CONFIG_KEYS,
     POSITIVE_INT_CONFIG_KEYS,
+    TIMESTAMP_FORMAT,
 )
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
 )
-from rememb.utils import _config_path, _meta_path, _now, is_initialized, parse_int
+from rememb.utils import _store_file, is_initialized, parse_int
 
 _SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
 _ModifierResult = TypeVar("_ModifierResult")
+
+
+def _meta_path(root: Path) -> Path:
+    return _store_file(root, META_FILE)
+
+
+def _config_path(root: Path) -> Path:
+    return _store_file(root, CONFIG_FILE)
+
+
+def _now() -> str:
+    """Get current UTC timestamp."""
+    return datetime.now(UTC).strftime(TIMESTAMP_FORMAT)
 
 
 def _normalize_sections(value: object) -> list[str]:

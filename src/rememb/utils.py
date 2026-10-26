@@ -2,20 +2,16 @@
 
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from rememb.config import (
-    CONFIG_FILE,
     ENTRIES_DB_FILE,
     ENTRIES_FILE,
     ENTRY_ID_LENGTH,
     ENTRY_ID_PATTERN,
-    META_FILE,
     REMEMB_DIR,
     TEXT_ELLIPSIS,
-    TIMESTAMP_FORMAT,
 )
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 
@@ -34,14 +30,6 @@ def _entries_path(root: Path) -> Path:
 
 def _entries_db_path(root: Path) -> Path:
     return _store_file(root, ENTRIES_DB_FILE)
-
-
-def _meta_path(root: Path) -> Path:
-    return _store_file(root, META_FILE)
-
-
-def _config_path(root: Path) -> Path:
-    return _store_file(root, CONFIG_FILE)
 
 
 def clip_text(value: str, limit: int | None) -> str:
@@ -386,8 +374,3 @@ def ensure_global_root(initializer: Callable[[Path, str, bool], object]) -> Path
     if not is_initialized(root):
         raise RemembNotInitializedError("Global rememb not initialized.")
     return root
-
-
-def _now() -> str:
-    """Get current UTC timestamp."""
-    return datetime.now(UTC).strftime(TIMESTAMP_FORMAT)

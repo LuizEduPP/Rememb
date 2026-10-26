@@ -26,11 +26,13 @@ from rememb.exceptions import (
 from rememb.helpers import (
     _assert_initialized,
     _atomic_modify,
+    _config_path,
     _get_sections,
     _keyword_search,
     _load_entries,
     _migrate_entries_to_section,
     _normalize_search_text,
+    _now,
     _read_json_dict,
     _restore_migrated_entries,
     _sanitize_content,
@@ -42,10 +44,8 @@ from rememb.helpers import (
     _write_json,
 )
 from rememb.utils import (
-    _config_path,
     _entries_db_path,
     _entries_path,
-    _now,
     _rememb_path,
     clip_text,
     parse_int,

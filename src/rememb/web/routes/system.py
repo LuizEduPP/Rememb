@@ -11,13 +11,11 @@ from fastapi.responses import Response
 
 from rememb import __version__
 from rememb.config import DEFAULT_STORAGE_BACKEND
-from rememb.helpers import _json_text
+from rememb.helpers import _config_path, _json_text, _meta_path
 from rememb.store import consolidate_entries, export_entries, get_config, get_stats, update_config
 from rememb.utils import (
-    _config_path,
     _entries_db_path,
     _entries_path,
-    _meta_path,
     list_skill_definitions,
     load_skill_definition,
     load_skill_file,

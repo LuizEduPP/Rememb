@@ -16,7 +16,6 @@ from rememb.config import (
     DEFAULT_CONFIG,
     NON_NEGATIVE_INT_CONFIG_KEYS,
     POSITIVE_INT_CONFIG_KEYS,
-    UNIT_INTERVAL_FLOAT_CONFIG_KEYS,
 )
 from rememb.utils import _config_path, _meta_path, _now, is_initialized
 from rememb.exceptions import (
@@ -210,16 +209,6 @@ def _validate_config_updates(
             if parsed < 0:
                 raise RemembValidationError(f"{key} must be a non-negative integer.")
             next_config[key] = parsed
-            continue
-
-        if key in UNIT_INTERVAL_FLOAT_CONFIG_KEYS:
-            try:
-                parsed_f = float(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a float between 0.0 and 1.0.") from None
-            if not (0.0 <= parsed_f <= 1.0):
-                raise RemembValidationError(f"{key} must be between 0.0 and 1.0.")
-            next_config[key] = parsed_f
             continue
 
         if key == "sections":

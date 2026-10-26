@@ -11,7 +11,7 @@ from rememb.config import (
     DEFAULT_RECENT_LIMIT,
     DEFAULT_SEARCH_TOP_K,
     DEFAULT_SECTIONS,
-    DEFAULT_SSE_HOST,
+    DEFAULT_HOST,
     DEFAULT_SSE_PATH,
     DEFAULT_SSE_PORT,
     DEFAULT_TAG_LIMIT,
@@ -948,7 +948,7 @@ async def _run_sse_server(server, host: str, port: int, sse_path: str, message_p
 
 async def run_server(
     transport: str = "stdio",
-    host: str = DEFAULT_SSE_HOST,
+    host: str = DEFAULT_HOST,
     port: int = DEFAULT_SSE_PORT,
 ):
     """Run the MCP server over stdio or a persistent local SSE transport."""

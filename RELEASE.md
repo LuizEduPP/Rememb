@@ -2,7 +2,7 @@
 
 This repository publishes releases through GitHub Actions with PyPI Trusted Publishing.
 
-Current release: [v0.4.18](https://github.com/LuizEduPP/Rememb/releases/tag/v0.4.18) (MCP multi-store).
+Current release: [v0.4.19](https://github.com/LuizEduPP/Rememb/releases/tag/v0.4.19) (host door).
 
 ## Goals
 
@@ -55,7 +55,7 @@ Important:
 
 - The PyPI project name is lowercase: `rememb`.
 - The GitHub repository name must match the repository claims exactly: `Rememb`.
-- The tag must point to a commit whose package version matches the release tag (e.g. tag `v0.4.18` → `version = "0.4.18"`).
+- The tag must point to a commit whose package version matches the release tag (e.g. tag `v0.4.19` → `version = "0.4.19"`).
 
 Strongly recommended:
 
@@ -84,7 +84,7 @@ Bump the version in every place that ships it, on the branch you will tag:
 - `server.json` — top-level `version` and the package `version`
 - `CHANGELOG.md` — move `[Unreleased]` notes into `## [x.y.z] - YYYY-MM-DD`
 
-Commit that bump, then create or publish a GitHub Release whose tag matches the version (`v0.4.18` for `0.4.18`). The `release.published` event triggers the PyPI publish job.
+Commit that bump, then create or publish a GitHub Release whose tag matches the version (`v0.4.19` for `0.4.19`). The `release.published` event triggers the PyPI publish job.
 
 If the `pypi` environment requires approval, confirm the deploy after the build job passes.
 

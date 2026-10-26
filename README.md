@@ -260,7 +260,7 @@ Core capabilities:
 
 ## Roadmap
 
-The store and the door are in this tree. Published PyPI is still v0.4.18 (opt-in MCP only). Same `~/.rememb`.
+The store and the door are in this tree. Published PyPI is still v0.4.19 (opt-in MCP only). Same `~/.rememb`.
 
 - [x] **Hooks that write** — `PostToolUse` / `Stop` call `rememb hook post-tool` / `rememb hook stop` and write into `actions`.
 - [x] **Inject on SessionStart** — `rememb hook session-start` prints recent + tags + stats before the first user message.

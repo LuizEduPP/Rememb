@@ -2,6 +2,8 @@
 
 This repository publishes releases through GitHub Actions with PyPI Trusted Publishing.
 
+Current release: [v0.4.18](https://github.com/LuizEduPP/Rememb/releases/tag/v0.4.18) (MCP multi-store).
+
 ## Goals
 
 - avoid long-lived PyPI API tokens
@@ -24,9 +26,9 @@ The release workflow has two entry points:
 Each run does the following before publishing:
 
 1. checks out the repository
-2. installs the project with development dependencies
+2. installs the project with `uv pip install --system -e ".[dev]"`
 3. runs the test suite
-4. runs `python -m py_compile src/rememb/*.py`
+4. compiles `src/rememb/*.py`, `src/rememb/store/*.py`, and `src/rememb/storage/*.py`
 5. builds both wheel and sdist with `python -m build`
 6. uploads the built `dist/` artifacts into the workflow
 7. downloads the artifacts in the publish job and publishes them with `pypa/gh-action-pypi-publish` (release event only)
@@ -53,7 +55,7 @@ Important:
 
 - The PyPI project name is lowercase: `rememb`.
 - The GitHub repository name must match the repository claims exactly: `Rememb`.
-- The tag must point to a commit whose `pyproject.toml` version matches the release tag (e.g. tag `v0.4.16` → `version = "0.4.16"`).
+- The tag must point to a commit whose package version matches the release tag (e.g. tag `v0.4.18` → `version = "0.4.18"`).
 
 Strongly recommended:
 
@@ -75,9 +77,16 @@ If old token-based publishing was configured previously, revoke those tokens and
 
 ## How to Publish
 
-Create or publish a GitHub Release. The `release.published` event triggers the PyPI publish job.
+Bump the version in every place that ships it, on the branch you will tag:
 
-Before tagging, bump `version` in `pyproject.toml` and commit on the branch you will tag.
+- `pyproject.toml` — `[project].version`
+- `src/rememb/__init__.py` — `__version__`
+- `server.json` — top-level `version` and the package `version`
+- `CHANGELOG.md` — move `[Unreleased]` notes into `## [x.y.z] - YYYY-MM-DD`
+
+Commit that bump, then create or publish a GitHub Release whose tag matches the version (`v0.4.18` for `0.4.18`). The `release.published` event triggers the PyPI publish job.
+
+If the `pypi` environment requires approval, confirm the deploy after the build job passes.
 
 ## Failure Model
 

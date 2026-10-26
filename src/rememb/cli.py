@@ -236,7 +236,7 @@ def install(
     host: str | None = typer.Option(
         None,
         "--host",
-        help="cursor, claude, or codex. Default: all supported hosts.",
+        help="One of: cursor, claude, codex, vscode, copilot, windsurf, continue, gemini, opencode, zed, cline. Default: all.",
     ),
     apply: bool = typer.Option(False, "--apply", help="Write files. Without this flag, only print the plan."),
     project: bool = typer.Option(False, "--project", help="Write into the current directory instead of the user config."),

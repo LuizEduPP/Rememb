@@ -68,6 +68,38 @@ def test_install_uninstall_removes_only_rememb_owned(tmp_path: Path):
     assert remaining_mcp["mcpServers"]["other"]["command"] == "echo"
 
 
+def test_install_additional_hosts(tmp_path: Path):
+    home = tmp_path / "home"
+    cwd = tmp_path / "proj"
+    home.mkdir()
+    cwd.mkdir()
+
+    run_install(
+        ["vscode", "copilot", "continue", "gemini", "opencode", "zed", "cline", "windsurf"],
+        apply=True,
+        project=True,
+        cwd=cwd,
+        home=home,
+    )
+
+    vscode = json.loads((cwd / ".vscode" / "mcp.json").read_text(encoding="utf-8"))
+    assert vscode["servers"]["rememb"]["command"] == "rememb"
+    assert "mcpServers" not in vscode
+
+    assert json.loads((cwd / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["rememb"]["args"] == ["mcp"]
+    assert "command: rememb" in (cwd / ".continue" / "mcpServers" / "rememb.yaml").read_text(encoding="utf-8")
+    assert json.loads((cwd / ".gemini" / "settings.json").read_text(encoding="utf-8"))["mcpServers"]["rememb"]["command"] == "rememb"
+    assert json.loads((cwd / "opencode.json").read_text(encoding="utf-8"))["mcp"]["rememb"]["command"] == ["rememb", "mcp"]
+    assert json.loads((cwd / ".zed" / "settings.json").read_text(encoding="utf-8"))["context_servers"]["rememb"]["command"] == "rememb"
+    assert json.loads((cwd / ".cline" / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]["rememb"]["args"] == ["mcp"]
+    assert RULES_BEGIN in (cwd / "GEMINI.md").read_text(encoding="utf-8")
+    assert RULES_BEGIN in (cwd / "AGENTS.md").read_text(encoding="utf-8")
+    assert not (cwd / ".codeium").exists()
+
+    run_install(["windsurf"], apply=True, project=False, cwd=cwd, home=home)
+    assert json.loads((home / ".codeium" / "windsurf" / "mcp_config.json").read_text(encoding="utf-8"))["mcpServers"]["rememb"]["command"] == "rememb"
+
+
 def test_plan_install_covers_codex_without_hooks(tmp_path: Path):
     home = tmp_path / "home"
     cwd = tmp_path / "proj"

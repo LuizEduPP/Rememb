@@ -58,7 +58,7 @@ Zero friction. No CLI commands. Native IDE integration.
 rememb install --apply --project
 ```
 
-That writes the MCP server, Memory Rules, and SessionStart / PostToolUse / Stop hooks when the host has them. Without `--apply` it only prints the plan. Use `--host cursor|claude|codex` to limit the target.
+That writes the MCP server, Memory Rules, and SessionStart / PostToolUse / Stop hooks when the host has them. Without `--apply` it only prints the plan. Use `--host cursor|claude|codex|vscode|copilot|windsurf|continue|gemini|opencode|zed|cline` to limit the target.
 
 Or add this to your IDE's MCP config:
 

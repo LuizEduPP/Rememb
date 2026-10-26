@@ -9,8 +9,8 @@ venv/
 .vscode/
 .venv/
 .pytest_cache
-.rememb/embeddings.npy
-.rememb/embeddings.hash
+.rememb/
 .asset-workspace/
 .mcpregistry_*_token
-scripts/capture_web_ui_assets.py
+scripts/
+tmp/

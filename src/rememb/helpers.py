@@ -16,13 +16,11 @@ from rememb.config import (
     DEFAULT_CONFIG,
     NON_NEGATIVE_INT_CONFIG_KEYS,
     POSITIVE_INT_CONFIG_KEYS,
-    UNIT_INTERVAL_FLOAT_CONFIG_KEYS,
 )
-from rememb.utils import _rememb_path, _entries_path, _config_path, _meta_path, _now, is_initialized
+from rememb.utils import _config_path, _meta_path, _now, is_initialized, parse_int
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
-    RemembStorageError,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,16 +76,40 @@ def _normalize_section_colors(value: object, sections: list[str]) -> dict[str, s
     return normalized
 
 
-def _save_json_object(filepath: Path, data: dict[str, Any]) -> None:
-    """Save a JSON object atomically."""
+def _json_text(data: Any, *, ensure_ascii: bool = True) -> str:
+    return json.dumps(data, indent=2, ensure_ascii=ensure_ascii)
+
+
+def _fsync_handle(handle) -> None:
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _read_json(filepath: Path) -> Any:
+    return json.loads(filepath.read_text(encoding="utf-8"))
+
+
+def _read_json_dict(filepath: Path) -> dict[str, Any] | None:
+    if not filepath.exists():
+        return None
+    try:
+        loaded = _read_json(filepath)
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    return dict(loaded)
+
+
+def _write_json(filepath: Path, data: Any) -> None:
+    """Save JSON atomically."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(data, indent=2)
+    payload = _json_text(data)
     tmp_path = filepath.parent / (filepath.name + ".tmp")
     try:
         with open(tmp_path, "w", encoding="utf-8") as handle:
             handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
+            _fsync_handle(handle)
         tmp_path.replace(filepath)
     except Exception:
         if tmp_path.exists():
@@ -163,21 +185,12 @@ def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None
 
 def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
     meta_file = _meta_path(root)
-    existing_meta: dict[str, object] = {}
-    if meta_file.exists():
-        try:
-            loaded_meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            if isinstance(loaded_meta, dict):
-                existing_meta = dict(loaded_meta)
-        except (json.JSONDecodeError, OSError):
-            existing_meta = {}
-
-    meta = dict(existing_meta)
+    meta = dict(_read_json_dict(meta_file) or {})
     meta["version"] = str(meta.get("version") or "1")
     meta["project"] = str(meta.get("project") or project_name or root.name)
     meta["created_at"] = str(meta.get("created_at") or _now())
     meta["sections"] = list(sections)
-    _save_json_object(meta_file, meta)
+    _write_json(meta_file, meta)
 
 
 def _validate_config_updates(
@@ -194,33 +207,11 @@ def _validate_config_updates(
             raise RemembValidationError(f"Unknown config key: {key}")
 
         if key in POSITIVE_INT_CONFIG_KEYS:
-            try:
-                parsed = int(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a positive integer.") from None
-            if parsed <= 0:
-                raise RemembValidationError(f"{key} must be a positive integer.")
-            next_config[key] = parsed
+            next_config[key] = parse_int(value, name=key, minimum=1)
             continue
 
         if key in NON_NEGATIVE_INT_CONFIG_KEYS:
-            try:
-                parsed = int(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a non-negative integer.") from None
-            if parsed < 0:
-                raise RemembValidationError(f"{key} must be a non-negative integer.")
-            next_config[key] = parsed
-            continue
-
-        if key in UNIT_INTERVAL_FLOAT_CONFIG_KEYS:
-            try:
-                parsed_f = float(str(value).strip())
-            except (TypeError, ValueError):
-                raise RemembValidationError(f"{key} must be a float between 0.0 and 1.0.") from None
-            if not (0.0 <= parsed_f <= 1.0):
-                raise RemembValidationError(f"{key} must be between 0.0 and 1.0.")
-            next_config[key] = parsed_f
+            next_config[key] = parse_int(value, name=key, minimum=0)
             continue
 
         if key == "sections":
@@ -289,21 +280,13 @@ class StoreContext:
         current_mtime = config_path.stat().st_mtime if config_path.exists() else None
         if root_key in self._config_cache and self._config_cache_mtime.get(root_key) == current_mtime:
             return self._config_cache[root_key]
-        config_needs_write = False
-        if config_path.exists():
-            try:
-                loaded_config = json.loads(config_path.read_text(encoding="utf-8"))
-                if isinstance(loaded_config, dict):
-                    config = dict(loaded_config)
-                else:
-                    config = {}
-                    config_needs_write = True
-            except (json.JSONDecodeError, OSError):
-                config = {}
-                config_needs_write = True
-        else:
+        loaded = _read_json_dict(config_path)
+        if loaded is None:
             config = {}
             config_needs_write = True
+        else:
+            config = loaded
+            config_needs_write = False
 
         for key, value in DEFAULT_CONFIG.items():
             if key not in config:
@@ -328,7 +311,7 @@ class StoreContext:
             config_needs_write = True
 
         if config_needs_write:
-            _save_json_object(config_path, config)
+            _write_json(config_path, config)
         
         self._config_cache[root_key] = config
         self._config_cache_mtime[root_key] = current_mtime
@@ -337,7 +320,7 @@ class StoreContext:
     def update_config(self, root: Path, config: dict[str, Any]) -> dict[str, Any]:
         """Persist validated configuration and refresh cache."""
         config_path = _config_path(root)
-        _save_json_object(config_path, config)
+        _write_json(config_path, config)
         root_key = str(root)
         self._config_cache[root_key] = dict(config)
         self._config_cache_mtime[root_key] = config_path.stat().st_mtime if config_path.exists() else None
@@ -385,19 +368,20 @@ def _assert_initialized(root) -> None:
     if not is_initialized(root):
         raise RemembNotInitializedError("rememb not initialized. Run `rememb init` first.")
 
+def _backend(root: Path, backend: str | None = None):
+    from rememb.storage import get_storage_backend
+
+    return get_storage_backend(root, backend=backend)
+
 
 def _load_entries(root: Path) -> list[dict]:
     """Load entries from the configured storage backend."""
-    from rememb.storage import get_storage_backend
-
-    return get_storage_backend(root).load_entries(root)
+    return _backend(root).load_entries(root)
 
 
 def _atomic_modify(root: Path, modifier: Callable[[list[dict]], _ModifierResult]) -> _ModifierResult:
     """Execute modifier function atomically through the storage backend."""
-    from rememb.storage import get_storage_backend
-
-    return get_storage_backend(root).atomic_modify(root, modifier)
+    return _backend(root).atomic_modify(root, modifier)
 
 
 def _normalize_search_text(value: object) -> str:
@@ -434,12 +418,9 @@ def _keyword_search(
     Semantic relevance is handled by the calling agent. This function only
     performs deterministic lexical matching over section, tags, and content.
     """
-    from datetime import datetime, timezone
-
     normalized_query = _normalize_search_text(query)
     query_tokens = _search_tokens(query)
     texts = [_search_document(e) for e in entries]
-    now_ts = datetime.now(timezone.utc).timestamp()
     scored: list[tuple[float, int]] = []
 
     for i, entry in enumerate(entries):
@@ -448,30 +429,19 @@ def _keyword_search(
         score = 0.0
 
         if normalized_query and normalized_query in document:
-            score += 0.18
+            score += 1.0
 
         if query_tokens and document_tokens:
-            overlap_ratio = len(query_tokens & document_tokens) / len(query_tokens)
-            score += overlap_ratio * 0.22
+            score += len(query_tokens & document_tokens) / len(query_tokens)
 
         tag_tokens: set[str] = set()
         for tag in entry.get("tags", []):
             tag_tokens.update(_search_tokens(tag))
         if query_tokens and tag_tokens:
-            tag_overlap_ratio = len(query_tokens & tag_tokens) / len(query_tokens)
-            score += tag_overlap_ratio * 0.12
+            score += len(query_tokens & tag_tokens) / len(query_tokens)
 
         if score <= 0.0:
             continue
-
-        try:
-            entry_timestamp = str(entry.get("updated_at") or entry.get("created_at") or "")
-            pts = datetime.strptime(entry_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
-            days_old = (now_ts - pts) / 86400.0
-            decay = max(0.92, 1.0 - (days_old * 0.0006))
-            score *= decay
-        except Exception:
-            pass
 
         scored.append((score, i))
 

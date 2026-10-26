@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from rememb.exceptions import RemembStorageError
+from rememb.helpers import _fsync_handle, _json_text, _write_json
 from rememb.storage.locking import file_lock
 from rememb.utils import _entries_path
 
@@ -27,8 +27,7 @@ class JsonEntryStorage:
     def ensure_initialized(self, root: Path) -> None:
         filepath = _entries_path(root)
         if not filepath.exists():
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            filepath.write_text(json.dumps([], indent=2), encoding="utf-8")
+            _write_json(filepath, [])
 
     def load_entries(self, root: Path) -> list[dict[str, Any]]:
         filepath = _entries_path(root)
@@ -72,19 +71,8 @@ class JsonEntryStorage:
 
     def save_entries(self, root: Path, entries: list[dict[str, Any]]) -> None:
         filepath = _entries_path(root)
-        data = json.dumps(entries, indent=2)
-        tmp_path = filepath.parent / (filepath.name + ".tmp")
-        try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                f.write(data)
-                f.flush()
-                os.fsync(f.fileno())
-            tmp_path.replace(filepath)
-            logger.debug("Saved %s entries to %s", len(entries), filepath)
-        except Exception:
-            if tmp_path.exists():
-                tmp_path.unlink()
-            raise
+        _write_json(filepath, entries)
+        logger.debug("Saved %s entries to %s", len(entries), filepath)
 
     def atomic_modify(
         self,
@@ -105,10 +93,9 @@ class JsonEntryStorage:
 
             result = modifier(entries)
 
-            data = json.dumps(entries, indent=2)
+            data = _json_text(entries)
             f.seek(0)
             f.write(data)
             f.truncate()
-            f.flush()
-            os.fsync(f.fileno())
+            _fsync_handle(f)
             return result

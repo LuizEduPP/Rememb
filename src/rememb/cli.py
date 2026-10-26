@@ -13,6 +13,7 @@ from rich.table import Table
 from rich.text import Text
 
 from rememb import __version__
+from rememb.config import DEFAULT_HOST, DEFAULT_SSE_PORT, DEFAULT_WEB_PORT
 
 
 console = Console()
@@ -106,8 +107,8 @@ def main(
     version: bool | None = typer.Option(
         None, "--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
-    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the web UI server."),
-    port: int = typer.Option(18181, "--port", min=1, max=65535, help="Port for the web UI server."),
+    host: str = typer.Option(DEFAULT_HOST, "--host", help="Host to bind the web UI server."),
+    port: int = typer.Option(DEFAULT_WEB_PORT, "--port", min=1, max=65535, help="Port for the web UI server."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Start server without opening the browser."),
 ) -> None:
     if ctx.invoked_subcommand is None:
@@ -128,12 +129,12 @@ def mcp(
         help="MCP transport to start: stdio or sse.",
     ),
     host: str = typer.Option(
-        "127.0.0.1",
+        DEFAULT_HOST,
         "--host",
         help="Host for persistent SSE transport.",
     ),
     port: int = typer.Option(
-        8765,
+        DEFAULT_SSE_PORT,
         "--port",
         min=1,
         max=65535,
@@ -167,7 +168,7 @@ def mcp(
             if not sys.stdout.isatty():
                 typer.echo(
                     "Error: SSE transport cannot be started through a stdio MCP client. "
-                    "Start `rememb mcp --transport sse --host 127.0.0.1 --port 8765` separately "
+                    f"Start `rememb mcp --transport sse --host {DEFAULT_HOST} --port {DEFAULT_SSE_PORT}` separately "
                     "and connect to the HTTP/SSE endpoint with a client that supports it.",
                     err=True,
                 )

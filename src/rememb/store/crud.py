@@ -8,12 +8,20 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_CONFIG
+from rememb.config import (
+    DEFAULT_CONFIG,
+    DEFAULT_MCP_SECTION,
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_RECENT_LIMIT,
+    DEFAULT_SEARCH_TOP_K,
+    DEFAULT_STORAGE_BACKEND,
+    DEFAULT_TAG_LIMIT,
+    ENTRY_ID_LENGTH,
+    STORAGE_BACKEND_SQLITE,
+)
 from rememb.exceptions import (
     RemembConfigError,
-    RemembError,
     RemembNotInitializedError,
-    RemembStorageError,
     RemembValidationError,
 )
 from rememb.helpers import (
@@ -22,20 +30,22 @@ from rememb.helpers import (
     _get_sections,
     _load_entries,
     _migrate_entries_to_section,
+    _read_json_dict,
     _restore_migrated_entries,
     _sanitize_content,
     _sanitize_tags,
     _keyword_search,
+    _normalize_search_text,
     _store_context,
     _sync_meta_sections,
     _validate_config_updates,
     _validate_section,
+    _write_json,
 )
 from rememb.utils import (
     _apply_revision,
     _config_path,
     _current_entry_version,
-    _deleted_at,
     _entries_db_path,
     _entries_path,
     _entry_history,
@@ -49,25 +59,82 @@ from rememb.utils import (
     _now,
     _rememb_path,
     _revision_label,
-    _validate_entry_id,
+    require_entry_id,
 )
 
 logger = logging.getLogger(__name__)
 
 
+def _active_entries(root: Path, *, include_deleted: bool = False) -> list[dict]:
+    _assert_initialized(root)
+    return _filter_deleted(_load_entries(root), include_deleted=include_deleted)
+
+
+def _in_section(entries: list[dict], section: str | None) -> list[dict]:
+    if not section:
+        return entries
+    wanted = section.lower()
+    return [entry for entry in entries if entry.get("section") == wanted]
+
+
+def _with_tag(entries: list[dict], tag: str | None) -> list[dict]:
+    if not tag:
+        return entries
+    wanted = tag.lower().strip()
+    return [entry for entry in entries if wanted in entry.get("tags", [])]
+
+
+def _select_entries(
+    root: Path,
+    *,
+    section: str | None = None,
+    tag: str | None = None,
+    include_deleted: bool = False,
+) -> list[dict]:
+    return _with_tag(_in_section(_active_entries(root, include_deleted=include_deleted), section), tag)
+
+
+def _entry_stamp(entry: dict) -> str:
+    return str(entry.get("updated_at") or entry.get("created_at") or "")
+
+
+def _bump_revision(entry: dict, *, now: str | None = None) -> None:
+    history = _entry_history(entry)
+    history.append(_entry_revision_snapshot(entry))
+    entry["history"] = history
+    entry["version"] = _current_entry_version(entry) + 1
+    entry["updated_at"] = now or _now()
+
+
+def _mutate(root: Path, modifier):
+    _assert_initialized(root)
+    return _atomic_modify(root, modifier)
+
+
+def _loaded_entries(root: Path) -> list[dict]:
+    _assert_initialized(root)
+    return _load_entries(root)
+
+
+def _as_int(value: object) -> int:
+    return value if isinstance(value, int) else 0
+
+
+def _as_str(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _require_config(root: Path) -> dict:
+    _assert_initialized(root)
+    return dict(_store_context.get_config(root))
+
+
 def _generate_entry_id(existing_ids: set[str]) -> str:
-    new_id = str(uuid.uuid4())[:8]
-    max_attempts = 100
-    attempts = 0
-    while new_id in existing_ids and attempts < max_attempts:
-        new_id = str(uuid.uuid4())[:8]
-        attempts += 1
-
-    if new_id in existing_ids:
-        raise RemembStorageError("Failed to generate unique ID after 100 attempts. Too many entries.")
-
-    existing_ids.add(new_id)
-    return new_id
+    while True:
+        new_id = uuid.uuid4().hex[:ENTRY_ID_LENGTH]
+        if new_id not in existing_ids:
+            existing_ids.add(new_id)
+            return new_id
 
 
 def write_entries(
@@ -85,6 +152,7 @@ def write_entries(
     if not items:
         raise RemembValidationError("At least one entry is required.")
 
+    default_section = _get_sections(root)[0]
     prepared_items: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -93,7 +161,7 @@ def write_entries(
             raise RemembValidationError("Each batch entry must include content.")
         prepared_items.append(
             {
-                "section": _validate_section(str(item.get("section", "project")), root),
+                "section": _validate_section(str(item.get("section") or default_section), root),
                 "content": _sanitize_content(item["content"], root),
                 "tags": _sanitize_tags(item.get("tags") or [], root),
             }
@@ -143,7 +211,7 @@ def write_entries(
         logger.info("Wrote %s entries", len(created_entries))
         return created_entries
 
-    return _atomic_modify(root, add_entries)
+    return _mutate(root, add_entries)
 
 
 
@@ -165,24 +233,19 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
 
     config_file = _config_path(root)
     config_data = DEFAULT_CONFIG.copy()
-    if config_file.exists():
-        try:
-            loaded_config = json.loads(config_file.read_text(encoding="utf-8"))
-            if isinstance(loaded_config, dict):
-                config_data.update(loaded_config)
-        except (json.JSONDecodeError, OSError):
-            pass
+    loaded_config = _read_json_dict(config_file)
+    if loaded_config is not None:
+        config_data.update(loaded_config)
 
-    config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+    _write_json(config_file, config_data)
 
-    from rememb.storage import get_storage_backend, normalize_storage_backend
-    from rememb.storage.sqlite_backend import SqliteEntryStorage
+    from rememb.storage import get_storage_backend, migrate_json_to_sqlite, normalize_storage_backend
 
-    backend_name = normalize_storage_backend(config_data.get("storage_backend", "json"))
+    backend_name = normalize_storage_backend(config_data.get("storage_backend", DEFAULT_STORAGE_BACKEND))
     backend = get_storage_backend(root, backend=backend_name)
     backend.ensure_initialized(root)
-    if backend_name == "sqlite" and _entries_path(root).exists():
-        SqliteEntryStorage.migrate_from_json(root)
+    if backend_name == STORAGE_BACKEND_SQLITE and _entries_path(root).exists():
+        migrate_json_to_sqlite(root)
 
     _sync_meta_sections(
         root,
@@ -232,7 +295,6 @@ def write_entry(
         RemembNotInitializedError: If rememb not initialized
         RemembValidationError: If section invalid or duplicate detected
         RemembConfigError: If max entries limit reached
-        RemembStorageError: If ID generation fails
     """
     logger.info(f"Writing entry to section '{section}'")
     return write_entries(
@@ -248,14 +310,12 @@ def write_entry(
 
 def get_config(root: Path) -> dict:
     """Return the effective configuration for the given root."""
-    _assert_initialized(root)
-    return dict(_store_context.get_config(root))
+    return _require_config(root)
 
 
 def update_config(root: Path, updates: dict[str, object]) -> dict:
     """Persist validated configuration updates for the given root."""
-    _assert_initialized(root)
-    current_config = _store_context.get_config(root)
+    current_config = _require_config(root)
     validated_config = _validate_config_updates(root, current_config, updates)
     raw_used_removed_sections = validated_config.pop("_used_removed_sections", set())
     used_removed_sections = raw_used_removed_sections if isinstance(raw_used_removed_sections, set) else set()
@@ -266,13 +326,13 @@ def update_config(root: Path, updates: dict[str, object]) -> dict:
     try:
         if used_removed_sections and migration_target:
             moved_entries = _migrate_entries_to_section(root, used_removed_sections, migration_target)
-        previous_backend = str(current_config.get("storage_backend") or "json")
+        previous_backend = str(current_config.get("storage_backend") or DEFAULT_STORAGE_BACKEND)
         updated_config = _store_context.update_config(root, validated_config)
-        next_backend = str(updated_config.get("storage_backend") or "json")
-        if previous_backend != "sqlite" and next_backend == "sqlite":
-            from rememb.storage.sqlite_backend import SqliteEntryStorage
+        next_backend = str(updated_config.get("storage_backend") or DEFAULT_STORAGE_BACKEND)
+        if previous_backend != STORAGE_BACKEND_SQLITE and next_backend == STORAGE_BACKEND_SQLITE:
+            from rememb.storage import migrate_json_to_sqlite
 
-            SqliteEntryStorage.migrate_from_json(root)
+            migrate_json_to_sqlite(root)
         _sync_meta_sections(root, list(updated_config["sections"]))
         return updated_config
     except Exception:
@@ -301,16 +361,9 @@ def consolidate_entries(
     _assert_initialized(root)
     target_section = _validate_section(section, root) if section else None
 
-    def _safe_int(value: object) -> int:
-        return value if isinstance(value, int) else 0
-
-    def _safe_str(value: object) -> str:
-        return value if isinstance(value, str) else ""
-
     def _entry_key(entry: dict) -> tuple[str, str]:
-        content = _safe_str(entry.get("content"))
-        normalized = " ".join(content.split()).strip().lower()
-        return _safe_str(entry.get("section", "context")), normalized
+        content = _as_str(entry.get("content"))
+        return _as_str(entry.get("section") or DEFAULT_MCP_SECTION), _normalize_search_text(content)
 
     def _pick_timestamp(current: str, incoming: str, *, prefer_latest: bool) -> str:
         if not current:
@@ -334,7 +387,7 @@ def consolidate_entries(
         merged_groups = 0
 
         for entry in entries:
-            entry_section = _safe_str(entry.get("section", "context"))
+            entry_section = _as_str(entry.get("section") or DEFAULT_MCP_SECTION)
             if target_section and entry_section != target_section:
                 kept.append(entry)
                 continue
@@ -360,28 +413,28 @@ def consolidate_entries(
             existing["tags"] = merged_tags
 
             existing["content"] = _pick_content(
-                _safe_str(existing.get("content")),
-                _safe_str(entry.get("content")),
+                _as_str(existing.get("content")),
+                _as_str(entry.get("content")),
             )
             existing["created_at"] = _pick_timestamp(
-                _safe_str(existing.get("created_at")),
-                _safe_str(entry.get("created_at")),
+                _as_str(existing.get("created_at")),
+                _as_str(entry.get("created_at")),
                 prefer_latest=False,
             )
             existing["updated_at"] = _pick_timestamp(
-                _safe_str(existing.get("updated_at")),
-                _safe_str(entry.get("updated_at")),
+                _as_str(existing.get("updated_at")),
+                _as_str(entry.get("updated_at")),
                 prefer_latest=True,
             )
 
-            existing_access = _safe_int(existing.get("access_count"))
-            incoming_access = _safe_int(entry.get("access_count"))
+            existing_access = _as_int(existing.get("access_count"))
+            incoming_access = _as_int(entry.get("access_count"))
             total_access = existing_access + incoming_access
             if total_access > 0:
                 existing["access_count"] = total_access
 
-            existing_last_accessed = _safe_str(existing.get("last_accessed"))
-            incoming_last_accessed = _safe_str(entry.get("last_accessed"))
+            existing_last_accessed = _as_str(existing.get("last_accessed"))
+            incoming_last_accessed = _as_str(entry.get("last_accessed"))
             last_accessed = _pick_timestamp(
                 existing_last_accessed,
                 incoming_last_accessed,
@@ -390,7 +443,7 @@ def consolidate_entries(
             if last_accessed:
                 existing["last_accessed"] = last_accessed
 
-            removed_id = _safe_str(entry.get("id"))
+            removed_id = _as_str(entry.get("id"))
             if removed_id:
                 removed_ids.append(removed_id)
 
@@ -407,7 +460,7 @@ def consolidate_entries(
             "mode": "exact",
         }
 
-    return _atomic_modify(root, _consolidate)
+    return _mutate(root, _consolidate)
 
 
 def delete_entry(root: Path, entry_id: str) -> bool:
@@ -427,7 +480,6 @@ def delete_entry(root: Path, entry_id: str) -> bool:
 def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
     """Soft-delete multiple entries by ID atomically."""
     logger.debug("delete_entries called: entry_ids=%s", len(entry_ids))
-    _assert_initialized(root)
     if not entry_ids:
         raise RemembValidationError("At least one entry_id is required.")
 
@@ -442,12 +494,8 @@ def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
             if current_id in target_ids and current_id not in seen_deleted:
                 if _is_deleted_entry(entry):
                     continue
-                history = _entry_history(entry)
-                history.append(_entry_revision_snapshot(entry))
-                entry["history"] = history
-                entry["version"] = _current_entry_version(entry) + 1
+                _bump_revision(entry, now=now_str)
                 entry["deleted_at"] = now_str
-                entry["updated_at"] = now_str
                 deleted_ids.append(current_id)
                 seen_deleted.add(current_id)
         if deleted_ids:
@@ -456,27 +504,22 @@ def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
             logger.warning("No entries found for deletion")
         return deleted_ids
 
-    return _atomic_modify(root, remove_entries)
+    return _mutate(root, remove_entries)
 
 
 def restore_deleted_entry(root: Path, entry_id: str) -> dict | None:
     """Restore a soft-deleted entry by ID."""
     logger.debug("restore_deleted_entry called: entry_id=%s", entry_id)
-    _assert_initialized(root)
 
     def restore(entries: list[dict]) -> dict | None:
         entry = _find_entry(entries, entry_id)
         if entry is None or not _is_deleted_entry(entry):
             return None
-        history = _entry_history(entry)
-        history.append(_entry_revision_snapshot(entry))
-        entry["history"] = history
-        entry["version"] = _current_entry_version(entry) + 1
+        _bump_revision(entry)
         entry.pop("deleted_at", None)
-        entry["updated_at"] = _now()
         return entry
 
-    return _atomic_modify(root, restore)
+    return _mutate(root, restore)
 
 
 def clear_entries(root: Path, *, confirm: bool = False) -> int:
@@ -496,15 +539,13 @@ def clear_entries(root: Path, *, confirm: bool = False) -> int:
     logger.debug(f"clear_entries called: confirm={confirm}")
     if not confirm:
         raise RemembValidationError("Clearing all entries requires confirm=True")
-    _assert_initialized(root)
-    
     def clear_all(entries: list[dict]) -> int:
         count = len(entries)
         entries.clear()
         logger.info(f"Cleared {count} entries")
         return count
-    
-    return _atomic_modify(root, clear_all)
+
+    return _mutate(root, clear_all)
 
 
 def edit_entry(
@@ -577,17 +618,13 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
             if entry is None:
                 results.append(None)
                 continue
-            history = _entry_history(entry)
-            history.append(_entry_revision_snapshot(entry))
+            _bump_revision(entry)
             if "content" in update:
                 entry["content"] = update["content"]
             if "section" in update:
                 entry["section"] = update["section"]
             if "tags" in update:
                 entry["tags"] = update["tags"]
-            entry["history"] = history
-            entry["version"] = _current_entry_version(entry) + 1
-            entry["updated_at"] = _now()
             results.append(entry)
         updated_count = sum(1 for result in results if result is not None)
         if updated_count:
@@ -596,7 +633,7 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
             logger.warning("No entries found for editing")
         return results
 
-    return _atomic_modify(root, modify_entries)
+    return _mutate(root, modify_entries)
 
 
 def read_entries(root: Path, section: str | None = None, *, include_deleted: bool = False) -> list[dict]:
@@ -614,10 +651,7 @@ def read_entries(root: Path, section: str | None = None, *, include_deleted: boo
         RemembNotInitializedError: If rememb not initialized
     """
     logger.debug(f"read_entries called: section={section}")
-    _assert_initialized(root)
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    if section:
-        entries = [e for e in entries if e["section"] == section.lower()]
+    entries = _select_entries(root, section=section, include_deleted=include_deleted)
     logger.info(f"Read {len(entries)} entries" + (f" from section '{section}'" if section else ""))
     return entries
 
@@ -668,7 +702,7 @@ def read_entries_page(
     tag: str | None = None,
     include_deleted: bool = False,
     offset: int = 0,
-    limit: int = 100,
+    limit: int = DEFAULT_PAGE_LIMIT,
     sort_by: str = "storage",
     descending: bool = False,
 ) -> dict:
@@ -700,8 +734,6 @@ def read_entries_page(
         sort_by,
         descending,
     )
-    _assert_initialized(root)
-
     if offset < 0:
         raise RemembValidationError("offset must be >= 0")
     if limit <= 0:
@@ -711,17 +743,12 @@ def read_entries_page(
     if normalized_sort not in {"storage", "recent"}:
         raise RemembValidationError("sort_by must be 'storage' or 'recent'")
 
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    if section:
-        entries = [e for e in entries if e["section"] == section.lower()]
-    if tag:
-        normalized_tag = tag.lower().strip()
-        entries = [e for e in entries if normalized_tag in e.get("tags", [])]
+    entries = _select_entries(root, section=section, tag=tag, include_deleted=include_deleted)
 
     if normalized_sort == "recent":
         entries = sorted(
             entries,
-            key=lambda entry: entry.get("updated_at") or entry.get("created_at") or "",
+            key=_entry_stamp,
             reverse=descending,
         )
     elif descending:
@@ -755,7 +782,7 @@ def read_entries_page(
 def search_entries(
     root: Path,
     query: str,
-    top_k: int = 5,
+    top_k: int = DEFAULT_SEARCH_TOP_K,
     section: str | None = None,
     tag: str | None = None,
     *,
@@ -783,13 +810,7 @@ def search_entries(
         section,
         tag,
     )
-    _assert_initialized(root)
-    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-    if section:
-        entries = [entry for entry in entries if entry.get("section") == section.lower()]
-    if tag:
-        normalized_tag = tag.lower().strip()
-        entries = [entry for entry in entries if normalized_tag in entry.get("tags", [])]
+    entries = _select_entries(root, section=section, tag=tag, include_deleted=include_deleted)
     if not entries:
         logger.warning("No entries to search")
         return []
@@ -810,7 +831,7 @@ def search_entries(
                     updated = True
             return updated
 
-        _atomic_modify(root, bump_access)
+        _mutate(root, bump_access)
 
     return results
 
@@ -824,27 +845,22 @@ def get_stats(root: Path) -> dict:
     Returns:
         Dictionary with total, by_section, size_kb, oldest, newest
     """
-    _assert_initialized(root)
-    entries = _load_entries(root)
+    entries = _loaded_entries(root)
     active_entries = [entry for entry in entries if not _is_deleted_entry(entry)]
     deleted_entries = [entry for entry in entries if _is_deleted_entry(entry)]
     total = len(active_entries)
     by_section = {s: 0 for s in _get_sections(root)}
     for e in active_entries:
-        sec = e.get("section", "context")
+        sec = e.get("section", DEFAULT_MCP_SECTION)
         if sec not in by_section:
             by_section[sec] = 0
         by_section[sec] += 1
-    entries_path = _entries_path(root)
-    db_path = _entries_db_path(root)
-    if db_path.exists():
-        size_kb = round(db_path.stat().st_size / 1024, 1)
-    elif entries_path.exists():
-        size_kb = round(entries_path.stat().st_size / 1024, 1)
-    else:
-        size_kb = 0
+    store_path = _entries_db_path(root)
+    if not store_path.exists():
+        store_path = _entries_path(root)
+    size_kb = round(store_path.stat().st_size / 1024, 1) if store_path.exists() else 0
     config = _store_context.get_config(root)
-    storage_backend = str(config.get("storage_backend") or "json")
+    storage_backend = str(config.get("storage_backend") or DEFAULT_STORAGE_BACKEND)
     timestamps = sorted(e.get("created_at", "") for e in active_entries if e.get("created_at"))
     oldest = timestamps[0][:10] if timestamps else "—"
     newest = timestamps[-1][:10] if timestamps else "—"
@@ -873,18 +889,14 @@ def export_entries(
     include_versions: bool = True,
     include_deleted: bool = False,
 ) -> dict[str, Any] | None:
-    _assert_initialized(root)
     if entry_id is not None:
-        if not _validate_entry_id(entry_id):
-            raise RemembValidationError(
-                f"Invalid entry ID format: {entry_id}. Expected 8 hex characters."
-            )
-        source = _find_entry(_load_entries(root), entry_id.lower())
+        require_entry_id(entry_id)
+        source = _find_entry(_active_entries(root, include_deleted=True), entry_id.lower())
         if source is None:
             return None
         selected = [source]
     else:
-        selected = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
+        selected = _active_entries(root, include_deleted=include_deleted)
 
     entries = [
         _export_entry_payload(entry, include_versions=include_versions)
@@ -904,8 +916,7 @@ def export_entries(
 def list_entry_versions(root: Path, entry_id: str, *, include_deleted: bool = True) -> list[dict[str, Any]]:
     """List all known revisions for an entry, oldest to newest."""
     logger.debug("list_entry_versions called: entry_id=%s", entry_id)
-    _assert_initialized(root)
-    entry = _find_entry(_load_entries(root), entry_id)
+    entry = _find_entry(_loaded_entries(root), entry_id)
     if entry is None:
         return []
     if _is_deleted_entry(entry) and not include_deleted:
@@ -916,7 +927,6 @@ def list_entry_versions(root: Path, entry_id: str, *, include_deleted: bool = Tr
 def restore_entry_version(root: Path, entry_id: str, version: int) -> dict | None:
     """Restore an entry to a previous version as a new head revision."""
     logger.debug("restore_entry_version called: entry_id=%s, version=%s", entry_id, version)
-    _assert_initialized(root)
     normalized_version = _normalize_version_number(version)
 
     def restore(entries: list[dict]) -> dict | None:
@@ -926,15 +936,11 @@ def restore_entry_version(root: Path, entry_id: str, version: int) -> dict | Non
         revision = _find_entry_revision(entry, normalized_version)
         if revision is None:
             return None
-        history = _entry_history(entry)
-        history.append(_entry_revision_snapshot(entry))
-        entry["history"] = history
+        _bump_revision(entry)
         _apply_revision(entry, revision, restore_deleted=True)
-        entry["version"] = _current_entry_version(entry) + 1
-        entry["updated_at"] = _now()
         return entry
 
-    return _atomic_modify(root, restore)
+    return _mutate(root, restore)
 
 
 def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version: int) -> dict[str, Any] | None:
@@ -945,10 +951,9 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
         from_version,
         to_version,
     )
-    _assert_initialized(root)
     normalized_from = _normalize_version_number(from_version)
     normalized_to = _normalize_version_number(to_version)
-    entry = _find_entry(_load_entries(root), entry_id)
+    entry = _find_entry(_loaded_entries(root), entry_id)
     if entry is None:
         return None
     from_revision = _find_entry_revision(entry, normalized_from)
@@ -974,19 +979,50 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
     }
 
 
-AGENT_SUMMARIZE_THRESHOLD = 8
-
-
 def agent_summarize_hint(entry_count: int, *, has_more: bool = False) -> str:
-    """Return guidance for the calling agent when a read payload is large."""
-    if entry_count < AGENT_SUMMARIZE_THRESHOLD and not has_more:
+    """Return guidance when pagination says more entries remain."""
+    if not has_more:
         return ""
-    more = " More pages may remain." if has_more else ""
     return (
-        f"\n---\nAgent note: {entry_count} entries returned.{more} "
+        f"\n---\nAgent note: {entry_count} entries returned. More pages may remain. "
         "Summarize task-relevant facts in your working context. "
         "Narrow with section, tag, rememb_search, or smaller rememb_read_page limits when needed."
     )
+
+
+def get_entry(root: Path, entry_id: str, *, include_deleted: bool = False) -> dict[str, Any] | None:
+    """Return one entry by ID."""
+    normalized = require_entry_id(entry_id)
+    return _find_entry(_active_entries(root, include_deleted=include_deleted), normalized)
+
+
+def list_entry_tags(root: Path, *, include_deleted: bool = False, limit: int = DEFAULT_TAG_LIMIT) -> list[dict[str, Any]]:
+    """Return tags with usage counts, sorted by frequency."""
+    counts: dict[str, int] = {}
+    for entry in _active_entries(root, include_deleted=include_deleted):
+        for tag in entry.get("tags", []):
+            if isinstance(tag, str) and tag.strip():
+                normalized = tag.strip().lower()
+                counts[normalized] = counts.get(normalized, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    if limit > 0:
+        ranked = ranked[:limit]
+    return [{"tag": tag, "count": count} for tag, count in ranked]
+
+
+def read_recent_entries(
+    root: Path,
+    *,
+    limit: int = DEFAULT_RECENT_LIMIT,
+    section: str | None = None,
+    include_deleted: bool = False,
+) -> list[dict[str, Any]]:
+    """Return recently updated entries."""
+    if limit <= 0:
+        raise RemembValidationError("limit must be > 0")
+    entries = read_entries(root, section, include_deleted=include_deleted)
+    entries.sort(key=_entry_stamp, reverse=True)
+    return entries[:limit]
 
 
 def format_entries(
@@ -1040,7 +1076,7 @@ def format_entries(
             score = item.get("score")
             score_text = f" (score: {float(score):.3f})" if include_score and isinstance(score, (int, float)) else ""
             prefix = f"[{item['id']}] " if include_id else ""
-            ts = (item.get("updated_at") or item.get("created_at") or "")[:10]
+            ts = _entry_stamp(item)[:10]
             ts_str = f" [{ts}]" if ts else ""
             lines.append(f"- {prefix}{content}{score_text}{tags}{ts_str}")
         lines.append("")

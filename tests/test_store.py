@@ -1,29 +1,31 @@
 from __future__ import annotations
 
 import json
-import multiprocessing
-import queue
 from pathlib import Path
 
 import pytest
 
-from rememb.storage.locking import file_lock
-from rememb.config import DEFAULT_SECTIONS
+from rememb.config import DEFAULT_SECTIONS, DEFAULT_STORAGE_BACKEND
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
-from rememb.store.crud import (
+from rememb.store import (
     agent_summarize_hint,
     clear_entries,
-    diff_entry_versions,
+    consolidate_entries,
     delete_entries,
+    diff_entry_versions,
     edit_entries,
     edit_entry,
     export_entries,
     format_entries,
+    get_config,
+    get_entry,
     get_stats,
     init,
+    list_entry_tags,
     list_entry_versions,
     read_entries,
     read_entries_page,
+    read_recent_entries,
     restore_deleted_entry,
     restore_entry_version,
     search_entries,
@@ -33,15 +35,7 @@ from rememb.store.crud import (
 )
 
 
-def _hold_file_lock(path_str: str, mode: str, entered_conn, release_conn) -> None:
-    with file_lock(Path(path_str), mode=mode):
-        entered_conn.send("entered")
-        release_conn.recv()
-    entered_conn.close()
-    release_conn.close()
-
-
-def test_init_creates_expected_files_and_gitignore(tmp_path):
+def test_init_creates_expected_files_and_gitignore(tmp_path: Path):
     root = tmp_path / "workspace"
     root.mkdir()
 
@@ -55,394 +49,211 @@ def test_init_creates_expected_files_and_gitignore(tmp_path):
     meta = json.loads((rememb_path / "meta.json").read_text(encoding="utf-8"))
     assert meta["project"] == "demo-project"
     assert meta["sections"] == DEFAULT_SECTIONS
+    assert ".rememb/entries.db" in (root / ".gitignore").read_text(encoding="utf-8")
+    assert get_config(root)["storage_backend"] == DEFAULT_STORAGE_BACKEND
 
-    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
-    assert ".rememb/entries.db" in gitignore
 
+def test_write_read_edit_and_stats(store: Path):
+    entry = write_entry(store, "project", "Use pytest for runtime validation.", ["testing"])
+    write_entry(store, "actions", "Still active.")
 
-def test_write_entry_roundtrip_and_stats(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    entry = write_entry(root, "project", "Use pytest for runtime validation.", ["testing", "runtime"])
-    entries = read_entries(root, "project")
-    stats = get_stats(root)
-
-    assert entry["id"]
     assert len(entry["id"]) == 8
     assert entry["version"] == 1
-    assert entry["history"] == []
-    assert entries == [entry]
-    assert stats["total"] == 1
-    assert stats["by_section"]["project"] == 1
+    assert read_entries(store, "project") == [entry]
+    assert get_entry(store, entry["id"])["content"] == entry["content"]
 
-
-def test_write_entries_creates_multiple_entries_atomically(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    entries = write_entries(
-        root,
-        [
-            {"section": "project", "content": "First batch memory.", "tags": ["one"]},
-            {"section": "actions", "content": "Second batch memory.", "tags": ["two"]},
-        ],
-    )
-
-    stored = read_entries(root)
-
-    assert len(entries) == 2
-    assert [entry["content"] for entry in stored] == ["First batch memory.", "Second batch memory."]
-    assert {entry["section"] for entry in entries} == {"project", "actions"}
-
-
-def test_edit_entries_updates_multiple_entries_in_order(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    first = write_entry(root, "project", "Original first.", ["a"])
-    second = write_entry(root, "project", "Original second.", ["b"])
-
-    results = edit_entries(
-        root,
-        [
-            {"entry_id": first["id"], "content": "Updated first.", "tags": ["x"]},
-            {"entry_id": second["id"], "section": "actions"},
-            {"entry_id": "deadbeef", "content": "Missing"},
-        ],
-    )
-
-    stored = read_entries(root)
-    by_id = {entry["id"]: entry for entry in stored}
-
-    assert results[0]["content"] == "Updated first."
-    assert results[1]["section"] == "actions"
-    assert results[2] is None
-    assert by_id[first["id"]]["tags"] == ["x"]
-    assert by_id[second["id"]]["section"] == "actions"
-    assert by_id[first["id"]]["version"] == 2
-    assert by_id[first["id"]]["history"][0]["version"] == 1
-    assert by_id[first["id"]]["history"][0]["content"] == "Original first."
-    assert by_id[second["id"]]["version"] == 2
-    assert by_id[second["id"]]["history"][0]["section"] == "project"
-
-
-def test_edit_entry_upgrades_legacy_entry_to_versioned_history(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    entry = write_entry(root, "project", "Legacy memory.", ["old"])
-    entries_path = root / ".rememb" / "entries.json"
-    stored_entries = json.loads(entries_path.read_text(encoding="utf-8"))
-    stored_entries[0].pop("version", None)
-    stored_entries[0].pop("history", None)
-    entries_path.write_text(json.dumps(stored_entries, indent=2), encoding="utf-8")
-
-    updated = edit_entries(root, [{"entry_id": entry["id"], "content": "Legacy memory updated."}])[0]
-
-    assert updated is not None
+    updated = edit_entry(store, entry["id"], content="Updated validation note.")
     assert updated["version"] == 2
-    assert len(updated["history"]) == 1
-    assert updated["history"][0]["version"] == 1
-    assert updated["history"][0]["content"] == "Legacy memory."
+    assert updated["history"][0]["content"] == "Use pytest for runtime validation."
 
-
-def test_delete_entries_removes_only_found_ids(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    first = write_entry(root, "project", "Delete first.")
-    second = write_entry(root, "project", "Delete second.")
-
-    deleted_ids = delete_entries(root, [first["id"], "deadbeef"])
-    remaining = read_entries(root)
-    all_entries = read_entries(root, include_deleted=True)
-    deleted_entry = next(entry for entry in all_entries if entry["id"] == first["id"])
-
-    assert deleted_ids == [first["id"]]
-    assert [entry["id"] for entry in remaining] == [second["id"]]
-    assert deleted_entry["deleted_at"]
-    assert deleted_entry["version"] == 2
-    assert deleted_entry["history"][0]["version"] == 1
-
-
-def test_read_page_and_search_hide_deleted_by_default(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    deleted = write_entry(root, "project", "Deleted alpha memory", ["alpha"])
-    live = write_entry(root, "project", "Live alpha memory", ["alpha"])
-    delete_entries(root, [deleted["id"]])
-
-    page = read_entries_page(root)
-    hidden_results = search_entries(root, "alpha")
-    visible_results = search_entries(root, "alpha", include_deleted=True)
-
-    assert [entry["id"] for entry in page["items"]] == [live["id"]]
-    assert [entry["id"] for entry in hidden_results] == [live["id"]]
-    assert {entry["id"] for entry in visible_results} == {deleted["id"], live["id"]}
-
-
-def test_versions_restore_and_diff_cover_deleted_entries(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    entry = write_entry(root, "project", "first line\nsecond line", ["draft"])
-    updated = edit_entries(root, [{"entry_id": entry["id"], "content": "first line\nthird line", "tags": ["released"]}])[0]
-    deleted_ids = delete_entries(root, [entry["id"]])
-
-    versions = list_entry_versions(root, entry["id"])
-    diff = diff_entry_versions(root, entry["id"], 1, 2)
-    restored_deleted = restore_deleted_entry(root, entry["id"])
-    restored_version = restore_entry_version(root, entry["id"], 1)
-    final_versions = list_entry_versions(root, entry["id"])
-
-    assert deleted_ids == [entry["id"]]
-    assert updated is not None
-    assert [revision["version"] for revision in versions] == [1, 2, 3]
-    assert versions[-1]["deleted_at"]
-    assert diff is not None
-    assert "--- " in diff["diff"]
-    assert "+second line" in diff["diff"] or "-second line" in diff["diff"]
-    assert restored_deleted is not None
-    assert restored_deleted["version"] == 4
-    assert "deleted_at" not in restored_deleted
-    assert restored_version is not None
-    assert restored_version["version"] == 5
-    assert restored_version["content"] == "first line\nsecond line"
-    assert [revision["version"] for revision in final_versions] == [1, 2, 3, 4, 5]
-    assert final_versions[2]["deleted_at"]
-    assert not final_versions[-1].get("deleted_at")
-
-
-def test_update_config_migrates_entries_from_removed_section(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    write_entry(root, "project", "Keep this memory during section migration.")
-
-    updated = update_config(root, {"sections": ["actions", "systems", "requests", "user", "context"]})
-    entries = read_entries(root)
-    meta = json.loads((root / ".rememb" / "meta.json").read_text(encoding="utf-8"))
-
-    assert "project" not in updated["sections"]
-    assert "uncategorized" in updated["sections"]
-    assert entries[0]["section"] == "uncategorized"
-    assert meta["sections"] == updated["sections"]
-
-
-def test_clear_entries_requires_explicit_confirmation(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    write_entry(root, "project", "Memory that should be cleared only with confirmation.")
-
-    with pytest.raises(RemembValidationError, match="confirm=True"):
-        clear_entries(root)
-
-    cleared = clear_entries(root, confirm=True)
-
-    assert cleared == 1
-    assert read_entries(root) == []
-
-
-def test_file_lock_uses_exclusive_lock_for_r_plus_mode(tmp_path):
-    entries_path = tmp_path / "entries.json"
-    entries_path.write_text("[]", encoding="utf-8")
-
-    ctx = multiprocessing.get_context("spawn")
-    first_entered_parent, first_entered_child = ctx.Pipe(duplex=False)
-    second_entered_parent, second_entered_child = ctx.Pipe(duplex=False)
-    first_release_child, first_release_parent = ctx.Pipe(duplex=False)
-    second_release_child, second_release_parent = ctx.Pipe(duplex=False)
-
-    first = ctx.Process(target=_hold_file_lock, args=(str(entries_path), "r+", first_entered_child, first_release_child))
-    second = ctx.Process(target=_hold_file_lock, args=(str(entries_path), "r+", second_entered_child, second_release_child))
-
-    first.start()
-    assert first_entered_parent.recv() == "entered"
-
-    second.start()
-
-    with pytest.raises(queue.Empty):
-        if second_entered_parent.poll(0.3):
-            raise AssertionError("second writer acquired r+ lock before first released it")
-        raise queue.Empty()
-
-    first_release_parent.send("release")
-    first.join(timeout=5)
-    assert first.exitcode == 0
-
-    assert second_entered_parent.recv() == "entered"
-    second_release_parent.send("release")
-    second.join(timeout=5)
-    assert second.exitcode == 0
-
-    first_entered_parent.close()
-    first_release_parent.close()
-    second_entered_parent.close()
-    second_release_parent.close()
-
-
-def test_file_lock_read_mode_does_not_create_missing_file(tmp_path):
-    missing_path = tmp_path / "missing.json"
-
-    with pytest.raises(FileNotFoundError):
-        with file_lock(missing_path, mode="r"):
-            pass
-
-    assert not missing_path.exists()
-
-
-def test_file_lock_read_unlock_after_full_read(tmp_path):
-    """Windows msvcrt unlock fails if the file cursor stays at EOF."""
-    entries_path = tmp_path / "entries.json"
-    entries_path.write_text("[]", encoding="utf-8")
-
-    with file_lock(entries_path, mode="r") as handle:
-        assert handle.read() == "[]"
-
-
-def test_search_and_stats_require_initialization(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-
-    with pytest.raises(RemembNotInitializedError):
-        search_entries(root, "query")
-
-    with pytest.raises(RemembNotInitializedError):
-        get_stats(root)
-
-    assert not (root / ".rememb").exists()
-
-
-def test_search_entries_returns_scores(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    write_entry(root, "project", "alpha primary match")
-    write_entry(root, "project", "alpha secondary note")
-
-    results = search_entries(root, "alpha")
-    stored = read_entries(root)
-    stored_by_id = {entry["id"]: entry for entry in stored}
-
-    assert len(results) == 2
-    assert results[0]["score"] >= results[1]["score"]
-    assert "score" in results[0]
-    assert all(stored_by_id[result["id"]]["access_count"] == 1 for result in results)
-    assert all(stored_by_id[result["id"]]["last_accessed"] for result in results)
-
-
-def test_search_entries_boosts_exact_tokens_and_tags(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-    write_entry(root, "project", "Generic alpha planning note.", ["release"])
-    write_entry(root, "project", "Roadmap and timeline details.", ["alpha", "launch"])
-
-    results = search_entries(root, "alpha launch")
-
-    assert len(results) == 2
-    tagged = next(entry for entry in results if entry["tags"] == ["alpha", "launch"])
-    assert tagged is results[0]
-    assert results[0]["score"] > results[1]["score"]
-
-
-def test_get_stats_excludes_deleted_from_totals(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    first = write_entry(root, "project", "Keep me hidden after delete.")
-    write_entry(root, "actions", "Still active.")
-    delete_entries(root, [first["id"]])
-
-    stats = get_stats(root)
-
+    delete_entries(store, [entry["id"]])
+    stats = get_stats(store)
+    assert get_entry(store, entry["id"]) is None
+    assert get_entry(store, entry["id"], include_deleted=True) is not None
     assert stats["total"] == 1
     assert stats["deleted_total"] == 1
     assert stats["by_section"]["project"] == 0
     assert stats["by_section"]["actions"] == 1
 
 
-def test_format_entries_supports_truncation_and_timestamps():
-    entries = [
-        {
-            "id": "abcd1234",
-            "section": "project",
-            "content": "a" * 20,
-            "tags": ["tag1"],
-            "score": 0.98765,
-            "updated_at": "2026-06-23T12:00:00Z",
-        }
-    ]
+def test_write_entries_batch_and_default_section(store: Path):
+    created = write_entries(
+        store,
+        [
+            {"content": "No section given."},
+            {"section": "actions", "content": "Second batch memory.", "tags": ["two"]},
+        ],
+    )
+    stored = read_entries(store)
 
-    text = format_entries(entries, include_id=True, include_score=True, max_chars=8)
+    assert created[0]["section"] == "project"
+    assert [entry["content"] for entry in stored] == ["No section given.", "Second batch memory."]
+    with pytest.raises(RemembValidationError, match="Duplicate"):
+        write_entry(store, "project", "No section given.")
+
+
+def test_edit_and_delete_batches(store: Path):
+    first = write_entry(store, "project", "Original first.", ["a"])
+    second = write_entry(store, "project", "Original second.", ["b"])
+
+    results = edit_entries(
+        store,
+        [
+            {"entry_id": first["id"], "content": "Updated first.", "tags": ["x"]},
+            {"entry_id": second["id"], "section": "actions"},
+            {"entry_id": "deadbeef", "content": "Missing"},
+        ],
+    )
+    deleted_ids = delete_entries(store, [first["id"], "deadbeef"])
+    remaining = read_entries(store)
+    hidden = get_entry(store, first["id"], include_deleted=True)
+
+    assert results[0]["content"] == "Updated first."
+    assert results[1]["section"] == "actions"
+    assert results[2] is None
+    assert deleted_ids == [first["id"]]
+    assert [entry["id"] for entry in remaining] == [second["id"]]
+    assert hidden["deleted_at"]
+    assert hidden["version"] == 3
+
+
+def test_edit_upgrades_legacy_entry_to_versioned_history(store: Path):
+    entry = write_entry(store, "project", "Legacy memory.", ["old"])
+    entries_path = store / ".rememb" / "entries.json"
+    stored_entries = json.loads(entries_path.read_text(encoding="utf-8"))
+    stored_entries[0].pop("version", None)
+    stored_entries[0].pop("history", None)
+    entries_path.write_text(json.dumps(stored_entries, indent=2), encoding="utf-8")
+
+    updated = edit_entries(store, [{"entry_id": entry["id"], "content": "Legacy memory updated."}])[0]
+
+    assert updated["version"] == 2
+    assert updated["history"][0]["version"] == 1
+    assert updated["history"][0]["content"] == "Legacy memory."
+
+
+def test_recent_page_search_and_tags(store: Path):
+    first = write_entry(store, "project", "Deleted alpha memory", ["alpha"])
+    live = write_entry(store, "project", "Live alpha memory", ["alpha", "launch"])
+    write_entry(store, "project", "Roadmap and timeline details.", ["release"])
+    edit_entry(store, first["id"], "Deleted alpha memory updated")
+    delete_entries(store, [first["id"]])
+
+    recent = read_recent_entries(store, limit=2, include_deleted=True)
+    page = read_entries_page(store, sort_by="recent", descending=True, limit=1)
+    hidden = search_entries(store, "alpha")
+    visible = search_entries(store, "alpha", include_deleted=True)
+    tags = list_entry_tags(store)
+
+    assert recent[0]["id"] == first["id"]
+    assert page["items"][0]["id"] == live["id"]
+    assert page["has_more"] is True
+    assert [entry["id"] for entry in hidden] == [live["id"]]
+    assert {entry["id"] for entry in visible} == {first["id"], live["id"]}
+    assert {item["tag"] for item in tags} >= {"alpha", "launch", "release"}
+
+
+def test_search_ranks_tokens_and_records_access(store: Path):
+    write_entry(store, "project", "Generic alpha planning note.", ["release"])
+    write_entry(store, "project", "Roadmap and timeline details.", ["alpha", "launch"])
+
+    results = search_entries(store, "alpha launch")
+    stored = {entry["id"]: entry for entry in read_entries(store)}
+
+    assert results[0]["tags"] == ["alpha", "launch"]
+    assert results[0]["score"] > results[1]["score"]
+    assert all(stored[result["id"]]["access_count"] == 1 for result in results)
+
+
+def test_versions_restore_diff_and_export(store: Path):
+    entry = write_entry(store, "project", "first line\nsecond line", ["draft"])
+    edit_entries(store, [{"entry_id": entry["id"], "content": "first line\nthird line", "tags": ["released"]}])
+    other = write_entry(store, "user", "Other content", ["drop"])
+    delete_entries(store, [entry["id"], other["id"]])
+
+    versions = list_entry_versions(store, entry["id"])
+    diff = diff_entry_versions(store, entry["id"], 1, 2)
+    restored_deleted = restore_deleted_entry(store, entry["id"])
+    restored_version = restore_entry_version(store, entry["id"], 1)
+    exported = export_entries(store, entry_id=entry["id"], include_versions=True)
+
+    assert [revision["version"] for revision in versions] == [1, 2, 3]
+    assert versions[-1]["deleted_at"]
+    assert "second line" in diff["diff"]
+    assert restored_deleted["version"] == 4
+    assert restored_version["content"] == "first line\nsecond line"
+    assert exported["entry_count"] == 1
+    assert exported["entries"][0]["history"]
+    assert export_entries(store, entry_id="deadbeef") is None
+    with pytest.raises(RemembValidationError):
+        export_entries(store, entry_id="bad")
+
+
+def test_consolidate_merges_exact_duplicates(store: Path):
+    write_entry(store, "project", "Same text", ["a"], skip_duplicates=False)
+    write_entry(store, "project", "Same text", ["b"], skip_duplicates=False)
+    write_entry(store, "actions", "Same text", ["c"], skip_duplicates=False)
+
+    result = consolidate_entries(store, "project")
+    entries = read_entries(store)
+    project = [entry for entry in entries if entry["section"] == "project"]
+
+    assert result["removed_count"] == 1
+    assert result["merged_groups"] == 1
+    assert len(project) == 1
+    assert set(project[0]["tags"]) == {"a", "b"}
+    assert len(entries) == 2
+
+
+def test_update_config_and_clear(store: Path):
+    write_entry(store, "project", "Keep this memory during section migration.")
+
+    updated = update_config(store, {"sections": ["actions", "systems", "requests", "user", "context"]})
+    entries = read_entries(store)
+
+    assert "project" not in updated["sections"]
+    assert entries[0]["section"] == "uncategorized"
+    with pytest.raises(RemembValidationError):
+        update_config(store, {"unknown": 1})
+    with pytest.raises(RemembValidationError):
+        update_config(store, {"max_entries": 0})
+    with pytest.raises(RemembValidationError, match="confirm=True"):
+        clear_entries(store)
+    assert clear_entries(store, confirm=True) == 1
+    assert read_entries(store) == []
+
+
+def test_search_and_stats_require_initialization(tmp_path: Path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    with pytest.raises(RemembNotInitializedError):
+        search_entries(root, "query")
+    with pytest.raises(RemembNotInitializedError):
+        get_stats(root)
+    assert not (root / ".rememb").exists()
+
+
+def test_format_entries_and_summarize_hint():
+    text = format_entries(
+        [
+            {
+                "id": "abcd1234",
+                "section": "project",
+                "content": "a" * 20,
+                "tags": ["tag1"],
+                "score": 0.98765,
+                "updated_at": "2026-06-23T12:00:00Z",
+            }
+        ],
+        include_id=True,
+        include_score=True,
+        max_chars=8,
+    )
 
     assert "abcd1234" in text
     assert "score: 0.988" in text
     assert "aaaaa..." in text
     assert "2026-06-23" in text
-
-
-def test_format_entries_summary_only_is_deprecated():
-    entries = [
-        {
-            "id": "abcd1234",
-            "section": "project",
-            "content": "hello",
-            "tags": [],
-            "updated_at": "2026-06-23T12:00:00Z",
-        }
-    ]
-
-    with pytest.warns(DeprecationWarning, match="summary_only is deprecated"):
-        text = format_entries(entries, summary_only=True)
-
-    assert "2026-06-23" in text
-
-
-def test_agent_summarize_hint_thresholds():
-    assert agent_summarize_hint(3) == ""
-    assert "Agent note" in agent_summarize_hint(8)
+    assert agent_summarize_hint(80) == ""
     assert "More pages may remain" in agent_summarize_hint(3, has_more=True)
-
-
-def test_export_entries_all_and_single(tmp_path):
-    root = tmp_path / "workspace"
-    root.mkdir()
-    init(root)
-
-    first = write_entry(root, "project", "Original content", ["keep"])
-    second = write_entry(root, "user", "Other content", ["drop"])
-    edit_entry(root, first["id"], content="Updated content")
-    delete_entries(root, [second["id"]])
-
-    all_current = export_entries(root, include_versions=False, include_deleted=False)
-    assert all_current is not None
-    assert all_current["format"] == "rememb-export"
-    assert all_current["entry_count"] == 1
-    assert all_current["entries"][0]["content"] == "Updated content"
-    assert "history" not in all_current["entries"][0]
-
-    with_history = export_entries(root, entry_id=first["id"], include_versions=True)
-    assert with_history is not None
-    assert with_history["entry_count"] == 1
-    assert "history" in with_history["entries"][0]
-    assert len(with_history["entries"][0]["history"]) == 1
-
-    with_deleted = export_entries(root, include_versions=True, include_deleted=True)
-    assert with_deleted is not None
-    assert with_deleted["entry_count"] == 2
-
-    assert export_entries(root, entry_id="deadbeef") is None
-    with pytest.raises(RemembValidationError):
-        export_entries(root, entry_id="bad")

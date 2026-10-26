@@ -4,8 +4,20 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_SECTIONS
-from rememb.store.crud import (
+from rememb.config import (
+    DEFAULT_MCP_SECTION,
+    DEFAULT_MESSAGE_PATH,
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_RECENT_LIMIT,
+    DEFAULT_SEARCH_TOP_K,
+    DEFAULT_SECTIONS,
+    DEFAULT_HOST,
+    DEFAULT_SSE_PATH,
+    DEFAULT_SSE_PORT,
+    DEFAULT_TAG_LIMIT,
+    ENTRY_ID_LENGTH,
+)
+from rememb.store import (
     agent_summarize_hint,
     clear_entries,
     get_entry,
@@ -37,37 +49,24 @@ from rememb.mcp_stores import (
 )
 from rememb.utils import (
     _validate_entry_id,
+    invalid_entry_id_message,
     is_initialized,
     list_skill_definitions,
     load_skill_definition,
 )
 
 
-DEFAULT_SSE_HOST = "127.0.0.1"
-DEFAULT_SSE_PORT = 8765
-DEFAULT_SSE_PATH = "/sse"
-DEFAULT_MESSAGE_PATH = "/messages/"
-
-
 class MCPContext:
-    """Encapsulates MCP-specific cache and state.
-
-    Manages MCP module imports and store registry for MCP server operations.
-    """
+    """Lazy MCP SDK import cache and per-process store registry."""
 
     def __init__(self):
         self._mcp_modules = None
         self._store_registry = StoreRegistry()
 
+    def get_store_registry(self) -> StoreRegistry:
+        return self._store_registry
+
     def get_mcp_modules(self):
-        """Get or load MCP modules.
-
-        Returns:
-            Dictionary with Server, stdio_server, Tool, TextContent classes
-
-        Raises:
-            ImportError: If mcp package not installed
-        """
         if self._mcp_modules is None:
             try:
                 from mcp.server import Server
@@ -86,10 +85,6 @@ class MCPContext:
                 ) from e
         return self._mcp_modules
 
-    def get_store_registry(self) -> StoreRegistry:
-        """Return the MCP store registry for this process."""
-        return self._store_registry
-
 
 _mcp_context = MCPContext()
 
@@ -107,12 +102,7 @@ def _get_root(store_id: str | None = None) -> Path:
 
 
 def _get_mcp_sections() -> list[str]:
-    """Return the union of section lists across configured stores.
-
-    Global is always resolved (and auto-initialized). Project stores only
-    contribute sections when already initialized, so listing tools does not
-    create `.rememb` directories as a side effect.
-    """
+    """Return the union of section lists across configured stores."""
     try:
         registry = _mcp_context.get_store_registry()
         registry.ensure_configured()
@@ -137,8 +127,8 @@ def _get_mcp_sections() -> list[str]:
 
 def _get_default_mcp_section() -> str:
     sections = _get_mcp_sections()
-    if "context" in sections:
-        return "context"
+    if DEFAULT_MCP_SECTION in sections:
+        return DEFAULT_MCP_SECTION
     return sections[0]
 
 
@@ -169,6 +159,48 @@ def _tool_error_text(exc: Exception) -> str:
     return f"Unexpected error: {exc}"
 
 
+def _text(cls, text: str):
+    return [cls(type="text", text=text)]
+
+
+def _need_id(entry_id, reply):
+    if entry_id is None or not _validate_entry_id(str(entry_id)):
+        return reply(invalid_entry_id_message(entry_id))
+    return None
+
+
+def _memory_text(
+    reply,
+    entries,
+    *,
+    include_score: bool = False,
+    max_chars=None,
+    header: str | None = None,
+    has_more: bool = False,
+):
+    body = format_entries(entries, include_id=True, include_score=include_score, max_chars=max_chars)
+    hint = agent_summarize_hint(len(entries), has_more=has_more)
+    payload = f"{header}\n\n{body}{hint}" if header else f"{body}{hint}"
+    return reply(payload)
+
+
+def _no_update_fields(content, section, tags) -> bool:
+    return content is None and section is None and tags is None
+
+
+def _batch_status_lines(items, found, *, ok: str, missing: str, key: str | None = None) -> tuple[int, list[str]]:
+    lines: list[str] = []
+    count = 0
+    for item in items:
+        item_id = item[key] if key else item
+        if item_id in found:
+            count += 1
+            lines.append(ok.format(item_id))
+        else:
+            lines.append(missing.format(item_id))
+    return count, lines
+
+
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     """Handle MCP tool invocation.
 
@@ -186,17 +218,24 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
     else:
         store_id = GLOBAL_STORE_ID
 
+    reply = lambda text: _text(TextContent, _with_store_prefix(store_id, text))
+    arg = arguments.get
+
     root: Path | None = None
     if name not in {"rememb_list_skills", "rememb_use_skill", "rememb_list_stores"}:
         try:
             root = await asyncio.to_thread(_get_root, store_id)
-        except RemembError as e:
-            return [TextContent(type="text", text=_tool_error_text(e))]
         except Exception as e:
-            return [TextContent(type="text", text=_tool_error_text(e))]
+            return reply(_tool_error_text(e))
 
-    def _text(body: str):
-        return [TextContent(type="text", text=_with_store_prefix(store_id, body))]
+    def need_id(entry_id):
+        return _need_id(entry_id, reply)
+
+    def memory(entries, **kwargs):
+        return _memory_text(reply, entries, **kwargs)
+
+    def not_found(entry_id, extra=""):
+        return reply(f"Entry {entry_id}{extra} not found")
 
     async def rememb_list_stores():
         registry = _mcp_context.get_store_registry()
@@ -207,103 +246,87 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             lines.append(
                 f"- {store.id} ({store.kind}) path={store.root} initialized={initialized}"
             )
-        return [TextContent(type="text", text="\n".join(lines))]
+        return reply("\n".join(lines))
 
     async def rememb_get():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
-        entry = await asyncio.to_thread(get_entry, root, entry_id, include_deleted=include_deleted)
+        if err := need_id(entry_id):
+            return err
+        entry = await asyncio.to_thread(
+            get_entry, root, entry_id, include_deleted=arg("include_deleted", False)
+        )
         if entry is None:
-            return _text(f"Entry {entry_id} not found")
-        body = format_entries([entry], include_id=True, max_chars=max_chars)
-        return _text(body)
+            return not_found(entry_id)
+        return memory([entry], max_chars=arg("max_chars"))
 
     async def rememb_recent():
-        limit = arguments.get("limit", 10)
-        section = arguments.get("section")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
         entries = await asyncio.to_thread(
             read_recent_entries,
             root,
-            limit=limit,
-            section=section,
-            include_deleted=include_deleted,
+            limit=arg("limit", DEFAULT_RECENT_LIMIT),
+            section=arg("section"),
+            include_deleted=arg("include_deleted", False),
         )
-        body = format_entries(entries, include_id=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(entries))
-        return _text(f"{body}{hint}")
+        return memory(entries, max_chars=arg("max_chars"))
 
     async def rememb_list_tags():
-        limit = arguments.get("limit", 50)
-        include_deleted = arguments.get("include_deleted", False)
-        tags = await asyncio.to_thread(list_entry_tags, root, include_deleted=include_deleted, limit=limit)
+        tags = await asyncio.to_thread(
+            list_entry_tags,
+            root,
+            include_deleted=arg("include_deleted", False),
+            limit=arg("limit", DEFAULT_TAG_LIMIT),
+        )
         if not tags:
-            return _text("No tags found.")
+            return reply("No tags found.")
         lines = ["Tags (count):"]
         lines.extend(f"- {item['tag']}: {item['count']}" for item in tags)
-        return _text("\n".join(lines))
+        return reply("\n".join(lines))
 
     async def rememb_read():
-        section = arguments.get("section")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
-        entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
-        body = format_entries(entries, include_id=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(entries))
-        return _text(f"{body}{hint}")
+        entries = await asyncio.to_thread(
+            read_entries, root, arg("section"), include_deleted=arg("include_deleted", False)
+        )
+        return memory(entries, max_chars=arg("max_chars"))
 
     async def rememb_read_page():
-        section = arguments.get("section")
-        tag = arguments.get("tag")
-        include_deleted = arguments.get("include_deleted", False)
-        offset = arguments.get("offset", 0)
-        limit = arguments.get("limit", 100)
-        sort_by = arguments.get("sort_by", "storage")
-        descending = arguments.get("descending", False)
-        max_chars = arguments.get("max_chars")
         page = await asyncio.to_thread(
             read_entries_page,
             root,
-            section,
-            tag=tag,
-            include_deleted=include_deleted,
-            offset=offset,
-            limit=limit,
-            sort_by=sort_by,
-            descending=descending,
+            arg("section"),
+            tag=arg("tag"),
+            include_deleted=arg("include_deleted", False),
+            offset=arg("offset", 0),
+            limit=arg("limit", DEFAULT_PAGE_LIMIT),
+            sort_by=arg("sort_by", "storage"),
+            descending=arg("descending", False),
         )
         header = (
             f"Page {page['offset']}..{page['next_offset']} of {page['total']} "
             f"(limit={page['limit']}, has_more={page['has_more']})"
         )
-        body = format_entries(page["items"], include_id=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(page["items"]), has_more=page["has_more"])
-        return _text(f"{header}\n\n{body}{hint}")
+        return memory(page["items"], max_chars=arg("max_chars"), header=header, has_more=page["has_more"])
 
     async def rememb_search():
-        query = arguments["query"]
-        top_k = arguments.get("top_k", 5)
-        section = arguments.get("section")
-        tag = arguments.get("tag")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
-        entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
-        body = format_entries(entries, include_id=True, include_score=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(entries))
-        return _text(f"{body}{hint}")
+        entries = await asyncio.to_thread(
+            search_entries,
+            root,
+            arguments["query"],
+            arg("top_k", DEFAULT_SEARCH_TOP_K),
+            arg("section"),
+            arg("tag"),
+            include_deleted=arg("include_deleted", False),
+        )
+        return memory(entries, include_score=True, max_chars=arg("max_chars"))
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
-        include_deleted = arguments.get("include_deleted", True)
-        versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
+        if err := need_id(entry_id):
+            return err
+        versions = await asyncio.to_thread(
+            list_entry_versions, root, entry_id, include_deleted=arg("include_deleted", True)
+        )
         if not versions:
-            return _text(f"Entry {entry_id} not found")
+            return not_found(entry_id)
         lines = [f"Versions for {entry_id} ({len(versions)} total):"]
         for revision in versions:
             deleted_marker = " [deleted]" if str(revision.get("deleted_at", "")).strip() else ""
@@ -312,47 +335,47 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 f"- v{revision['version']} section={revision.get('section', '')}{deleted_marker}"
                 f" tags=[{tags}] updated={revision.get('updated_at', '')}"
             )
-        return _text("\n".join(lines))
+        return reply("\n".join(lines))
 
     async def rememb_restore():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
-        version = arguments.get("version")
+        if err := need_id(entry_id):
+            return err
+        version = arg("version")
         if version is None:
             restored = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
             if restored is None:
-                return _text(f"Deleted entry {entry_id} not found")
-            return _text(f"Restored deleted entry {entry_id} (now v{restored['version']})")
+                return reply(f"Deleted entry {entry_id} not found")
+            return reply(f"Restored deleted entry {entry_id} (now v{restored['version']})")
         restored = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
         if restored is None:
-            return _text(f"Entry {entry_id} or version {version} not found")
-        return _text(f"Restored {entry_id} to version {version} (now v{restored['version']})")
+            return not_found(entry_id, extra=f" or version {version}")
+        return reply(f"Restored {entry_id} to version {version} (now v{restored['version']})")
 
     async def rememb_diff():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
+        if err := need_id(entry_id):
+            return err
         from_version = arguments["from_version"]
         to_version = arguments["to_version"]
         result = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
         if result is None:
-            return _text(f"Entry {entry_id} or requested versions not found")
+            return not_found(entry_id, extra=" or requested versions")
         diff_text = result["diff"] or "(no content changes)"
-        return _text(f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")
+        return reply(f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")
 
     async def rememb_write():
-        entries = arguments.get("entries")
+        entries = arg("entries")
+        default_section = _get_default_mcp_section()
         if entries is not None:
             if not isinstance(entries, list) or not entries:
-                return _text("Provide a non-empty entries array.")
-            default_section = _get_default_mcp_section()
+                return reply("Provide a non-empty entries array.")
             prepared_entries: list[dict[str, Any]] = []
             for item in entries:
                 if not isinstance(item, dict):
-                    return _text("Each batch entry must be an object.")
+                    return reply("Each batch entry must be an object.")
                 if item.get("content") is None:
-                    return _text("Each batch entry must include content.")
+                    return reply("Each batch entry must include content.")
                 prepared_entries.append(
                     {
                         "content": item["content"],
@@ -362,98 +385,78 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 )
             created = await asyncio.to_thread(write_entries, root, prepared_entries, True)
             summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
-            return _text(f"Saved {len(created)} entries\n{summary}")
+            return reply(f"Saved {len(created)} entries\n{summary}")
 
-        content = arguments.get("content")
+        content = arg("content")
         if content is None:
-            return _text("Provide content for a single entry or entries for batch write.")
-        section = arguments.get("section", _get_default_mcp_section())
-        tags = arguments.get("tags", [])
+            return reply("Provide content for a single entry or entries for batch write.")
         entry = await asyncio.to_thread(
             write_entry,
             root,
-            section,
+            arg("section", default_section),
             content,
-            tags,
+            arg("tags", []),
             True,
         )
-        return _text(f"Saved [{entry['section']}] id={entry['id']}")
+        return reply(f"Saved [{entry['section']}] id={entry['id']}")
 
     async def rememb_edit():
-        updates = arguments.get("updates")
+        updates = arg("updates")
         if updates is not None:
             if not isinstance(updates, list) or not updates:
-                return _text("Provide a non-empty updates array.")
+                return reply("Provide a non-empty updates array.")
             for update in updates:
                 if not isinstance(update, dict):
-                    return _text("Each batch update must be an object.")
+                    return reply("Each batch update must be an object.")
                 entry_id = update.get("entry_id")
-                if entry_id is None or not _validate_entry_id(entry_id):
-                    return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
-                if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
-                    return _text(f"Provide at least one field to update for {entry_id}: content, section, or tags.")
+                if err := need_id(entry_id):
+                    return err
+                if _no_update_fields(update.get("content"), update.get("section"), update.get("tags")):
+                    return reply(f"Provide at least one field to update for {entry_id}: content, section, or tags.")
             results = await asyncio.to_thread(edit_entries, root, updates)
-            lines = []
-            updated_count = 0
-            for update, result in zip(updates, results):
-                if result:
-                    updated_count += 1
-                    lines.append(f"- Updated {update['entry_id']}")
-                else:
-                    lines.append(f"- Entry {update['entry_id']} not found")
-            return _text(f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))
+            found = {update["entry_id"] for update, result in zip(updates, results) if result}
+            count, lines = _batch_status_lines(
+                updates, found, ok="- Updated {}", missing="- Entry {} not found", key="entry_id"
+            )
+            return reply(f"Processed {len(updates)} updates ({count} updated)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
-        content = arguments.get("content")
-        section = arguments.get("section")
-        tags = arguments.get("tags")
-        if content is None and section is None and tags is None:
-            return _text("Provide at least one field to update: content, section, or tags.")
-        result = await asyncio.to_thread(
-            edit_entry,
-            root,
-            entry_id,
-            content,
-            section,
-            tags,
-        )
+        if err := need_id(entry_id):
+            return err
+        content, section, tags = arg("content"), arg("section"), arg("tags")
+        if _no_update_fields(content, section, tags):
+            return reply("Provide at least one field to update: content, section, or tags.")
+        result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
         if result:
-            return _text(f"Updated {entry_id}")
-        return _text(f"Entry {entry_id} not found")
+            return reply(f"Updated {entry_id}")
+        return not_found(entry_id)
 
     async def rememb_delete():
-        entry_ids = arguments.get("entry_ids")
+        entry_ids = arg("entry_ids")
         if entry_ids is not None:
             if not isinstance(entry_ids, list) or not entry_ids:
-                return _text("Provide a non-empty entry_ids array.")
+                return reply("Provide a non-empty entry_ids array.")
             for entry_id in entry_ids:
-                if not _validate_entry_id(entry_id):
-                    return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
-            deleted_ids = await asyncio.to_thread(delete_entries, root, entry_ids)
-            deleted_set = set(deleted_ids)
-            lines = []
-            for entry_id in entry_ids:
-                if entry_id in deleted_set:
-                    lines.append(f"- Deleted {entry_id}")
-                else:
-                    lines.append(f"- Entry {entry_id} not found")
-            return _text(f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))
+                if err := need_id(entry_id):
+                    return err
+            deleted_ids = set(await asyncio.to_thread(delete_entries, root, entry_ids))
+            count, lines = _batch_status_lines(
+                entry_ids, deleted_ids, ok="- Deleted {}", missing="- Entry {} not found"
+            )
+            return reply(f"Processed {len(entry_ids)} deletions ({count} deleted)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return _text(f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")
+        if err := need_id(entry_id):
+            return err
         if await asyncio.to_thread(delete_entry, root, entry_id):
-            return _text(f"Deleted {entry_id}")
-        return _text(f"Entry {entry_id} not found")
+            return reply(f"Deleted {entry_id}")
+        return not_found(entry_id)
 
     async def rememb_clear():
-        confirm = arguments.get("confirm", False)
-        if not confirm:
-            return _text("Clear cancelled. Set confirm=true to proceed.")
+        if not arg("confirm", False):
+            return reply("Clear cancelled. Set confirm=true to proceed.")
         count = await asyncio.to_thread(clear_entries, root, confirm=True)
-        return _text(f"Cleared {count} entries")
+        return reply(f"Cleared {count} entries")
 
     async def rememb_stats():
         stats = await asyncio.to_thread(get_stats, root)
@@ -465,57 +468,47 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Newest entry: {stats['newest']}",
             "",
         ] + [f"{sec}: {count}" for sec, count in stats["by_section"].items()]
-        return _text("\n".join(lines))
+        return reply("\n".join(lines))
 
     async def rememb_consolidate():
-        section = arguments.get("section")
-        result = await asyncio.to_thread(
-            consolidate_entries,
-            root,
-            section,
-        )
+        result = await asyncio.to_thread(consolidate_entries, root, arg("section"))
         target = result["section"] if result["section"] else "all sections"
-        return _text(
-            (
-                f"Consolidation completed for {target}. "
-                f"Using mode=exact. "
-                f"Removed {result['removed_count']} duplicate entries "
-                f"({result['total_before']} -> {result['total_after']})."
-            ),
+        return reply(
+            f"Consolidation completed for {target}. "
+            f"Using mode=exact. "
+            f"Removed {result['removed_count']} duplicate entries "
+            f"({result['total_before']} -> {result['total_after']})."
         )
-
 
     async def rememb_list_skills():
         skills = await asyncio.to_thread(list_skill_definitions)
         if not skills:
-            return [TextContent(type="text", text="No bundled rememb skills found in the installed package.")]
-
-        lines = []
-        for skill in skills:
-            lines.append(
-                f"- {skill['name']} (id={skill['id']})\n"
-                f"  path: {skill['path']}\n"
-                f"  description: {skill['description']}"
-            )
-        return [TextContent(type="text", text="\n".join(lines))]
+            return reply("No bundled rememb skills found in the installed package.")
+        lines = [
+            f"- {skill['name']} (id={skill['id']})\n"
+            f"  path: {skill['path']}\n"
+            f"  description: {skill['description']}"
+            for skill in skills
+        ]
+        return reply("\n".join(lines))
 
     async def rememb_use_skill():
         skill = arguments["skill"]
         loaded = await asyncio.to_thread(load_skill_definition, skill)
         if not loaded:
-            return [TextContent(type="text", text=f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills.")]
-
+            return reply(
+                f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills."
+            )
         body = loaded.get("content", "").strip()
-        return [TextContent(
-            type="text",
-            text=(
+        return reply(
+            (
                 f"Skill: {loaded['name']}\n"
                 f"ID: {loaded['id']}\n"
                 f"Path: {loaded['path']}\n"
                 f"Description: {loaded['description']}\n\n"
                 f"{body}"
             ).strip(),
-        )]
+        )
 
     tool_handlers = {
         "rememb_list_stores": rememb_list_stores,
@@ -540,18 +533,19 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     handler = tool_handlers.get(name)
     if not handler:
-        return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return reply(f"Unknown tool: {name}")
 
     try:
         return await handler()
-    except RemembError as e:
-        return [TextContent(type="text", text=_tool_error_text(e))]
     except Exception as e:
-        return [TextContent(type="text", text=_tool_error_text(e))]
+        return reply(_tool_error_text(e))
 
 
 def _build_tools(Tool):
-    """Build the public MCP tool list for the current store registry."""
+    """Run MCP stdio server.
+    
+    Starts the MCP server and handles stdio communication.
+    """
     def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
         schema: dict[str, Any] = {
             "type": "object",
@@ -580,6 +574,52 @@ def _build_tools(Tool):
 
     sections = _get_mcp_sections()
     default_section = _get_default_mcp_section()
+    joined = ", ".join(sections)
+
+    def _entry_id(description: str | None = None) -> dict[str, Any]:
+        return {
+            "type": "string",
+            "description": description or f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
+        }
+
+    def _include_deleted(default: bool = False, description: str = "Include soft-deleted entries") -> dict[str, Any]:
+        return {"type": "boolean", "default": default, "description": description}
+
+    def _max_chars(per_entry: bool = True) -> dict[str, Any]:
+        suffix = " per entry" if per_entry else ""
+        return {"type": "integer", "description": f"Optional mechanical cap on content characters{suffix}"}
+
+    def _section(description: str, *, default: str | None = None) -> dict[str, Any]:
+        prop: dict[str, Any] = {"type": "string", "enum": sections, "description": description}
+        if default is not None:
+            prop["default"] = default
+        return prop
+
+    def _limit(default: int, description: str) -> dict[str, Any]:
+        return {"type": "integer", "default": default, "description": description}
+
+    def _tag(description: str) -> dict[str, Any]:
+        return {"type": "string", "description": description}
+
+    def _tags(description: str) -> dict[str, Any]:
+        return {"type": "array", "items": {"type": "string"}, "description": description}
+
+    def _content(description: str) -> dict[str, Any]:
+        return {"type": "string", "description": description}
+
+    def _version(description: str) -> dict[str, Any]:
+        return {"type": "integer", "description": description}
+
+    def _array(description: str, items: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "array", "description": description, "items": items}
+
+    write_content = _content("Content to remember (1-3 sentences)")
+    write_section = _section(f"Section: {joined}")
+    write_tags = _tags("Tags to categorize this entry")
+    edit_content = _content("New content")
+    edit_section = _section("Move to different section")
+    edit_tags = _tags("Replace tags")
+    filter_section = _section(f"Optional section filter: {joined}")
 
     return [
         _tool(
@@ -595,19 +635,9 @@ def _build_tools(Tool):
             name="rememb_get",
             description="Fetch one memory entry by ID with full content. Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID (8 hex characters)",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include the entry even if it is soft-deleted",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters",
-                },
+                "entry_id": _entry_id(),
+                "include_deleted": _include_deleted(description="Include the entry even if it is soft-deleted"),
+                "max_chars": _max_chars(per_entry=False),
             },
             required=["entry_id"],
         ),
@@ -615,91 +645,38 @@ def _build_tools(Tool):
             name="rememb_recent",
             description="Return recently updated entries, newest first. Safe, read-only. Useful for catching up on what changed since the last session.",
             properties={
-                "limit": {
-                    "type": "integer",
-                    "default": 10,
-                    "description": "Maximum number of entries to return",
-                },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "limit": _limit(DEFAULT_RECENT_LIMIT, "Maximum number of entries to return"),
+                "section": filter_section,
+                "include_deleted": _include_deleted(),
+                "max_chars": _max_chars(),
             },
         ),
         _tool(
             name="rememb_list_tags",
             description="List tags used in the store with usage counts. Safe, read-only. Use to discover filters before rememb_search or rememb_read_page.",
             properties={
-                "limit": {
-                    "type": "integer",
-                    "default": 50,
-                    "description": "Maximum number of tags to return",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include tags from soft-deleted entries",
-                },
+                "limit": _limit(DEFAULT_TAG_LIMIT, "Maximum number of tags to return"),
+                "include_deleted": _include_deleted(description="Include tags from soft-deleted entries"),
             },
         ),
         _tool(
             name="rememb_read",
             description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Returns full entry content; summarize task-relevant facts in your working context after large reads.",
             properties={
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Filter by section: {', '.join(sections)}",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries in the response",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "section": _section(f"Filter by section: {joined}"),
+                "include_deleted": _include_deleted(description="Include soft-deleted entries in the response"),
+                "max_chars": _max_chars(),
             },
         ),
         _tool(
             name="rememb_read_page",
             description="Read a paginated slice of entries with optional section or tag filtering. Returns full entry content; summarize task-relevant facts in your working context after each page.",
             properties={
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "tag": {
-                    "type": "string",
-                    "description": "Optional exact tag filter applied before pagination",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries in the response",
-                },
-                "offset": {
-                    "type": "integer",
-                    "default": 0,
-                    "description": "Zero-based page offset",
-                },
-                "limit": {
-                    "type": "integer",
-                    "default": 100,
-                    "description": "Maximum entries to return",
-                },
+                "section": filter_section,
+                "tag": _tag("Optional exact tag filter applied before pagination"),
+                "include_deleted": _include_deleted(description="Include soft-deleted entries in the response"),
+                "offset": _limit(0, "Zero-based page offset"),
+                "limit": _limit(DEFAULT_PAGE_LIMIT, "Maximum entries to return"),
                 "sort_by": {
                     "type": "string",
                     "enum": ["storage", "recent"],
@@ -711,10 +688,7 @@ def _build_tools(Tool):
                     "default": False,
                     "description": "Reverse the selected sort order",
                 },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "max_chars": _max_chars(),
             },
         ),
         _tool(
@@ -725,29 +699,13 @@ def _build_tools(Tool):
                     "type": "string",
                     "description": "Search query - keywords or short phrases",
                 },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
-                "tag": {
-                    "type": "string",
-                    "description": "Optional exact tag filter applied before keyword search",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include soft-deleted entries in the search corpus and results",
-                },
-                "top_k": {
-                    "type": "integer",
-                    "default": 5,
-                    "description": "Maximum number of results",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional mechanical cap on content characters per entry",
-                },
+                "section": filter_section,
+                "tag": _tag("Optional exact tag filter applied before keyword search"),
+                "include_deleted": _include_deleted(
+                    description="Include soft-deleted entries in the search corpus and results"
+                ),
+                "top_k": _limit(DEFAULT_SEARCH_TOP_K, "Maximum number of results"),
+                "max_chars": _max_chars(),
             },
             required=["query"],
         ),
@@ -755,15 +713,11 @@ def _build_tools(Tool):
             name="rememb_versions",
             description="List all revisions known for an entry, including prior content snapshots and deleted states when requested. Safe, read-only operation.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID (8 hex characters)",
-                },
-                "include_deleted": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Keep deleted revisions visible when the current entry is soft-deleted",
-                },
+                "entry_id": _entry_id(),
+                "include_deleted": _include_deleted(
+                    default=True,
+                    description="Keep deleted revisions visible when the current entry is soft-deleted",
+                ),
             },
             required=["entry_id"],
         ),
@@ -771,14 +725,10 @@ def _build_tools(Tool):
             name="rememb_restore",
             description="Restore a soft-deleted entry, or restore a specific prior version as the new current head. Restores are non-destructive: they append a new head revision rather than rewriting history.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID (8 hex characters)",
-                },
-                "version": {
-                    "type": "integer",
-                    "description": "Optional historical version to restore. If omitted, restores the current soft-deleted entry.",
-                },
+                "entry_id": _entry_id(),
+                "version": _version(
+                    "Optional historical version to restore. If omitted, restores the current soft-deleted entry."
+                ),
             },
             required=["entry_id"],
         ),
@@ -786,18 +736,9 @@ def _build_tools(Tool):
             name="rememb_diff",
             description="Show a unified diff between two revisions of the same entry. Safe, read-only operation.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID (8 hex characters)",
-                },
-                "from_version": {
-                    "type": "integer",
-                    "description": "Older or source version",
-                },
-                "to_version": {
-                    "type": "integer",
-                    "description": "Newer or target version",
-                },
+                "entry_id": _entry_id(),
+                "from_version": _version("Older or source version"),
+                "to_version": _version("Newer or target version"),
             },
             required=["entry_id", "from_version", "to_version"],
         ),
@@ -805,114 +746,52 @@ def _build_tools(Tool):
             name="rememb_write",
             description="Save a new memory entry or multiple entries in one call. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID.",
             properties={
-                "content": {
-                    "type": "string",
-                    "description": "Content to remember (1-3 sentences)",
-                },
-                "entries": {
-                    "type": "array",
-                    "description": "Batch write payloads. Each item accepts content and optional section/tags.",
-                    "items": {
+                "content": write_content,
+                "entries": _array(
+                    "Batch write payloads. Each item accepts content and optional section/tags.",
+                    {
                         "type": "object",
                         "properties": {
-                            "content": {
-                                "type": "string",
-                                "description": "Content to remember (1-3 sentences)",
-                            },
-                            "section": {
-                                "type": "string",
-                                "enum": sections,
-                                "description": f"Section: {', '.join(sections)}",
-                            },
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Tags to categorize this entry",
-                            },
+                            "content": write_content,
+                            "section": write_section,
+                            "tags": write_tags,
                         },
                         "required": ["content"],
                     },
-                },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "default": default_section,
-                    "description": f"Section: {', '.join(sections)}",
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Tags to categorize this entry",
-                },
+                ),
+                "section": _section(f"Section: {joined}", default=default_section),
+                "tags": write_tags,
             },
         ),
         _tool(
             name="rememb_edit",
             description="Update one existing memory entry by ID or multiple entries in one call via updates[]. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove them.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID (8 hex characters)",
-                },
-                "updates": {
-                    "type": "array",
-                    "description": "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
-                    "items": {
+                "entry_id": _entry_id(),
+                "updates": _array(
+                    "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
+                    {
                         "type": "object",
                         "properties": {
-                            "entry_id": {
-                                "type": "string",
-                                "description": "Entry ID (8 hex characters)",
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "New content",
-                            },
-                            "section": {
-                                "type": "string",
-                                "enum": sections,
-                                "description": "Move to different section",
-                            },
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Replace tags",
-                            },
+                            "entry_id": _entry_id(),
+                            "content": edit_content,
+                            "section": edit_section,
+                            "tags": edit_tags,
                         },
                         "required": ["entry_id"],
                     },
-                },
-                "content": {
-                    "type": "string",
-                    "description": "New content",
-                },
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": "Move to different section",
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Replace tags",
-                },
+                ),
+                "content": edit_content,
+                "section": edit_section,
+                "tags": edit_tags,
             },
         ),
         _tool(
             name="rememb_delete",
             description="Soft-delete one memory entry by its ID or multiple entries via entry_ids[]. Deleted entries are hidden by default from reads and search, but can be restored later. Use rememb_restore to undo a deletion. Use rememb_clear to permanently delete all entries at once.",
             properties={
-                "entry_id": {
-                    "type": "string",
-                    "description": "Entry ID to delete",
-                },
-                "entry_ids": {
-                    "type": "array",
-                    "description": "Batch deletion IDs.",
-                    "items": {
-                        "type": "string",
-                    },
-                }
+                "entry_id": _entry_id("Entry ID to delete"),
+                "entry_ids": _array("Batch deletion IDs.", {"type": "string"}),
             },
         ),
         _tool(
@@ -935,11 +814,7 @@ def _build_tools(Tool):
             name="rememb_consolidate",
             description="Consolidate literal duplicate entries and merge metadata (tags and access data). Exact normalized-content match only; review near-duplicates with the agent before consolidating.",
             properties={
-                "section": {
-                    "type": "string",
-                    "enum": sections,
-                    "description": f"Optional section filter: {', '.join(sections)}",
-                },
+                "section": filter_section,
             },
         ),
         _tool(
@@ -950,7 +825,7 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_use_skill",
-            description="Load one bundled rememb skill by identifier or exact declared name and return its instructions. Safe, read-only operation. Use rememb_list_skills first to inspect available local skills.",
+            description="Load one bundled rememb skill by identifier or exact declared name and return its instructions. Safe, read-only operation. Use rememb_list_skills first to inspect available skills.",
             properties={
                 "skill": {
                     "type": "string",
@@ -1029,7 +904,7 @@ async def _run_sse_server(server, host: str, port: int, sse_path: str, message_p
 
 async def run_server(
     transport: str = "stdio",
-    host: str = DEFAULT_SSE_HOST,
+    host: str = DEFAULT_HOST,
     port: int = DEFAULT_SSE_PORT,
     projects: list[Path] | None = None,
 ):

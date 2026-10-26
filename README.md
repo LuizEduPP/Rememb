@@ -259,6 +259,20 @@ Core capabilities:
 
 ---
 
+## Roadmap
+
+The store is done. The door is not. Today every rememb call is opt-in: if the agent forgets `rememb_write`, the next session has nothing to read; if it forgets `rememb_recent`, nothing is injected. Memory Rules are a block the user pastes into the IDE. That does not scale.
+
+The next release pulls the agent. Same `~/.rememb`. The hook calls the binary we already have.
+
+- [ ] **Hooks that write** — `PostToolUse` / `Stop` call `rememb_write` (or a thin wrapper) with what just happened.
+- [ ] **Inject on SessionStart** — the start hook runs `rememb_recent` (last N) + `rememb_list_tags` + a short `rememb_stats` and puts that text in the prompt before the first user message. The store already returns this; what is missing is who fires it.
+- [ ] **Cheap index, expensive body** — `rememb_search` returns id + score + a short excerpt by default. Full body only via `rememb_get` / `rememb_read` on the ids the agent picked. Keyword search stays; only the first-call payload changes.
+- [ ] **Skill + installer** — one product `SKILL.md` (“use rememb when…”) plus an installer that (1) writes the MCP block, (2) pastes Memory Rules where the host reads them, and (3) registers SessionStart / PostToolUse / Stop when the host has hooks.
+- [ ] **Handoff** — one store, any IDE. On start: `rememb_list_stores` → `rememb_recent` on the cwd store. On stop: a short write of where we stopped / what failed / what is open. The file is the handoff.
+
+---
+
 ## Contributing
 
 ```bash

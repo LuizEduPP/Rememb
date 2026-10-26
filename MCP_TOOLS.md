@@ -10,11 +10,11 @@ The MCP process always includes the **global** store (`~/.rememb`). Extra projec
 rememb mcp --project /path/to/project-a --project /path/to/project-b
 ```
 
-Memory tools accept optional `store` (default `global`). Project store ids are derived from the project directory name. Use `rememb_list_stores` to list ids and paths.
+Memory tools accept optional `store` (default `global`) except `rememb_list_stores`, `rememb_list_skills`, and `rememb_use_skill`. Project store ids are derived from the project directory name. Use `rememb_list_stores` to list ids and paths.
 
 ## Recommended agent rules
 
-If you want rememb to run as a strictly agent-driven memory layer, use this rules block in your IDE instructions or MCP wrapper prompt. The goal is to route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory:
+`rememb install` writes this block from `src/rememb/agent_rules.py`. Paste the same text by hand if you skip the installer. The goal is to route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory:
 
 ```text
 # Rememb Memory Rules
@@ -71,7 +71,7 @@ Never invent parallel memory systems outside rememb when an official rememb tool
 Treat the full rememb MCP surface as authoritative and always available.
 ```
 
-These rules are the canonical agent-driven routing contract. The documented tools below are the same public surface the agent rules must treat as available.
+This is the same text `rememb install` writes. The tools below are the public surface those rules treat as available.
 
 ## Core memory tools
 
@@ -84,7 +84,6 @@ List configured stores for this MCP process (global plus any `--project` stores)
 Fetch one entry by ID with full content. Safe and read-only.
 
 Key parameters:
-- store (optional; default global)
 - entry_id (required)
 - include_deleted
 - max_chars

@@ -26,7 +26,7 @@ pip install -e ".[dev]"
 
 ## Code Style
 
-- Use Python 3.10+ type hints (`list[str]` instead of `List[str]`)
+- Use Python 3.11+ type hints (`list[str]` instead of `List[str]`)
 - Follow PEP 8 guidelines
 - Use snake_case for function and variable names
 - Add docstrings to all public functions
@@ -37,8 +37,11 @@ pip install -e ".[dev]"
 ```
 src/rememb/
 ├── __init__.py          # Version
-├── cli.py               # CLI entrypoints (web UI default, mcp subcommand)
+├── cli.py               # web UI default; mcp, hook, install
 ├── config.py            # Default config and constants
+├── agent_rules.py       # Memory Rules text written by rememb install
+├── hooks.py             # rememb hook post-tool / stop / session-start
+├── install.py           # rememb install host registry
 ├── exceptions.py        # Custom exceptions
 ├── helpers.py           # Store context, keyword search, validation helpers
 ├── mcp_server.py        # MCP server (18 public tools)
@@ -53,14 +56,14 @@ src/rememb/
 │   ├── json_backend.py
 │   ├── sqlite_backend.py
 │   └── locking.py
-└── web/
-    ├── app.py           # FastAPI app
-    ├── deps.py          # Store dependency (~/.rememb)
-    ├── schemas.py
-    ├── routes/
-    │   ├── entries.py
-    │   └── system.py
-    └── static/          # SPA (index.html, app.js, style.css)
+├── web/
+│   ├── app.py           # FastAPI app
+│   ├── deps.py          # Store dependency (~/.rememb)
+│   ├── schemas.py
+│   └── routes/
+│       ├── entries.py
+│       └── system.py
+└── static/              # SPA (index.html, app.js, style.css)
 
 src/rememb_skills/       # 61 bundled agent skills (SKILL.md per skill)
 tests/                   # pytest suite

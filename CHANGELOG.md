@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Host door: `rememb hook post-tool` / `stop` write into `actions`; `rememb hook session-start` injects recent entries, tags, and stats. Stop tags the write `handoff` so the next host sees it first.
-- `rememb install [--host …] [--apply] [--project] [--uninstall]` writes MCP, Memory Rules, and host hooks for cursor, claude, codex, vscode, copilot, windsurf, continue, gemini, opencode, zed, and cline.
+- `rememb install [--host …] [--apply] [--project] [--uninstall]` writes MCP and Memory Rules for cursor, claude, codex, vscode, copilot, windsurf, continue, gemini, opencode, zed, and cline. Hooks are written for cursor and claude.
 - Product skill `rememb` for when to write, search then get, and hand off across IDEs.
 
 ### Changed

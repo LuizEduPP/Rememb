@@ -50,17 +50,15 @@ pip install rememb
 
 ### With MCP (recommended)
 
-Zero friction. No CLI commands. Native IDE integration.
-
 **1. Install the door, or add the MCP block by hand:**
 
 ```bash
 rememb install --apply --project
 ```
 
-That writes the MCP server, Memory Rules, and SessionStart / PostToolUse / Stop hooks when the host has them. Without `--apply` it only prints the plan. Use `--host cursor|claude|codex|vscode|copilot|windsurf|continue|gemini|opencode|zed|cline` to limit the target.
+That writes the MCP server, Memory Rules, and SessionStart / PostToolUse / Stop hooks when the host has them (Cursor and Claude today). Without `--apply` it only prints the plan. `--host` limits the target; omit it to write every host `rememb install` knows (`cursor`, `claude`, `codex`, `vscode`, `copilot`, `windsurf`, `continue`, `gemini`, `opencode`, `zed`, `cline`).
 
-Or add this to your IDE's MCP config:
+Or add this to your IDE's MCP config and paste the rules from [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules):
 
 ```json
 {
@@ -77,22 +75,9 @@ Add repeatable `--project /path/to/repo` args for per-project stores alongside g
 
 **2. Restart your IDE.**
 
-The agent can read stored context at session start, write durable memory when something changes, and search only when targeted recall is needed.
+SessionStart injects recent entries, tags, and a short stats block. The agent writes durable memory when something changes, and searches only when targeted recall is needed.
 
-`rememb install` writes the Memory Rules where the host reads them. You can still paste the same block by hand into IDE custom instructions or the MCP client prompt. The point is to make the agent route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory.
-
-You can place that block in either of these places:
-
-- IDE-level custom instructions
-- the system prompt or instruction field of the MCP client that is calling rememb
-
-In both cases, keep the scope explicit: these rules are about how the agent should use rememb, not about replacing the rest of your coding instructions.
-
-For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
-
-No extra storage setup, server config, or schema migration is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use.
-
-For the current public MCP tool list (18 tools) and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
+No extra storage setup is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use. Public tools: [MCP_TOOLS.md](MCP_TOOLS.md) (18 tools).
 
 If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
 
@@ -129,13 +114,13 @@ User: "We're using PostgreSQL, auth at src/auth/, async patterns"
 Agent: [rememb_write] → Saved
 
 [New session]
-Agent: [rememb_read]  → Context loaded
+SessionStart injects recent + tags + stats (handoff first)
 Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 ```
 
-These map to `rememb_write`, `rememb_edit`, and `rememb_delete`. For the full MCP surface, see [MCP_TOOLS.md](MCP_TOOLS.md).
+Writes, edits, and deletes go through `rememb_write`, `rememb_edit`, and `rememb_delete`. For the full MCP surface, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
-Search uses **keyword and token matching** over entry content and tags. rememb returns full matches; the agent applies semantic relevance judgment. No API keys, no cloud, no embedding model download at runtime.
+Search uses **keyword and token matching** over entry content and tags. `rememb_search` returns id, score, tags, date, and a short excerpt (`search_excerpt_chars`, default 160). Full body is `rememb_get` / `rememb_read` on the ids the agent picked, or `max_chars=0` on search. The agent applies semantic relevance judgment. No API keys, no cloud, no embedding model download at runtime.
 
 `config.json` is written during initialization with all supported knobs:
 
@@ -163,7 +148,7 @@ Search uses **keyword and token matching** over entry content and tags. rememb r
 
 Set `storage_backend` to `sqlite` for larger stores. The Web UI and MCP migrate existing JSON entries automatically when you switch backends.
 
-`entry_batch_size` and `entry_load_threshold` control pagination in the web UI — how many cards load at once and when to trigger "load more". `search_excerpt_chars` is the default excerpt length for `rememb_search`; pass `max_chars=0` for the full body.
+`entry_batch_size` and `entry_load_threshold` control pagination in the web UI — how many cards load at once and when to trigger "load more".
 
 Section names are normalized to lowercase, duplicates are ignored after normalization, and removing a section with existing entries automatically migrates those entries to `uncategorized`. `meta.json` is kept in sync with the current effective section list.
 
@@ -186,7 +171,7 @@ Older stores may still contain legacy embedding-related config keys; they are dr
 
 ## Web UI
 
-`rememb` includes a local web interface for **supervision** — browse memory, inspect history, and tune runtime settings. Entry writes and edits go through MCP; the Web UI does not expose create/edit/delete controls for entries.
+`rememb` includes a local web interface for **supervision** — browse memory, inspect history, and tune runtime settings. The SPA has no create/edit/delete controls. The HTTP API still has write, delete, and restore routes.
 
 ```bash
 rememb                       # Open the web UI (http://localhost:18181)
@@ -219,9 +204,7 @@ Views:
 - **Settings** — edit limits, storage backend, section colors, consolidate duplicates, and save runtime config
 - **Skills** — browse bundled agent skills (61 skills shipped in the package)
 
-Entry inspection from the UI includes version history and side-by-side diff. Restore is available through MCP (`rememb_restore`); the Web UI is read-only for entry mutations.
-
-`rememb_search` accepts an optional exact `tag` filter, so IDE clients can restrict keyword matches before ranking.
+Entry inspection from the UI includes version history and side-by-side diff. Entry mutations and restore are MCP (`rememb_write`, `rememb_edit`, `rememb_delete`, `rememb_restore`) or the HTTP API, not SPA controls.
 
 ---
 
@@ -270,21 +253,19 @@ Core capabilities:
 - keyword search with agent-side relevance judgment
 - non-destructive versioning, diff, restore, and soft delete
 - duplicate consolidation (exact content) and store stats
-- config and maintenance via Web UI (settings only; entry writes via MCP)
+- config and maintenance via Web UI (settings and consolidate; entry mutations via MCP or HTTP API)
 - 61 bundled agent skills via Web UI and MCP
 
 ---
 
 ## Roadmap
 
-The store is done. The door is not. Today every rememb call is opt-in: if the agent forgets `rememb_write`, the next session has nothing to read; if it forgets `rememb_recent`, nothing is injected. Memory Rules are a block the user pastes into the IDE. That does not scale.
-
-The next release pulls the agent. Same `~/.rememb`. The hook calls the binary we already have.
+The store and the door are in this tree. Published PyPI is still v0.4.18 (opt-in MCP only). Same `~/.rememb`.
 
 - [x] **Hooks that write** — `PostToolUse` / `Stop` call `rememb hook post-tool` / `rememb hook stop` and write into `actions`.
 - [x] **Inject on SessionStart** — `rememb hook session-start` prints recent + tags + stats before the first user message.
 - [x] **Cheap index, expensive body** — `rememb_search` returns id + score + a short excerpt by default. Full body only via `rememb_get` / `rememb_read` on the ids the agent picked.
-- [x] **Skill + installer** — product skill `rememb` plus `rememb install --apply` writes MCP, Memory Rules, and host hooks.
+- [x] **Skill + installer** — product skill `rememb` plus `rememb install --apply` writes MCP, Memory Rules, and host hooks (hooks for Cursor and Claude).
 - [x] **Handoff** — Stop writes a `handoff` entry; Start injects it first. Same store, any IDE.
 
 ---

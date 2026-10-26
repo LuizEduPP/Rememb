@@ -23,7 +23,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 |-----------|--------|-------|
 | Web UI via `rememb` | Documented | FastAPI + SPA; default `http://127.0.0.1:18181` |
 | CLI version/help output | Tested | Covered by pytest |
-| CLI `hook` / `install` | Tested | Host write/inject hooks and installer dry-run/apply |
+| CLI `hook` / `install` | Tested | Host write/inject hooks and installer dry-run/apply. Hooks are written for Cursor and Claude; other hosts get MCP and rules. |
 | JSON storage backend | Tested | Default `~/.rememb/entries.json` (home-first) |
 | SQLite storage backend | Tested | Optional `storage_backend: sqlite`; auto-migrates from JSON |
 
@@ -58,7 +58,7 @@ Public tools: `rememb_list_stores`, `rememb_get`, `rememb_recent`, `rememb_list_
 
 These surfaces are not yet validated by automated end-to-end coverage in this repository:
 
-- real MCP client interoperability matrix by product name
+- live MCP client session per product name (`rememb install` writes the documented host paths; it does not prove the host loads them)
 - full end-to-end SSE client session tests against a live MCP consumer
 - cross-platform smoke tests outside the GitHub Actions Linux runner
 

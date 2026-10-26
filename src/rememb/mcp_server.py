@@ -277,14 +277,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         entries = arguments.get("entries")
         if entries is not None:
             if not isinstance(entries, list) or not entries:
-                return [TextContent(type="text", text="Provide a non-empty entries array.")]
+                return _text(TextContent, "Provide a non-empty entries array.")
             default_section = _get_default_mcp_section()
             prepared_entries: list[dict[str, Any]] = []
             for item in entries:
                 if not isinstance(item, dict):
-                    return [TextContent(type="text", text="Each batch entry must be an object.")]
+                    return _text(TextContent, "Each batch entry must be an object.")
                 if item.get("content") is None:
-                    return [TextContent(type="text", text="Each batch entry must include content.")]
+                    return _text(TextContent, "Each batch entry must include content.")
                 prepared_entries.append(
                     {
                         "content": item["content"],
@@ -294,11 +294,11 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 )
             created = await asyncio.to_thread(write_entries, root, prepared_entries, True)
             summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
-            return [TextContent(type="text", text=f"Saved {len(created)} entries\n{summary}")]
+            return _text(TextContent, f"Saved {len(created)} entries\n{summary}")
 
         content = arguments.get("content")
         if content is None:
-            return [TextContent(type="text", text="Provide content for a single entry or entries for batch write.")]
+            return _text(TextContent, "Provide content for a single entry or entries for batch write.")
         section = arguments.get("section", _get_default_mcp_section())
         tags = arguments.get("tags", [])
         entry = await asyncio.to_thread(
@@ -309,21 +309,21 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             tags,
             True,
         )
-        return [TextContent(type="text", text=f"Saved [{entry['section']}] id={entry['id']}")]
+        return _text(TextContent, f"Saved [{entry['section']}] id={entry['id']}")
 
     async def rememb_edit():
         updates = arguments.get("updates")
         if updates is not None:
             if not isinstance(updates, list) or not updates:
-                return [TextContent(type="text", text="Provide a non-empty updates array.")]
+                return _text(TextContent, "Provide a non-empty updates array.")
             for update in updates:
                 if not isinstance(update, dict):
-                    return [TextContent(type="text", text="Each batch update must be an object.")]
+                    return _text(TextContent, "Each batch update must be an object.")
                 entry_id = update.get("entry_id")
                 if err := _need_id(entry_id, TextContent):
                     return err
                 if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
-                    return [TextContent(type="text", text=f"Provide at least one field to update for {entry_id}: content, section, or tags.")]
+                    return _text(TextContent, f"Provide at least one field to update for {entry_id}: content, section, or tags.")
             results = await asyncio.to_thread(edit_entries, root, updates)
             lines = []
             updated_count = 0
@@ -333,7 +333,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                     lines.append(f"- Updated {update['entry_id']}")
                 else:
                     lines.append(f"- Entry {update['entry_id']} not found")
-            return [TextContent(type="text", text=f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))]
+            return _text(TextContent, f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
         if err := _need_id(entry_id, TextContent):
@@ -342,7 +342,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         section = arguments.get("section")
         tags = arguments.get("tags")
         if content is None and section is None and tags is None:
-            return [TextContent(type="text", text="Provide at least one field to update: content, section, or tags.")]
+            return _text(TextContent, "Provide at least one field to update: content, section, or tags.")
         result = await asyncio.to_thread(
             edit_entry,
             root,
@@ -352,14 +352,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             tags,
         )
         if result:
-            return [TextContent(type="text", text=f"Updated {entry_id}")]
-        return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(TextContent, f"Updated {entry_id}")
+        return _text(TextContent, f"Entry {entry_id} not found")
 
     async def rememb_delete():
         entry_ids = arguments.get("entry_ids")
         if entry_ids is not None:
             if not isinstance(entry_ids, list) or not entry_ids:
-                return [TextContent(type="text", text="Provide a non-empty entry_ids array.")]
+                return _text(TextContent, "Provide a non-empty entry_ids array.")
             for entry_id in entry_ids:
                 if err := _need_id(entry_id, TextContent):
                     return err
@@ -371,21 +371,21 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                     lines.append(f"- Deleted {entry_id}")
                 else:
                     lines.append(f"- Entry {entry_id} not found")
-            return [TextContent(type="text", text=f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))]
+            return _text(TextContent, f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
         if err := _need_id(entry_id, TextContent):
             return err
         if await asyncio.to_thread(delete_entry, root, entry_id):
-            return [TextContent(type="text", text=f"Deleted {entry_id}")]
-        return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(TextContent, f"Deleted {entry_id}")
+        return _text(TextContent, f"Entry {entry_id} not found")
 
     async def rememb_clear():
         confirm = arguments.get("confirm", False)
         if not confirm:
-            return [TextContent(type="text", text="Clear cancelled. Set confirm=true to proceed.")]
+            return _text(TextContent, "Clear cancelled. Set confirm=true to proceed.")
         count = await asyncio.to_thread(clear_entries, root, confirm=True)
-        return [TextContent(type="text", text=f"Cleared {count} entries")]
+        return _text(TextContent, f"Cleared {count} entries")
 
     async def rememb_stats():
         stats = await asyncio.to_thread(get_stats, root)
@@ -397,7 +397,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Newest entry: {stats['newest']}",
             "",
         ] + [f"{sec}: {count}" for sec, count in stats["by_section"].items()]
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text(TextContent, "\n".join(lines))
 
     async def rememb_consolidate():
         section = arguments.get("section")
@@ -407,21 +407,21 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             section,
         )
         target = result["section"] if result["section"] else "all sections"
-        return [TextContent(
-            type="text",
-            text=(
+        return _text(
+            TextContent,
+            (
                 f"Consolidation completed for {target}. "
                 f"Using mode=exact. "
                 f"Removed {result['removed_count']} duplicate entries "
                 f"({result['total_before']} -> {result['total_after']})."
             ),
-        )]
+        )
 
 
     async def rememb_list_skills():
         skills = await asyncio.to_thread(list_skill_definitions)
         if not skills:
-            return [TextContent(type="text", text="No bundled rememb skills found in the installed package.")]
+            return _text(TextContent, "No bundled rememb skills found in the installed package.")
 
         lines = []
         for skill in skills:
@@ -430,25 +430,25 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 f"  path: {skill['path']}\n"
                 f"  description: {skill['description']}"
             )
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text(TextContent, "\n".join(lines))
 
     async def rememb_use_skill():
         skill = arguments["skill"]
         loaded = await asyncio.to_thread(load_skill_definition, skill)
         if not loaded:
-            return [TextContent(type="text", text=f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills.")]
+            return _text(TextContent, f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills.")
 
         body = loaded.get("content", "").strip()
-        return [TextContent(
-            type="text",
-            text=(
+        return _text(
+            TextContent,
+            (
                 f"Skill: {loaded['name']}\n"
                 f"ID: {loaded['id']}\n"
                 f"Path: {loaded['path']}\n"
                 f"Description: {loaded['description']}\n\n"
                 f"{body}"
             ).strip(),
-        )]
+        )
 
     tool_handlers = {
         "rememb_get": rememb_get,

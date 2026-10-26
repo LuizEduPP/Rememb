@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
+from rememb.config import DEFAULT_MCP_SECTION
 from rememb.exceptions import RemembStorageError
 from rememb.utils import _entries_db_path, _entries_path
 
@@ -105,7 +106,7 @@ class SqliteEntryStorage:
             """,
             (
                 entry_id,
-                str(entry.get("section") or "context"),
+                str(entry.get("section") or DEFAULT_MCP_SECTION),
                 str(entry.get("content") or ""),
                 json.dumps(entry, ensure_ascii=False),
                 str(entry.get("created_at") or ""),

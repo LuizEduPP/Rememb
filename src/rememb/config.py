@@ -35,6 +35,9 @@ DEFAULT_SECTIONS = list(DEFAULT_SECTION_COLORS)
 DEFAULT_MCP_SECTION = "context"
 DEFAULT_REMOVED_SECTION_NAME = "uncategorized"
 DEFAULT_ALL_SECTION_COLOR = "#95a5a6"
+STORAGE_BACKEND_JSON = "json"
+STORAGE_BACKEND_SQLITE = "sqlite"
+DEFAULT_STORAGE_BACKEND = STORAGE_BACKEND_JSON
 
 _POSITIVE_INT_DEFAULTS = {
     "max_content_length": 1_000_000,
@@ -55,5 +58,5 @@ DEFAULT_CONFIG: dict[str, Any] = {
     **_NON_NEGATIVE_INT_DEFAULTS,
     "sections": list(DEFAULT_SECTIONS),
     "section_colors": dict(DEFAULT_SECTION_COLORS),
-    "storage_backend": "json",
+    "storage_backend": DEFAULT_STORAGE_BACKEND,
 }

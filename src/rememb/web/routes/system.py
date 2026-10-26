@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from rememb import __version__
+from rememb.config import DEFAULT_STORAGE_BACKEND
 from rememb.store import consolidate_entries, export_entries, get_config, get_stats, update_config
 from rememb.utils import (
     _config_path,
@@ -47,7 +48,7 @@ async def stats_endpoint() -> dict:
         "deleted_entries": raw.get("deleted_total", 0),
         "sections": raw["by_section"],
         "store_size_kb": raw["size_kb"],
-        "storage_backend": raw.get("storage_backend", "json"),
+        "storage_backend": raw.get("storage_backend", DEFAULT_STORAGE_BACKEND),
         "oldest": raw.get("oldest", "—"),
         "newest": raw.get("newest", "—"),
     }
@@ -114,7 +115,7 @@ async def system_info_endpoint() -> dict:
     raw = await asyncio.to_thread(get_stats, root)
     skills = await asyncio.to_thread(list_skill_definitions)
     return {
-        "storage_backend": raw.get("storage_backend", "json"),
+        "storage_backend": raw.get("storage_backend", DEFAULT_STORAGE_BACKEND),
         "storage_files": _storage_files(root),
         "skills_count": len(skills),
         "version": __version__,

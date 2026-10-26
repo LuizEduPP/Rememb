@@ -1,7 +1,6 @@
 """Helper functions and classes for rememb operations."""
 
 import json
-import logging
 import os
 import re
 import warnings
@@ -22,8 +21,6 @@ from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
 )
-
-logger = logging.getLogger(__name__)
 
 _SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
 _ModifierResult = TypeVar("_ModifierResult")

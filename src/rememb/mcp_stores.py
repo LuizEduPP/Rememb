@@ -48,10 +48,6 @@ class StoreRegistry:
         self._stores: dict[str, McpStore] = {}
         self._configured = False
 
-    @property
-    def configured(self) -> bool:
-        return self._configured
-
     def configure(self, projects: list[Path] | None = None) -> None:
         stores: dict[str, McpStore] = {
             GLOBAL_STORE_ID: McpStore(

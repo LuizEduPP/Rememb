@@ -1,6 +1,5 @@
 """Utility functions for rememb."""
 
-import logging
 import re
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -19,8 +18,6 @@ from rememb.config import (
     TIMESTAMP_FORMAT,
 )
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
-
-logger = logging.getLogger(__name__)
 
 
 def _rememb_path(root: Path) -> Path:
@@ -146,7 +143,7 @@ def _read_file_content(path: Path) -> str:
     if path.suffix.lower() in {".md", ".txt"}:
         try:
             return path.read_text(encoding="utf-8", errors="ignore")
-        except (OSError, UnicodeDecodeError, PermissionError) as e:
+        except (OSError, UnicodeDecodeError, PermissionError):
             return ""
     if path.suffix.lower() == ".pdf":
         try:
@@ -155,9 +152,9 @@ def _read_file_content(path: Path) -> str:
             return " ".join(page.extract_text() or "" for page in reader.pages)
         except ImportError:
             return ""
-        except (OSError, PermissionError) as e:
+        except (OSError, PermissionError):
             return ""
-        except (pypdf.PdfReadError, pypdf.PdfStreamError, ValueError) as e:
+        except (pypdf.PdfReadError, pypdf.PdfStreamError, ValueError):
             return ""
     return ""
 
@@ -376,7 +373,6 @@ def global_root() -> Path:
 
 def is_initialized(root: Path) -> bool:
     """Check if rememb is initialized at the given root."""
-    rememb_dir = _rememb_path(root)
     if _entries_path(root).exists():
         return True
     return _entries_db_path(root).exists()

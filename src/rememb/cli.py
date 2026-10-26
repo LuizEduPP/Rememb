@@ -23,7 +23,6 @@ console = Console()
 
 def _version_callback(value: bool) -> None:
     if value:
-        from rich.text import Text
         version_text = Text()
         version_text.append("🧠 ", style="bold bright_cyan")
         version_text.append("rememb\n", style="bold bright_cyan")

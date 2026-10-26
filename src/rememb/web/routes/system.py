@@ -6,7 +6,7 @@ import asyncio
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from rememb import __version__

@@ -38,12 +38,7 @@ const api = {
   skillFile: (id, path) => apiFetch(`/api/skills/${encodeURIComponent(id)}/file?` + new URLSearchParams({ path })),
   entries: (p) => apiFetch('/api/entries?' + new URLSearchParams(p)),
   search: (p) => apiFetch('/api/search?' + new URLSearchParams(p)),
-  writeEntry: (body) => apiFetch('/api/entries', { method: 'POST', body: JSON.stringify(body) }),
-  editEntry: (id, body) => apiFetch(`/api/entries/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteEntry: (id) => apiFetch(`/api/entries/${id}`, { method: 'DELETE' }),
   entryVersions: (id, p = {}) => apiFetch(`/api/entries/${id}/versions?` + new URLSearchParams(p)),
-  restoreDeletedEntry: (id) => apiFetch(`/api/entries/${id}/restore`, { method: 'POST' }),
-  restoreEntryVersion: (id, version) => apiFetch(`/api/entries/${id}/versions/${version}/restore`, { method: 'POST' }),
   diffVersions: (id, p) => apiFetch(`/api/entries/${id}/diff?` + new URLSearchParams(p)),
   consolidate: (body) => apiFetch('/api/consolidate', { method: 'POST', body: JSON.stringify(body) }),
   configUpdate: (body) => apiFetch('/api/config', { method: 'PUT', body: JSON.stringify({ updates: body }) }),
@@ -148,12 +143,6 @@ function truncateContent(text, max = 96) {
 function readIntInput(id, fallback) {
   const raw = document.getElementById(id)?.value ?? '';
   const parsed = parseInt(String(raw).trim(), 10);
-  return Number.isNaN(parsed) ? fallback : parsed;
-}
-
-function readFloatInput(id, fallback) {
-  const raw = document.getElementById(id)?.value ?? '';
-  const parsed = parseFloat(String(raw).trim());
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 

@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `rememb_search` defaults to a short excerpt (`search_excerpt_chars`, 160). `max_chars=0` returns the full body; `rememb_get` / `rememb_read` stay full-body.
 
+### Fixed
+- Dev extra uses `httpx2` so FastAPI/Starlette `TestClient` no longer warns about deprecated `httpx`.
+
 ## [0.4.18] - 2026-10-05
 
 ### Added

@@ -9,6 +9,7 @@ venv/
 .vscode/
 .venv/
 .pytest_cache
+.ruff_cache
 .rememb/
 .asset-workspace/
 .mcpregistry_*_token

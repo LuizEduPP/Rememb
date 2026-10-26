@@ -13,29 +13,32 @@ concurrency:
 jobs:
   build:
     name: Build release distributions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install build and test dependencies
         run: uv pip install --system -e ".[dev]"
+
+      - name: Lint
+        run: python -m ruff check src/rememb tests
 
       - name: Run tests
         run: python -m pytest -q
@@ -50,7 +53,7 @@ jobs:
         run: python -m build
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-package-distributions
           path: dist/
@@ -60,7 +63,7 @@ jobs:
     if: github.event_name == 'release'
     needs:
       - build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
     environment:
@@ -69,7 +72,7 @@ jobs:
 
     steps:
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: python-package-distributions
           path: dist/

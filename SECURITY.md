@@ -54,6 +54,14 @@ We take security seriously. If you discover a security vulnerability in rememb, 
    - Core runtime deps: `typer`, `rich`, `fastapi`, `uvicorn`, `mcp`, `pypdf`
    - We monitor for vulnerability alerts via GitHub Dependabot
 
+5. **Hooks and installer**
+   - `rememb hook post-tool` / `stop` write clipped tool input/output into the local store (`actions`, tags `hook` / `auto` / `handoff`). That is plaintext on disk.
+   - SessionStart prints recent store content into the host session.
+   - `rememb install --apply` writes MCP blocks, Memory Rules, and hook commands into IDE config files. Review the dry-run plan first.
+
+6. **Bind address**
+   - Web UI and SSE default to `127.0.0.1`. `--host 0.0.0.0` exposes the local store on the network with no authentication.
+
 ## Vulnerability Disclosure Timeline
 
 Once a vulnerability is reported:
@@ -89,5 +97,5 @@ Storage is local JSON or SQLite under `~/.rememb/` (or a manually initialized pa
 
 ---
 
-**Last Updated:** June 25, 2026  
+**Last Updated:** October 26, 2026  
 **Contact:** luizedupp@gmail.com

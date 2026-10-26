@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-10-26
+
+### Added
+- Ruff lint in the `dev` extra, `pyproject.toml`, and CI (`ruff check src/rememb tests`).
+- Host door: `rememb hook post-tool` / `stop` write into `actions`; `rememb hook session-start` injects recent entries, tags, and stats. Stop tags the write `handoff` so the next host sees it first.
+- `rememb install [--host …] [--apply] [--project] [--uninstall]` writes MCP and Memory Rules for cursor, claude, codex, vscode, copilot, windsurf, continue, gemini, opencode, zed, and cline. Hooks are written for cursor and claude.
+- Product skill `rememb` for when to write, search then get, and hand off across IDEs.
+
+### Changed
+- `rememb_search` defaults to a short excerpt (`search_excerpt_chars`, 160). `max_chars=0` returns the full body; `rememb_get` / `rememb_read` stay full-body.
+
+### Removed
+- README Roadmap. The door, search excerpt, installer, and handoff are current product, documented in README, MCP_TOOLS, and the CLI.
+
+### Fixed
+- Dev extra uses `httpx2` so FastAPI/Starlette `TestClient` no longer warns about deprecated `httpx`.
+
 ## [0.4.18] - 2026-10-05
 
 ### Added

@@ -50,9 +50,15 @@ pip install rememb
 
 ### With MCP (recommended)
 
-Zero friction. No CLI commands. Native IDE integration.
+**1. Install the door, or add the MCP block by hand:**
 
-**1. Add to your IDE's MCP config:**
+```bash
+rememb install --apply --project
+```
+
+That writes the MCP server, Memory Rules, and SessionStart / PostToolUse / Stop hooks when the host has them (Cursor and Claude today). Without `--apply` it only prints the plan. `--host` limits the target; omit it to write every host `rememb install` knows (`cursor`, `claude`, `codex`, `vscode`, `copilot`, `windsurf`, `continue`, `gemini`, `opencode`, `zed`, `cline`).
+
+Or add this to your IDE's MCP config and paste the rules from [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules):
 
 ```json
 {
@@ -69,22 +75,9 @@ Add repeatable `--project /path/to/repo` args for per-project stores alongside g
 
 **2. Restart your IDE.**
 
-The agent can read stored context at session start, write durable memory when something changes, and search only when targeted recall is needed.
+SessionStart injects recent entries, tags, and a short stats block. The agent writes durable memory when something changes, and searches only when targeted recall is needed.
 
-If you want rememb usage to stay consistent, add a rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is to make the agent route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory.
-
-You can place that block in either of these places:
-
-- IDE-level custom instructions
-- the system prompt or instruction field of the MCP client that is calling rememb
-
-In both cases, keep the scope explicit: these rules are about how the agent should use rememb, not about replacing the rest of your coding instructions.
-
-For the exact copy-paste block, use the canonical rules section in [MCP_TOOLS.md](MCP_TOOLS.md#recommended-agent-rules).
-
-No extra storage setup, server config, or schema migration is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use.
-
-For the current public MCP tool list (18 tools) and descriptions, see [MCP_TOOLS.md](MCP_TOOLS.md).
+No extra storage setup is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use. Public tools: [MCP_TOOLS.md](MCP_TOOLS.md) (18 tools).
 
 If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
 
@@ -121,13 +114,13 @@ User: "We're using PostgreSQL, auth at src/auth/, async patterns"
 Agent: [rememb_write] → Saved
 
 [New session]
-Agent: [rememb_read]  → Context loaded
+SessionStart injects recent + tags + stats (handoff first)
 Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 ```
 
-These map to `rememb_write`, `rememb_edit`, and `rememb_delete`. For the full MCP surface, see [MCP_TOOLS.md](MCP_TOOLS.md).
+Writes, edits, and deletes go through `rememb_write`, `rememb_edit`, and `rememb_delete`. Host hooks also write into `actions` via `rememb hook post-tool` / `stop`. For the full MCP surface, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
-Search uses **keyword and token matching** over entry content and tags. rememb returns full matches; the agent applies semantic relevance judgment. No API keys, no cloud, no embedding model download at runtime.
+Search uses **keyword and token matching** over entry content and tags. `rememb_search` returns id, score, tags, date, and a short excerpt (`search_excerpt_chars`, default 160). Full body is `rememb_get` / `rememb_read` on the ids the agent picked, or `max_chars=0` on search. The agent applies semantic relevance judgment. No API keys, no cloud, no embedding model download at runtime.
 
 `config.json` is written during initialization with all supported knobs:
 
@@ -148,6 +141,7 @@ Search uses **keyword and token matching** over entry content and tags. rememb r
   },
   "entry_batch_size": 24,
   "entry_load_threshold": 6,
+  "search_excerpt_chars": 160,
   "storage_backend": "json"
 }
 ```
@@ -177,7 +171,7 @@ Older stores may still contain legacy embedding-related config keys; they are dr
 
 ## Web UI
 
-`rememb` includes a local web interface for **supervision** — browse memory, inspect history, and tune runtime settings. Entry writes and edits go through MCP; the Web UI does not expose create/edit/delete controls for entries.
+`rememb` includes a local web interface for **supervision** — browse memory, inspect history, and tune runtime settings. The SPA has no create/edit/delete controls. The HTTP API still has write, delete, and restore routes.
 
 ```bash
 rememb                       # Open the web UI (http://localhost:18181)
@@ -208,11 +202,9 @@ Views:
 - **Memory** — browse, keyword search, filter by section, sort, and include deleted entries
 - **Stats** — totals, backend, section bars, oldest/newest timestamps, and recent entries
 - **Settings** — edit limits, storage backend, section colors, consolidate duplicates, and save runtime config
-- **Skills** — browse bundled agent skills (60 skills shipped in the package)
+- **Skills** — browse bundled agent skills (61 skills shipped in the package)
 
-Entry inspection from the UI includes version history and side-by-side diff. Restore is available through MCP (`rememb_restore`); the Web UI is read-only for entry mutations.
-
-`rememb_search` accepts an optional exact `tag` filter, so IDE clients can restrict keyword matches before ranking.
+Entry inspection from the UI includes version history and side-by-side diff. Entry mutations and restore are MCP (`rememb_write`, `rememb_edit`, `rememb_delete`, `rememb_restore`) or the HTTP API, not SPA controls.
 
 ---
 
@@ -223,6 +215,11 @@ rememb                                                      # Open the web UI (h
 rememb --host 0.0.0.0 --port 18181 --no-browser            # Custom bind, no auto-open
 rememb mcp                                                  # Start MCP server over stdio
 rememb mcp --transport sse --host 127.0.0.1 --port 8765    # One persistent local MCP process
+rememb hook session-start                                   # Inject recent + tags + stats
+rememb hook post-tool                                       # Write a PostToolUse event from stdin
+rememb hook stop                                            # Write a Stop/handoff entry from stdin
+rememb install                                              # Show MCP + rules + hooks plan
+rememb install --apply --project                            # Write them for the current directory
 rememb --version, -v                                        # Show version
 rememb --help, -h                                           # Show help
 ```
@@ -253,25 +250,13 @@ Short version:
 Core capabilities:
 
 - structured memory with sections and tags
-- keyword search with agent-side relevance judgment
+- keyword search with agent-side relevance judgment (`rememb_search` is an index: id, score, excerpt; full body via get/read)
+- host door: SessionStart injects recent + tags + stats; PostToolUse / Stop write into `actions`; Stop tags `handoff` so the next host sees it first
+- `rememb install` writes MCP, Memory Rules, and hooks (hooks for Cursor and Claude)
 - non-destructive versioning, diff, restore, and soft delete
 - duplicate consolidation (exact content) and store stats
-- config and maintenance via Web UI (settings only; entry writes via MCP)
-- 60 bundled agent skills via Web UI and MCP
-
----
-
-## Roadmap
-
-The store is done. The door is not. Today every rememb call is opt-in: if the agent forgets `rememb_write`, the next session has nothing to read; if it forgets `rememb_recent`, nothing is injected. Memory Rules are a block the user pastes into the IDE. That does not scale.
-
-The next release pulls the agent. Same `~/.rememb`. The hook calls the binary we already have.
-
-- [ ] **Hooks that write** — `PostToolUse` / `Stop` call `rememb_write` (or a thin wrapper) with what just happened.
-- [ ] **Inject on SessionStart** — the start hook runs `rememb_recent` (last N) + `rememb_list_tags` + a short `rememb_stats` and puts that text in the prompt before the first user message. The store already returns this; what is missing is who fires it.
-- [ ] **Cheap index, expensive body** — `rememb_search` returns id + score + a short excerpt by default. Full body only via `rememb_get` / `rememb_read` on the ids the agent picked. Keyword search stays; only the first-call payload changes.
-- [ ] **Skill + installer** — one product `SKILL.md` (“use rememb when…”) plus an installer that (1) writes the MCP block, (2) pastes Memory Rules where the host reads them, and (3) registers SessionStart / PostToolUse / Stop when the host has hooks.
-- [ ] **Handoff** — one store, any IDE. On start: `rememb_list_stores` → `rememb_recent` on the cwd store. On stop: a short write of where we stopped / what failed / what is open. The file is the handoff.
+- config and maintenance via Web UI (settings and consolidate; entry mutations via MCP or HTTP API)
+- 61 bundled agent skills via Web UI and MCP
 
 ---
 

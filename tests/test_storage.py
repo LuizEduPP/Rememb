@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from rememb.config import DEFAULT_STORAGE_BACKEND, STORAGE_BACKEND_SQLITE
-from rememb.helpers import _store_context
+from rememb.helpers import _config_path, _store_context
 from rememb.storage import migrate_json_to_sqlite, normalize_storage_backend
 from rememb.storage.locking import file_lock as _file_lock
 from rememb.store import init, read_entries, update_config, write_entry
-from rememb.utils import _config_path, _entries_path
+from rememb.utils import _entries_path
 
 
 def _hold_file_lock(path_str: str, mode: str, entered_conn, release_conn) -> None:

@@ -5,54 +5,55 @@ from pathlib import Path
 from typing import Any
 
 from rememb.config import (
+    DEFAULT_HOST,
     DEFAULT_MCP_SECTION,
     DEFAULT_MESSAGE_PATH,
     DEFAULT_PAGE_LIMIT,
     DEFAULT_RECENT_LIMIT,
     DEFAULT_SEARCH_TOP_K,
     DEFAULT_SECTIONS,
-    DEFAULT_HOST,
     DEFAULT_SSE_PATH,
     DEFAULT_SSE_PORT,
     DEFAULT_TAG_LIMIT,
     ENTRY_ID_LENGTH,
+    SEARCH_EXCERPT_CHARS,
+)
+from rememb.exceptions import RemembError, RemembValidationError, rememb_error_response_text
+from rememb.mcp_stores import (
+    GLOBAL_STORE_ID,
+    StoreRegistry,
+    ensure_store_root,
 )
 from rememb.store import (
     agent_summarize_hint,
     clear_entries,
-    get_entry,
-    list_entry_tags,
-    read_recent_entries,
     consolidate_entries,
-    diff_entry_versions,
     delete_entries,
     delete_entry,
+    diff_entry_versions,
     edit_entries,
     edit_entry,
     format_entries,
     get_config,
+    get_entry,
     get_stats,
+    list_entry_tags,
     list_entry_versions,
     read_entries,
     read_entries_page,
+    read_recent_entries,
     restore_deleted_entry,
     restore_entry_version,
     search_entries,
     write_entries,
     write_entry,
 )
-from rememb.exceptions import RemembError, rememb_error_response_text
-from rememb.mcp_stores import (
-    GLOBAL_STORE_ID,
-    StoreRegistry,
-    ensure_store_root,
-)
 from rememb.utils import (
-    _validate_entry_id,
-    invalid_entry_id_message,
     is_initialized,
     list_skill_definitions,
     load_skill_definition,
+    parse_int,
+    require_entry_id,
 )
 
 
@@ -71,7 +72,7 @@ class MCPContext:
             try:
                 from mcp.server import Server
                 from mcp.server.stdio import stdio_server
-                from mcp.types import Tool, TextContent
+                from mcp.types import TextContent, Tool
                 self._mcp_modules = {
                     "Server": Server,
                     "stdio_server": stdio_server,
@@ -105,7 +106,6 @@ def _get_mcp_sections() -> list[str]:
     """Return the union of section lists across configured stores."""
     try:
         registry = _mcp_context.get_store_registry()
-        registry.ensure_configured()
         seen: list[str] = []
         for store in registry.all():
             try:
@@ -134,7 +134,6 @@ def _get_default_mcp_section() -> str:
 
 def _store_property() -> dict[str, Any]:
     registry = _mcp_context.get_store_registry()
-    registry.ensure_configured()
     return {
         "type": "string",
         "enum": registry.ids(),
@@ -164,8 +163,10 @@ def _text(cls, text: str):
 
 
 def _need_id(entry_id, reply):
-    if entry_id is None or not _validate_entry_id(str(entry_id)):
-        return reply(invalid_entry_id_message(entry_id))
+    try:
+        require_entry_id(entry_id)
+    except RemembValidationError as exc:
+        return reply(str(exc))
     return None
 
 
@@ -182,6 +183,15 @@ def _memory_text(
     hint = agent_summarize_hint(len(entries), has_more=has_more)
     payload = f"{header}\n\n{body}{hint}" if header else f"{body}{hint}"
     return reply(payload)
+
+
+def _search_max_chars(root: Path, raw) -> int | None:
+    if raw is None:
+        return int(get_config(root).get("search_excerpt_chars", SEARCH_EXCERPT_CHARS))
+    value = parse_int(raw, name="max_chars", minimum=0)
+    if value == 0:
+        return None
+    return value
 
 
 def _no_update_fields(content, section, tags) -> bool:
@@ -239,7 +249,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_list_stores():
         registry = _mcp_context.get_store_registry()
-        registry.ensure_configured()
         lines = ["Stores:"]
         for store in registry.all():
             initialized = await asyncio.to_thread(is_initialized, store.root)
@@ -316,7 +325,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             arg("tag"),
             include_deleted=arg("include_deleted", False),
         )
-        return memory(entries, include_score=True, max_chars=arg("max_chars"))
+        return memory(entries, include_score=True, max_chars=_search_max_chars(root, arg("max_chars")))
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
@@ -543,7 +552,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
 def _build_tools(Tool):
     """Run MCP stdio server.
-    
+
     Starts the MCP server and handles stdio communication.
     """
     def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
@@ -693,7 +702,10 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_search",
-            description="Keyword and token search over memory entries. Safe, read-only operation. Returns top_k lexical matches with full entry content; summarize task-relevant facts in your working context.",
+            description=(
+                "Keyword and token search over memory entries. Safe, read-only. "
+                "Returns id, score, tags, date, and a short excerpt. Use rememb_get for full body."
+            ),
             properties={
                 "query": {
                     "type": "string",
@@ -705,7 +717,13 @@ def _build_tools(Tool):
                     description="Include soft-deleted entries in the search corpus and results"
                 ),
                 "top_k": _limit(DEFAULT_SEARCH_TOP_K, "Maximum number of results"),
-                "max_chars": _max_chars(),
+                "max_chars": {
+                    "type": "integer",
+                    "description": (
+                        f"Excerpt length per entry. Default {SEARCH_EXCERPT_CHARS}. "
+                        "0 returns the full body."
+                    ),
+                },
             },
             required=["query"],
         ),

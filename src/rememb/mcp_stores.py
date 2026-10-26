@@ -9,7 +9,6 @@ from rememb.exceptions import RemembError, RemembNotInitializedError
 from rememb.store.crud import init
 from rememb.utils import ensure_global_root, global_root, is_initialized
 
-
 GLOBAL_STORE_ID = "global"
 
 
@@ -47,10 +46,6 @@ class StoreRegistry:
     def __init__(self) -> None:
         self._stores: dict[str, McpStore] = {}
         self._configured = False
-
-    @property
-    def configured(self) -> bool:
-        return self._configured
 
     def configure(self, projects: list[Path] | None = None) -> None:
         stores: dict[str, McpStore] = {

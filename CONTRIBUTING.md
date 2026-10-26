@@ -26,8 +26,9 @@ pip install -e ".[dev]"
 
 ## Code Style
 
-- Use Python 3.10+ type hints (`list[str]` instead of `List[str]`)
+- Use Python 3.11+ type hints (`list[str]` instead of `List[str]`)
 - Follow PEP 8 guidelines
+- Lint with Ruff (`pyproject.toml`): `python -m ruff check src/rememb tests`
 - Use snake_case for function and variable names
 - Add docstrings to all public functions
 - Keep functions focused and under 50 lines when possible
@@ -37,32 +38,35 @@ pip install -e ".[dev]"
 ```
 src/rememb/
 ├── __init__.py          # Version
-├── cli.py               # CLI entrypoints (web UI default, mcp subcommand)
+├── cli.py               # web UI default; mcp, hook, install
 ├── config.py            # Default config and constants
+├── agent_rules.py       # Memory Rules text written by rememb install
+├── hooks.py             # rememb hook post-tool / stop / session-start
+├── install.py           # rememb install host registry
 ├── exceptions.py        # Custom exceptions
-├── helpers.py           # Store context, keyword search, validation helpers
+├── helpers.py           # Config cache, JSON I/O, StoreContext
 ├── mcp_server.py        # MCP server (18 public tools)
 ├── mcp_stores.py        # MCP global + project store registry
 ├── utils.py             # Shared utilities and skill discovery
 ├── store/
 │   ├── __init__.py      # package marker
-│   └── crud.py          # public store API (CRUD, search, consolidate)
+│   └── crud.py          # public store API (CRUD, search, consolidate, section/config validation)
 ├── storage/
 │   ├── __init__.py      # JSON / SQLite backend resolution
 │   ├── base.py
 │   ├── json_backend.py
 │   ├── sqlite_backend.py
 │   └── locking.py
-└── web/
-    ├── app.py           # FastAPI app
-    ├── deps.py          # Store dependency (~/.rememb)
-    ├── schemas.py
-    ├── routes/
-    │   ├── entries.py
-    │   └── system.py
-    └── static/          # SPA (index.html, app.js, style.css)
+├── web/
+│   ├── app.py           # FastAPI app
+│   ├── deps.py          # Store dependency (~/.rememb)
+│   ├── schemas.py
+│   └── routes/
+│       ├── entries.py
+│       └── system.py
+└── static/              # SPA (index.html, app.js, style.css)
 
-src/rememb_skills/       # 60 bundled agent skills (SKILL.md per skill)
+src/rememb_skills/       # 61 bundled agent skills (SKILL.md per skill)
 tests/                   # pytest suite
 ```
 
@@ -74,9 +78,10 @@ tests/                   # pytest suite
 git checkout -b feature/your-feature-name
 ```
 
-2. Make your changes and test locally:
+2. Make your changes, lint, and test locally:
 
 ```bash
+python -m ruff check src/rememb tests
 python -m pytest
 ```
 

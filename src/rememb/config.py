@@ -22,6 +22,16 @@ DEFAULT_SEARCH_TOP_K = 5
 DEFAULT_RECENT_LIMIT = 10
 DEFAULT_TAG_LIMIT = 50
 DEFAULT_PAGE_LIMIT = 100
+SEARCH_EXCERPT_CHARS = 160
+SESSION_START_MAX_BYTES = 2 * 1024
+HOOK_FIELD_CHARS = 200
+HOOK_OUTPUT_MAX_BYTES = 8 * 1024
+TEXT_ELLIPSIS = "..."
+HOOK_SECTION = "actions"
+HOOK_TAG = "hook"
+HOOK_AUTO_TAG = "auto"
+HANDOFF_TAG = "handoff"
+HOOK_SKIP_TOOLS = frozenset({"read", "grep", "glob", "ls"})
 
 DEFAULT_SECTION_COLORS = {
     "project": "#d84848",
@@ -46,6 +56,7 @@ _POSITIVE_INT_DEFAULTS = {
     "max_tags_per_entry": 100,
     "max_entries": 100_000,
     "entry_batch_size": DEFAULT_ENTRY_BATCH_SIZE,
+    "search_excerpt_chars": SEARCH_EXCERPT_CHARS,
 }
 _NON_NEGATIVE_INT_DEFAULTS = {
     "entry_load_threshold": 6,

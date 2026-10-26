@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rememb"
-version = "0.4.18"
+version = "0.4.19"
 description = "Persistent memory standard for AI agents — local, portable, zero config"
 readme = "README.md"
 license = "MIT"
@@ -36,7 +36,28 @@ dependencies = [
 rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pytest>=8.0.0", "httpx>=0.27.0"]
+dev = ["build", "twine", "pytest>=8.0.0", "httpx2>=2.0.0", "ruff>=0.11"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src"]
+extend-exclude = ["src/rememb_skills", "tmp"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "W", "ARG", "B007", "RUF059"]
+ignore = [
+    "E501",
+    "E731",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["rememb", "rememb_skills"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

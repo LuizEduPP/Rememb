@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import rememb.mcp_server as mcp_server
+from rememb.config import SEARCH_EXCERPT_CHARS
 from rememb.mcp_server import _build_tools, configure_mcp_stores
 from rememb.mcp_stores import GLOBAL_STORE_ID, normalize_project_root
 from rememb.store import delete_entries, edit_entry, read_entries, write_entry
@@ -50,7 +51,7 @@ EXPECTED_TOOLS = {
 
 @pytest.fixture
 def handle(monkeypatch: pytest.MonkeyPatch, store: Path):
-    monkeypatch.setattr(mcp_server, "_get_root", lambda store_id=None: store)
+    monkeypatch.setattr(mcp_server, "_get_root", lambda _store_id=None: store)
 
     def run(name: str, arguments: dict | None = None) -> str:
         result = asyncio.run(mcp_server._handle_tool(name, arguments or {}, FakeTextContent))
@@ -74,6 +75,9 @@ def test_build_tools_exposes_current_contract():
     assert "store" not in by_name["rememb_list_stores"].inputSchema["properties"]
     assert "store" not in by_name["rememb_list_skills"].inputSchema["properties"]
     assert by_name["rememb_stats"].inputSchema["properties"]["store"]["default"] == GLOBAL_STORE_ID
+    assert "short excerpt" in by_name["rememb_search"].description
+    assert "0 returns the full body" in by_name["rememb_search"].inputSchema["properties"]["max_chars"]["description"]
+    assert str(SEARCH_EXCERPT_CHARS) in by_name["rememb_search"].inputSchema["properties"]["max_chars"]["description"]
 
 
 def test_handle_read_tools(handle, store: Path):
@@ -86,6 +90,22 @@ def test_handle_read_tools(handle, store: Path):
     assert "Tagged note about auth." in handle("rememb_read")
     assert "Tagged note about auth." in handle("rememb_search", {"query": "auth"})
     assert "Page 0" in handle("rememb_read_page", {"limit": 1})
+
+
+def test_search_defaults_to_excerpt_and_get_returns_body(handle, store: Path):
+    body = "token " + ("alpha " * 80)
+    entry = write_entry(store, "project", body, ["search"])
+
+    excerpt = handle("rememb_search", {"query": "token"})
+    full = handle("rememb_search", {"query": "token", "max_chars": 0})
+    fetched = handle("rememb_get", {"entry_id": entry["id"]})
+
+    assert entry["id"] in excerpt
+    assert "score:" in excerpt
+    assert "..." in excerpt
+    assert body not in excerpt
+    assert body in full
+    assert body in fetched
 
 
 def test_handle_write_edit_delete_and_clear(handle, store: Path):

@@ -6,18 +6,17 @@ import asyncio
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from rememb import __version__
-from rememb.config import DEFAULT_STORAGE_BACKEND
-from rememb.helpers import _json_text
+from rememb.config import DEFAULT_STORAGE_BACKEND, META_FILE
+from rememb.helpers import _config_path, _json_text
 from rememb.store import consolidate_entries, export_entries, get_config, get_stats, update_config
 from rememb.utils import (
-    _config_path,
     _entries_db_path,
     _entries_path,
-    _meta_path,
+    _store_file,
     list_skill_definitions,
     load_skill_definition,
     load_skill_file,
@@ -34,7 +33,7 @@ def _storage_files(root: Path) -> list[str]:
         _entries_path(root),
         _entries_db_path(root),
         _config_path(root),
-        _meta_path(root),
+        _store_file(root, META_FILE),
     ]
     return [path.name for path in candidates if path.exists()]
 

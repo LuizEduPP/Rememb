@@ -12,6 +12,10 @@ rememb mcp --project /path/to/project-a --project /path/to/project-b
 
 Memory tools accept optional `store` (default `global`) except `rememb_list_stores`, `rememb_list_skills`, and `rememb_use_skill`. Project store ids are derived from the project directory name. Use `rememb_list_stores` to list ids and paths.
 
+## Host door
+
+`rememb install --apply` writes the MCP block, the Memory Rules below, and SessionStart / PostToolUse / Stop hooks when the host has them (Cursor and Claude). Other hosts get MCP and rules only. `--project` writes into the current directory. See the README CLI section.
+
 ## Recommended agent rules
 
 `rememb install` writes this block from `src/rememb/agent_rules.py`. Paste the same text by hand if you skip the installer. The goal is to route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory:

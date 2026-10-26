@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- README Roadmap. The door, search excerpt, installer, and handoff are current product, documented in README, MCP_TOOLS, and the CLI.
+
 ## [0.4.19] - 2026-10-26
 
 ### Added

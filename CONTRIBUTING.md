@@ -44,13 +44,13 @@ src/rememb/
 ├── hooks.py             # rememb hook post-tool / stop / session-start
 ├── install.py           # rememb install host registry
 ├── exceptions.py        # Custom exceptions
-├── helpers.py           # Store context, keyword search, validation helpers
+├── helpers.py           # Config cache, JSON I/O, StoreContext
 ├── mcp_server.py        # MCP server (18 public tools)
 ├── mcp_stores.py        # MCP global + project store registry
 ├── utils.py             # Shared utilities and skill discovery
 ├── store/
 │   ├── __init__.py      # package marker
-│   └── crud.py          # public store API (CRUD, search, consolidate)
+│   └── crud.py          # public store API (CRUD, search, consolidate, section/config validation)
 ├── storage/
 │   ├── __init__.py      # JSON / SQLite backend resolution
 │   ├── base.py

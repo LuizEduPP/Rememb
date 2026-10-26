@@ -118,7 +118,7 @@ SessionStart injects recent + tags + stats (handoff first)
 Agent: "I see you're using PostgreSQL with auth at src/auth/..."
 ```
 
-Writes, edits, and deletes go through `rememb_write`, `rememb_edit`, and `rememb_delete`. For the full MCP surface, see [MCP_TOOLS.md](MCP_TOOLS.md).
+Writes, edits, and deletes go through `rememb_write`, `rememb_edit`, and `rememb_delete`. Host hooks also write into `actions` via `rememb hook post-tool` / `stop`. For the full MCP surface, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 Search uses **keyword and token matching** over entry content and tags. `rememb_search` returns id, score, tags, date, and a short excerpt (`search_excerpt_chars`, default 160). Full body is `rememb_get` / `rememb_read` on the ids the agent picked, or `max_chars=0` on search. The agent applies semantic relevance judgment. No API keys, no cloud, no embedding model download at runtime.
 
@@ -250,23 +250,13 @@ Short version:
 Core capabilities:
 
 - structured memory with sections and tags
-- keyword search with agent-side relevance judgment
+- keyword search with agent-side relevance judgment (`rememb_search` is an index: id, score, excerpt; full body via get/read)
+- host door: SessionStart injects recent + tags + stats; PostToolUse / Stop write into `actions`; Stop tags `handoff` so the next host sees it first
+- `rememb install` writes MCP, Memory Rules, and hooks (hooks for Cursor and Claude)
 - non-destructive versioning, diff, restore, and soft delete
 - duplicate consolidation (exact content) and store stats
 - config and maintenance via Web UI (settings and consolidate; entry mutations via MCP or HTTP API)
 - 61 bundled agent skills via Web UI and MCP
-
----
-
-## Roadmap
-
-The store and the door are in this tree. Published PyPI is still v0.4.19 (opt-in MCP only). Same `~/.rememb`.
-
-- [x] **Hooks that write** — `PostToolUse` / `Stop` call `rememb hook post-tool` / `rememb hook stop` and write into `actions`.
-- [x] **Inject on SessionStart** — `rememb hook session-start` prints recent + tags + stats before the first user message.
-- [x] **Cheap index, expensive body** — `rememb_search` returns id + score + a short excerpt by default. Full body only via `rememb_get` / `rememb_read` on the ids the agent picked.
-- [x] **Skill + installer** — product skill `rememb` plus `rememb install --apply` writes MCP, Memory Rules, and host hooks (hooks for Cursor and Claude).
-- [x] **Handoff** — Stop writes a `handoff` entry; Start injects it first. Same store, any IDE.
 
 ---
 

@@ -4,7 +4,7 @@
 [![Rememb MCP server](https://glama.ai/mcp/servers/LuizEduPP/Rememb/badges/score.svg)](https://glama.ai/mcp/servers/LuizEduPP/Rememb)
 [![MCP Badge](https://lobehub.com/badge/mcp/luizedupp-rememb)](https://lobehub.com/mcp/luizedupp-rememb)
 
-Operate AI agents without losing context between sessions. `rememb` is a local-first persistent memory layer: structured entries, keyword search, versioning, diff, restore, and audit trail — no cloud service required.
+Operate AI agents without losing context between sessions. `rememb` is local-first long-term memory: structured entries, keyword search, versioning, diff, restore, and audit trail — no cloud, no API keys.
 
 ![rememb chat demo](http://raw.githubusercontent.com/LuizEduPP/Rememb/refs/heads/main/assets/rememb-chat.gif)
 ---

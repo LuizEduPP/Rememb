@@ -35,7 +35,7 @@ def _version_callback(value: bool) -> None:
             padding=(1, 4),
             width=30
         ))
-        console.print("[dim]Persistent memory for AI agents — local, portable, zero config.[/dim]\n")
+        console.print("[dim]Local-first long-term memory for AI agents — MCP, hooks, IDE handoff. No cloud, no API keys.[/dim]\n")
         raise typer.Exit()
 
 
@@ -49,7 +49,7 @@ class CustomTyper(typer.Typer):
 
 app = CustomTyper(
     name="rememb",
-    help="Persistent memory for AI agents — local, portable, zero config.",
+    help="Local-first long-term memory for AI agents — MCP, hooks, IDE handoff. No cloud, no API keys.",
     no_args_is_help=False,
 )
 
@@ -68,7 +68,7 @@ def _show_help():
         padding=(1, 4),
         width=30
     ))
-    console.print("[dim italic]Persistent memory for AI agents — local, portable, zero config.[/dim italic]\n")
+    console.print("[dim italic]Local-first long-term memory for AI agents — MCP, hooks, IDE handoff. No cloud, no API keys.[/dim italic]\n")
 
     cmd_table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", border_style="green")
     cmd_table.add_column("Command", style="bold green", width=16)

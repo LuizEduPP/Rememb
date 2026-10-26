@@ -5,11 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rememb"
 version = "0.4.19"
-description = "Persistent memory standard for AI agents — local, portable, zero config"
+description = "Local-first long-term memory for AI agents — MCP, hooks, IDE handoff. No cloud, no API keys."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-keywords = ["ai", "agents", "memory", "llm", "mcp", "windsurf", "cursor", "claude", "copilot", "continue", "vscode", "persistent-memory", "ai-tools"]
+keywords = [
+    "long-term-memory",
+    "agentic-memory",
+    "ai-agents",
+    "ai-memory",
+    "local-first",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "persistent-memory",
+    "llm",
+    "cursor",
+    "claude",
+    "vscode",
+    "copilot",
+    "windsurf",
+    "cline",
+    "handoff",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

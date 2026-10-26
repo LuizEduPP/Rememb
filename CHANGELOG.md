@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Package, MCP registry, and CLI description/keywords: local-first long-term memory, MCP, hooks, IDE handoff. No cloud, no API keys.
+
 ## [0.4.19] - 2026-10-26
 
 ### Added

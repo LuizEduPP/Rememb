@@ -15,11 +15,8 @@ from rememb.helpers import _json_text
 
 MCP_COMMAND = "rememb"
 MCP_ARGS = ["mcp"]
-HOOK_COMMANDS = {
-    "session-start": "rememb hook session-start",
-    "post-tool": "rememb hook post-tool",
-    "stop": "rememb hook stop",
-}
+MCP_ID = MCP_COMMAND
+HOOK_COMMANDS = {event: f"{MCP_COMMAND} hook {event}" for event in ("session-start", "post-tool", "stop")}
 CURSOR_HOOK_EVENTS = {
     "sessionStart": HOOK_COMMANDS["session-start"],
     "postToolUse": HOOK_COMMANDS["post-tool"],
@@ -30,20 +27,19 @@ CLAUDE_HOOK_EVENTS = {
     "PostToolUse": HOOK_COMMANDS["post-tool"],
     "Stop": HOOK_COMMANDS["stop"],
 }
-CODEX_MCP_BEGIN = "# rememb-mcp"
-CODEX_MCP_END = "# /rememb-mcp"
-MDC_FRONTMATTER = "---\ndescription: Rememb memory rules\nalwaysApply: true\n---\n\n"
+CODEX_MCP_BEGIN = f"# {MCP_ID}-mcp"
+CODEX_MCP_END = f"# /{MCP_ID}-mcp"
+MDC_FRONTMATTER = "---\ndescription: Rememb memory rules\nalwaysApply: true\n---"
 CONTINUE_YAML = (
-    "name: rememb\n"
+    f"name: {MCP_ID}\n"
     "version: 1.0.0\n"
     "schema: v1\n"
     "mcpServers:\n"
-    "  - name: rememb\n"
+    f"  - name: {MCP_ID}\n"
     f"    command: {MCP_COMMAND}\n"
     "    args:\n"
-    "      - mcp\n"
+    + "".join(f"      - {arg}\n" for arg in MCP_ARGS)
 )
-MDC_ONLY_FRONTMATTER = "---\ndescription: Rememb memory rules\nalwaysApply: true\n---"
 
 
 @dataclass(frozen=True)
@@ -59,35 +55,57 @@ class FileChange:
 
 @dataclass(frozen=True)
 class HostSpec:
-    id: str
     mcp_kind: str
     project_mcp: str | None = None
     user_mcp: str | None = None
     project_rules: str | None = None
     user_rules: str | None = None
-    rules_kind: str = "marked"
-    rules_owned: bool = False
     hooks_kind: str | None = None
     project_hooks: str | None = None
     user_hooks: str | None = None
+    user_mcp_resolve: Callable[[Path], Path] | None = None
+
+
+def _user_config_path(home: Path, *, darwin: str, windows: str, other: str) -> Path:
+    if sys.platform == "darwin":
+        return home / darwin
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else home / "AppData/Roaming"
+        return base / windows
+    return home / other
+
+
+def _vscode_user_mcp(home: Path) -> Path:
+    return _user_config_path(
+        home,
+        darwin="Library/Application Support/Code/User/mcp.json",
+        windows="Code/User/mcp.json",
+        other=".config/Code/User/mcp.json",
+    )
+
+
+def _zed_user_settings(home: Path) -> Path:
+    return _user_config_path(
+        home,
+        darwin="Library/Application Support/Zed/settings.json",
+        windows="Zed/settings.json",
+        other=".config/zed/settings.json",
+    )
 
 
 HOST_SPECS: dict[str, HostSpec] = {
     "cursor": HostSpec(
-        id="cursor",
         mcp_kind="mcpServers",
         project_mcp=".cursor/mcp.json",
         user_mcp=".cursor/mcp.json",
         project_rules=".cursor/rules/rememb.mdc",
         user_rules=".cursor/rules/rememb.mdc",
-        rules_kind="mdc",
-        rules_owned=True,
         hooks_kind="cursor",
         project_hooks=".cursor/hooks.json",
         user_hooks=".cursor/hooks.json",
     ),
     "claude": HostSpec(
-        id="claude",
         mcp_kind="mcpServers",
         project_mcp=".mcp.json",
         user_mcp=".claude.json",
@@ -98,7 +116,6 @@ HOST_SPECS: dict[str, HostSpec] = {
         user_hooks=".claude/settings.json",
     ),
     "codex": HostSpec(
-        id="codex",
         mcp_kind="toml",
         project_mcp=".codex/config.toml",
         user_mcp=".codex/config.toml",
@@ -106,13 +123,12 @@ HOST_SPECS: dict[str, HostSpec] = {
         user_rules=".codex/AGENTS.md",
     ),
     "vscode": HostSpec(
-        id="vscode",
         mcp_kind="servers",
         project_mcp=".vscode/mcp.json",
         project_rules="AGENTS.md",
+        user_mcp_resolve=_vscode_user_mcp,
     ),
     "copilot": HostSpec(
-        id="copilot",
         mcp_kind="mcpServers",
         project_mcp=".mcp.json",
         user_mcp=".copilot/mcp-config.json",
@@ -120,23 +136,19 @@ HOST_SPECS: dict[str, HostSpec] = {
         user_rules=".copilot/copilot-instructions.md",
     ),
     "windsurf": HostSpec(
-        id="windsurf",
         mcp_kind="mcpServers",
         user_mcp=".codeium/windsurf/mcp_config.json",
         project_rules=".windsurf/rules/rememb.md",
         user_rules=".codeium/windsurf/memories/global_rules.md",
     ),
     "continue": HostSpec(
-        id="continue",
         mcp_kind="yaml-file",
         project_mcp=".continue/mcpServers/rememb.yaml",
         user_mcp=".continue/mcpServers/rememb.yaml",
         project_rules=".continue/rules/rememb.md",
         user_rules=".continue/rules/rememb.md",
-        rules_owned=True,
     ),
     "gemini": HostSpec(
-        id="gemini",
         mcp_kind="mcpServers",
         project_mcp=".gemini/settings.json",
         user_mcp=".gemini/settings.json",
@@ -144,7 +156,6 @@ HOST_SPECS: dict[str, HostSpec] = {
         user_rules=".gemini/GEMINI.md",
     ),
     "opencode": HostSpec(
-        id="opencode",
         mcp_kind="opencode",
         project_mcp="opencode.json",
         user_mcp=".config/opencode/opencode.json",
@@ -152,13 +163,12 @@ HOST_SPECS: dict[str, HostSpec] = {
         user_rules=".config/opencode/AGENTS.md",
     ),
     "zed": HostSpec(
-        id="zed",
         mcp_kind="zed",
         project_mcp=".zed/settings.json",
         project_rules="AGENTS.md",
+        user_mcp_resolve=_zed_user_settings,
     ),
     "cline": HostSpec(
-        id="cline",
         mcp_kind="mcpServers",
         project_mcp=".cline/mcp.json",
         user_mcp=".cline/mcp.json",
@@ -169,30 +179,20 @@ HOST_SPECS: dict[str, HostSpec] = {
 HOSTS = tuple(HOST_SPECS)
 
 
-def _vscode_user_mcp(home: Path) -> Path:
-    if sys.platform == "darwin":
-        return home / "Library/Application Support/Code/User/mcp.json"
-    if sys.platform == "win32":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else home / "AppData/Roaming"
-        return base / "Code/User/mcp.json"
-    return home / ".config/Code/User/mcp.json"
+def _mcp_block() -> dict[str, Any]:
+    return {"command": MCP_COMMAND, "args": list(MCP_ARGS)}
 
 
-def _zed_user_settings(home: Path) -> Path:
-    if sys.platform == "darwin":
-        return home / "Library/Application Support/Zed/settings.json"
-    if sys.platform == "win32":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else home / "AppData/Roaming"
-        return base / "Zed/settings.json"
-    return home / ".config/zed/settings.json"
+MCP_JSON_VALUES: dict[str, tuple[str, Callable[[], dict[str, Any]]]] = {
+    "mcpServers": ("mcpServers", _mcp_block),
+    "servers": ("servers", _mcp_block),
+    "opencode": ("mcp", lambda: {"type": "local", "command": [MCP_COMMAND, *MCP_ARGS], "enabled": True}),
+    "zed": ("context_servers", lambda: {"command": MCP_COMMAND, "args": list(MCP_ARGS), "env": {}}),
+}
 
 
 def _read_text(path: Path) -> str:
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:
@@ -204,26 +204,13 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return loaded
 
 
-def _json_file(data: dict[str, Any]) -> str:
-    return _json_text(data) + "\n"
-
-
-def _mcp_server_block() -> dict[str, Any]:
-    return {"command": MCP_COMMAND, "args": list(MCP_ARGS)}
-
-
-def _upsert_mapping(data: dict[str, Any], key: str, value: dict[str, Any]) -> dict[str, Any]:
+def _put_mapping(data: dict[str, Any], key: str, value: dict[str, Any] | None) -> dict[str, Any]:
     next_data = dict(data)
     mapping = dict(next_data.get(key) or {})
-    mapping["rememb"] = value
-    next_data[key] = mapping
-    return next_data
-
-
-def _remove_mapping(data: dict[str, Any], key: str) -> dict[str, Any]:
-    next_data = dict(data)
-    mapping = dict(next_data.get(key) or {})
-    mapping.pop("rememb", None)
+    if value is None:
+        mapping.pop(MCP_ID, None)
+    else:
+        mapping[MCP_ID] = value
     if mapping:
         next_data[key] = mapping
     else:
@@ -231,134 +218,51 @@ def _remove_mapping(data: dict[str, Any], key: str) -> dict[str, Any]:
     return next_data
 
 
-def upsert_mcp_servers(data: dict[str, Any]) -> dict[str, Any]:
-    return _upsert_mapping(data, "mcpServers", _mcp_server_block())
-
-
-def remove_mcp_servers(data: dict[str, Any]) -> dict[str, Any]:
-    return _remove_mapping(data, "mcpServers")
-
-
-def upsert_vscode_servers(data: dict[str, Any]) -> dict[str, Any]:
-    return _upsert_mapping(data, "servers", _mcp_server_block())
-
-
-def remove_vscode_servers(data: dict[str, Any]) -> dict[str, Any]:
-    return _remove_mapping(data, "servers")
-
-
-def upsert_opencode_mcp(data: dict[str, Any]) -> dict[str, Any]:
-    return _upsert_mapping(
-        data,
-        "mcp",
-        {"type": "local", "command": [MCP_COMMAND, *MCP_ARGS], "enabled": True},
-    )
-
-
-def remove_opencode_mcp(data: dict[str, Any]) -> dict[str, Any]:
-    return _remove_mapping(data, "mcp")
-
-
-def upsert_zed_servers(data: dict[str, Any]) -> dict[str, Any]:
-    return _upsert_mapping(data, "context_servers", {"command": MCP_COMMAND, "args": list(MCP_ARGS), "env": {}})
-
-
-def remove_zed_servers(data: dict[str, Any]) -> dict[str, Any]:
-    return _remove_mapping(data, "context_servers")
-
-
-JSON_MUTATORS: dict[str, tuple[Callable[[dict[str, Any]], dict[str, Any]], Callable[[dict[str, Any]], dict[str, Any]]]] = {
-    "mcpServers": (upsert_mcp_servers, remove_mcp_servers),
-    "servers": (upsert_vscode_servers, remove_vscode_servers),
-    "opencode": (upsert_opencode_mcp, remove_opencode_mcp),
-    "zed": (upsert_zed_servers, remove_zed_servers),
-}
-
-
 def _has_hook_command(entries: object, command: str) -> bool:
     if not isinstance(entries, list):
         return False
     for item in entries:
-        if isinstance(item, dict) and str(item.get("command") or "") == command:
-            return True
-        if isinstance(item, dict) and _has_hook_command(item.get("hooks"), command):
+        if isinstance(item, dict) and (
+            str(item.get("command") or "") == command or _has_hook_command(item.get("hooks"), command)
+        ):
             return True
     return False
 
 
-def upsert_cursor_hooks(data: dict[str, Any]) -> dict[str, Any]:
-    next_data = dict(data)
-    next_data.setdefault("version", 1)
-    hooks = dict(next_data.get("hooks") or {})
-    for event, command in CURSOR_HOOK_EVENTS.items():
-        entries = list(hooks.get(event) or [])
-        if not _has_hook_command(entries, command):
-            entries.append({"command": command})
-        hooks[event] = entries
-    next_data["hooks"] = hooks
-    return next_data
-
-
-def remove_cursor_hooks(data: dict[str, Any]) -> dict[str, Any]:
-    next_data = dict(data)
-    hooks = dict(next_data.get("hooks") or {})
-    commands = set(CURSOR_HOOK_EVENTS.values())
-    for event, entries in list(hooks.items()):
-        if not isinstance(entries, list):
-            continue
-        kept = [
-            item
-            for item in entries
-            if not (isinstance(item, dict) and str(item.get("command") or "") in commands)
-        ]
-        if kept:
-            hooks[event] = kept
-        else:
-            hooks.pop(event, None)
-    if hooks:
-        next_data["hooks"] = hooks
-    else:
-        next_data.pop("hooks", None)
-    return next_data
-
-
-def upsert_claude_hooks(data: dict[str, Any]) -> dict[str, Any]:
-    next_data = dict(data)
-    hooks = dict(next_data.get("hooks") or {})
-    for event, command in CLAUDE_HOOK_EVENTS.items():
-        groups = list(hooks.get(event) or [])
-        if not _has_hook_command(groups, command):
-            groups.append({"hooks": [{"type": "command", "command": command}]})
-        hooks[event] = groups
-    next_data["hooks"] = hooks
-    return next_data
-
-
-def remove_claude_hooks(data: dict[str, Any]) -> dict[str, Any]:
-    next_data = dict(data)
-    hooks = dict(next_data.get("hooks") or {})
-    commands = set(CLAUDE_HOOK_EVENTS.values())
-
-    def _keep_handler(item: object) -> bool:
-        if not isinstance(item, dict):
-            return True
-        if str(item.get("command") or "") in commands:
-            return False
-        nested = item.get("hooks")
-        if isinstance(nested, list):
-            item = dict(item)
-            item["hooks"] = [handler for handler in nested if _keep_handler(handler)]
-            return bool(item["hooks"]) or "command" in item
+def _keep_hook_item(item: object, commands: set[str]) -> bool:
+    if not isinstance(item, dict):
         return True
+    if str(item.get("command") or "") in commands:
+        return False
+    nested = item.get("hooks")
+    if isinstance(nested, list):
+        item["hooks"] = [handler for handler in nested if _keep_hook_item(handler, commands)]
+        return bool(item["hooks"]) or "command" in item
+    return True
 
-    for event, groups in list(hooks.items()):
-        if not isinstance(groups, list):
-            continue
-        kept = [item for item in groups if _keep_handler(item)]
-        if kept:
-            hooks[event] = kept
-        else:
-            hooks.pop(event, None)
+
+def _mutate_hooks(data: dict[str, Any], events: dict[str, str], *, nested: bool, uninstall: bool) -> dict[str, Any]:
+    next_data = dict(data)
+    hooks = dict(next_data.get("hooks") or {})
+    commands = set(events.values())
+    if uninstall:
+        for event, entries in list(hooks.items()):
+            if not isinstance(entries, list):
+                continue
+            kept = [item for item in entries if _keep_hook_item(dict(item) if isinstance(item, dict) else item, commands)]
+            if kept:
+                hooks[event] = kept
+            else:
+                hooks.pop(event, None)
+    else:
+        if not nested:
+            next_data.setdefault("version", 1)
+        for event, command in events.items():
+            entries = list(hooks.get(event) or [])
+            if not _has_hook_command(entries, command):
+                entry: dict[str, Any] = {"command": command}
+                entries.append({"hooks": [{"type": "command", **entry}]} if nested else entry)
+            hooks[event] = entries
     if hooks:
         next_data["hooks"] = hooks
     else:
@@ -366,38 +270,39 @@ def remove_claude_hooks(data: dict[str, Any]) -> dict[str, Any]:
     return next_data
 
 
-HOOK_MUTATORS = {
-    "cursor": (upsert_cursor_hooks, remove_cursor_hooks),
-    "claude": (upsert_claude_hooks, remove_claude_hooks),
-}
+def _replace_marked(text: str, begin: str, end: str, block: str | None) -> str | None:
+    if begin not in text or end not in text:
+        return None
+    start = text.index(begin)
+    stop = text.index(end) + len(end)
+    if block is None:
+        cleaned = (text[:start] + text[stop:]).strip()
+        return f"{cleaned}\n" if cleaned else ""
+    return text[:start] + block + text[stop:]
+
+
+def _append_block(text: str, block: str) -> str:
+    if not text.strip():
+        return block
+    return f"{text}\n{block}" if text.endswith("\n") else f"{text}\n\n{block}"
 
 
 def upsert_marked_rules(text: str, *, prefix: str = "") -> str:
     block = marked_rules()
-    if RULES_BEGIN in text and RULES_END in text:
-        start = text.index(RULES_BEGIN)
-        end = text.index(RULES_END) + len(RULES_END)
-        return text[:start] + block.strip() + text[end:]
-    if not text.strip():
-        return f"{prefix}{block}"
-    if text.endswith("\n"):
-        return f"{text}\n{block}"
-    return f"{text}\n\n{block}"
+    replaced = _replace_marked(text, RULES_BEGIN, RULES_END, block.strip())
+    if replaced is not None:
+        return replaced
+    return prefix + block if not text.strip() else _append_block(text, block)
 
 
 def remove_marked_rules(text: str) -> str:
-    if RULES_BEGIN not in text or RULES_END not in text:
-        return text
-    start = text.index(RULES_BEGIN)
-    end = text.index(RULES_END) + len(RULES_END)
-    cleaned = (text[:start] + text[end:]).strip()
-    return f"{cleaned}\n" if cleaned else ""
+    return _replace_marked(text, RULES_BEGIN, RULES_END, None) or text
 
 
 def _codex_mcp_block() -> str:
     return (
         f"{CODEX_MCP_BEGIN}\n"
-        "[mcp_servers.rememb]\n"
+        f"[mcp_servers.{MCP_ID}]\n"
         f'command = "{MCP_COMMAND}"\n'
         f"args = {json.dumps(MCP_ARGS)}\n"
         f"{CODEX_MCP_END}\n"
@@ -405,47 +310,33 @@ def _codex_mcp_block() -> str:
 
 
 def upsert_codex_mcp(text: str) -> str:
-    if CODEX_MCP_BEGIN in text and CODEX_MCP_END in text:
-        start = text.index(CODEX_MCP_BEGIN)
-        end = text.index(CODEX_MCP_END) + len(CODEX_MCP_END)
-        return text[:start] + _codex_mcp_block().rstrip() + text[end:]
-    if "[mcp_servers.rememb]" in text:
+    replaced = _replace_marked(text, CODEX_MCP_BEGIN, CODEX_MCP_END, _codex_mcp_block().rstrip())
+    if replaced is not None:
+        return replaced
+    if f"[mcp_servers.{MCP_ID}]" in text:
         return text
-    if not text.strip():
-        return _codex_mcp_block()
-    if text.endswith("\n"):
-        return f"{text}\n{_codex_mcp_block()}"
-    return f"{text}\n\n{_codex_mcp_block()}"
+    return _append_block(text, _codex_mcp_block()) if text.strip() else _codex_mcp_block()
 
 
 def remove_codex_mcp(text: str) -> str:
-    if CODEX_MCP_BEGIN in text and CODEX_MCP_END in text:
-        start = text.index(CODEX_MCP_BEGIN)
-        end = text.index(CODEX_MCP_END) + len(CODEX_MCP_END)
-        return (text[:start] + text[end:]).strip() + ("\n" if text[:start].strip() or text[end:].strip() else "")
-    return text
+    return _replace_marked(text, CODEX_MCP_BEGIN, CODEX_MCP_END, None) or text
 
 
 def host_paths(host: str, *, project: bool, cwd: Path, home: Path) -> dict[str, Path]:
     spec = HOST_SPECS.get(host)
     if spec is None:
-        raise ValueError(f"Unknown host: {host}")
+        raise ValueError(f"Unknown host: {host}. Use {', '.join(HOSTS)}.")
     root = cwd if project else home
     paths: dict[str, Path] = {}
-
     if project and spec.project_mcp:
         paths["mcp"] = cwd / spec.project_mcp
-    elif not project and host == "vscode":
-        paths["mcp"] = _vscode_user_mcp(home)
-    elif not project and host == "zed":
-        paths["mcp"] = _zed_user_settings(home)
+    elif not project and spec.user_mcp_resolve:
+        paths["mcp"] = spec.user_mcp_resolve(home)
     elif not project and spec.user_mcp:
         paths["mcp"] = home / spec.user_mcp
-
     rules = spec.project_rules if project else spec.user_rules
     if rules:
         paths["rules"] = root / rules
-
     hooks = spec.project_hooks if project else spec.user_hooks
     if spec.hooks_kind and hooks:
         paths["hooks"] = root / hooks
@@ -454,56 +345,55 @@ def host_paths(host: str, *, project: bool, cwd: Path, home: Path) -> dict[str, 
 
 def _json_change(path: Path, mutate, *, uninstall: bool) -> FileChange:
     before = _read_text(path)
-    data = _parse_json_object(before) if before.strip() else {}
-    after_data = mutate(data)
+    after_data = mutate(_parse_json_object(before) if before.strip() else {})
     if uninstall and after_data == {}:
         return FileChange(path, before, "")
-    return FileChange(path, before, _json_file(after_data) if after_data or before.strip() else "")
+    return FileChange(path, before, _json_text(after_data) + "\n" if after_data or before.strip() else "")
 
 
-def _rules_change(spec: HostSpec, path: Path, *, uninstall: bool) -> FileChange:
+def _rules_change(path: Path, *, uninstall: bool) -> FileChange:
     before = _read_text(path)
-    prefix = MDC_FRONTMATTER if spec.rules_kind == "mdc" else ""
-    owned = spec.rules_owned or path.name.startswith("rememb.")
+    prefix = f"{MDC_FRONTMATTER}\n\n" if path.suffix == ".mdc" else ""
     if uninstall:
         after = remove_marked_rules(before)
-        if owned and after.strip() in {"", MDC_ONLY_FRONTMATTER}:
+        if path.name.startswith(f"{MCP_ID}.") and after.strip() in {"", MDC_FRONTMATTER}:
             after = ""
-    elif spec.rules_kind == "mdc" and not before.strip():
-        after = upsert_marked_rules("", prefix=prefix)
     else:
-        after = upsert_marked_rules(before, prefix=prefix)
+        after = upsert_marked_rules(before if before.strip() or path.suffix != ".mdc" else "", prefix=prefix)
     return FileChange(path, before, after)
+
+
+def _mcp_change(spec: HostSpec, path: Path, *, uninstall: bool) -> FileChange:
+    if spec.mcp_kind == "toml":
+        before = _read_text(path)
+        return FileChange(path, before, remove_codex_mcp(before) if uninstall else upsert_codex_mcp(before))
+    if spec.mcp_kind == "yaml-file":
+        return FileChange(path, _read_text(path), "" if uninstall else CONTINUE_YAML)
+    key, factory = MCP_JSON_VALUES[spec.mcp_kind]
+    return _json_change(
+        path,
+        lambda data: _put_mapping(data, key, None if uninstall else factory()),
+        uninstall=uninstall,
+    )
 
 
 def plan_host(host: str, *, project: bool, cwd: Path, home: Path, uninstall: bool) -> list[FileChange]:
     spec = HOST_SPECS[host]
     paths = host_paths(host, project=project, cwd=cwd, home=home)
     changes: list[FileChange] = []
-
-    mcp_path = paths.get("mcp")
-    if mcp_path is not None:
-        if spec.mcp_kind == "toml":
-            before = _read_text(mcp_path)
-            after = remove_codex_mcp(before) if uninstall else upsert_codex_mcp(before)
-            changes.append(FileChange(mcp_path, before, after))
-        elif spec.mcp_kind == "yaml-file":
-            before = _read_text(mcp_path)
-            after = "" if uninstall else CONTINUE_YAML
-            changes.append(FileChange(mcp_path, before, after))
-        else:
-            upsert, remove = JSON_MUTATORS[spec.mcp_kind]
-            changes.append(_json_change(mcp_path, remove if uninstall else upsert, uninstall=uninstall))
-
-    rules_path = paths.get("rules")
-    if rules_path is not None:
-        changes.append(_rules_change(spec, rules_path, uninstall=uninstall))
-
-    hooks_path = paths.get("hooks")
-    if hooks_path is not None and spec.hooks_kind:
-        upsert, remove = HOOK_MUTATORS[spec.hooks_kind]
-        changes.append(_json_change(hooks_path, remove if uninstall else upsert, uninstall=uninstall))
-
+    if "mcp" in paths:
+        changes.append(_mcp_change(spec, paths["mcp"], uninstall=uninstall))
+    if "rules" in paths:
+        changes.append(_rules_change(paths["rules"], uninstall=uninstall))
+    if "hooks" in paths:
+        events = CURSOR_HOOK_EVENTS if spec.hooks_kind == "cursor" else CLAUDE_HOOK_EVENTS
+        changes.append(
+            _json_change(
+                paths["hooks"],
+                lambda data: _mutate_hooks(data, events, nested=spec.hooks_kind == "claude", uninstall=uninstall),
+                uninstall=uninstall,
+            )
+        )
     return changes
 
 
@@ -516,13 +406,13 @@ def plan_install(
     home: Path | None = None,
 ) -> list[FileChange]:
     selected = list(hosts or HOSTS)
-    for host in selected:
-        if host not in HOST_SPECS:
-            raise ValueError(f"Unknown host: {host}. Use {', '.join(HOSTS)}.")
+    unknown = [host for host in selected if host not in HOST_SPECS]
+    if unknown:
+        raise ValueError(f"Unknown host: {unknown[0]}. Use {', '.join(HOSTS)}.")
     cwd = Path(cwd or Path.cwd()).resolve()
     home = Path(home or Path.home()).resolve()
-    changes: list[FileChange] = []
     seen: set[Path] = set()
+    changes: list[FileChange] = []
     for host in selected:
         for change in plan_host(host, project=project, cwd=cwd, home=home, uninstall=uninstall):
             if change.path in seen:
@@ -540,19 +430,18 @@ def apply_changes(changes: list[FileChange]) -> list[FileChange]:
         if change.after == "":
             if change.path.exists():
                 change.path.unlink()
-            written.append(change)
-            continue
-        change.path.parent.mkdir(parents=True, exist_ok=True)
-        change.path.write_text(change.after, encoding="utf-8")
+        else:
+            change.path.parent.mkdir(parents=True, exist_ok=True)
+            change.path.write_text(change.after, encoding="utf-8")
         written.append(change)
     return written
 
 
 def format_plan(changes: list[FileChange], *, apply: bool, uninstall: bool) -> str:
-    verb = "Removed" if uninstall and apply else "Wrote" if apply else "Would write"
     pending = [change for change in changes if change.changed]
     if not pending:
         return "Already installed. Nothing to change." if not uninstall else "Nothing rememb-owned to remove."
+    verb = "Removed" if uninstall and apply else "Wrote" if apply else "Would write"
     return "\n".join(
         f"{verb} [{'delete' if change.after == '' else 'update' if change.before else 'create'}] {change.path}"
         for change in pending

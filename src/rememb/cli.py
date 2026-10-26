@@ -14,6 +14,8 @@ from rich.text import Text
 
 from rememb import __version__
 from rememb.config import DEFAULT_HOST, DEFAULT_SSE_PORT, DEFAULT_WEB_PORT
+from rememb.hooks import HOOK_EVENTS
+from rememb.install import HOSTS, run_install
 
 
 console = Console()
@@ -198,11 +200,11 @@ def mcp(
         raise typer.Exit(1)
 
 
-hook_app = typer.Typer(help="Host lifecycle hooks that write and inject rememb memory.")
-app.add_typer(hook_app, name="hook")
-
-
-def _run_hook(event: str) -> None:
+@app.command("hook")
+def hook(
+    event: str = typer.Argument(..., help=" | ".join(HOOK_EVENTS)),
+) -> None:
+    """Write or inject rememb memory from a host lifecycle event."""
     from rememb.hooks import run_hook
 
     code, out, err = run_hook(event, sys.stdin.read())
@@ -213,38 +215,14 @@ def _run_hook(event: str) -> None:
     raise typer.Exit(code)
 
 
-@hook_app.command("post-tool")
-def hook_post_tool() -> None:
-    """Write a PostToolUse event from stdin JSON into the store."""
-    _run_hook("post-tool")
-
-
-@hook_app.command("stop")
-def hook_stop() -> None:
-    """Write a Stop/handoff entry from stdin JSON into the store."""
-    _run_hook("stop")
-
-
-@hook_app.command("session-start")
-def hook_session_start() -> None:
-    """Print recent entries, tags, and stats for SessionStart inject."""
-    _run_hook("session-start")
-
-
 @app.command("install")
 def install(
-    host: str | None = typer.Option(
-        None,
-        "--host",
-        help="One of: cursor, claude, codex, vscode, copilot, windsurf, continue, gemini, opencode, zed, cline. Default: all.",
-    ),
+    host: str | None = typer.Option(None, "--host", help=f"One of: {', '.join(HOSTS)}. Default: all."),
     apply: bool = typer.Option(False, "--apply", help="Write files. Without this flag, only print the plan."),
     project: bool = typer.Option(False, "--project", help="Write into the current directory instead of the user config."),
     uninstall: bool = typer.Option(False, "--uninstall", help="Remove only what rememb install wrote."),
 ) -> None:
     """Write MCP config, Memory Rules, and host hooks."""
-    from rememb.install import HOSTS, run_install
-
     hosts = None
     if host:
         normalized = host.strip().lower()
@@ -253,8 +231,7 @@ def install(
             raise typer.Exit(1)
         hosts = [normalized]
     try:
-        message = run_install(hosts, apply=apply, project=project, uninstall=uninstall)
+        typer.echo(run_install(hosts, apply=apply, project=project, uninstall=uninstall))
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
-    typer.echo(message)

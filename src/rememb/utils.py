@@ -15,6 +15,7 @@ from rememb.config import (
     ENTRY_ID_PATTERN,
     META_FILE,
     REMEMB_DIR,
+    TEXT_ELLIPSIS,
     TIMESTAMP_FORMAT,
 )
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
@@ -44,6 +45,17 @@ def _meta_path(root: Path) -> Path:
 
 def _config_path(root: Path) -> Path:
     return _store_file(root, CONFIG_FILE)
+
+
+def clip_text(value: str, limit: int | None) -> str:
+    """Collapse whitespace and optionally cap length with a single ellipsis."""
+    text = " ".join(value.split()).strip()
+    if limit is None or limit < 0 or len(text) <= limit:
+        return text
+    mark = TEXT_ELLIPSIS
+    if limit <= len(mark):
+        return text[:limit]
+    return text[: limit - len(mark)].rstrip() + mark
 
 
 def parse_int(value: object, *, name: str, minimum: int) -> int:

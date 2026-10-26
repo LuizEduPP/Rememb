@@ -43,6 +43,7 @@ from rememb.helpers import (
     _write_json,
 )
 from rememb.utils import (
+    clip_text,
     _apply_revision,
     _config_path,
     _current_entry_version,
@@ -1055,14 +1056,6 @@ def format_entries(
     if not entries:
         return "No memory entries found."
 
-    def _truncate(text: str) -> str:
-        value = " ".join(text.split()).strip()
-        if max_chars is not None and max_chars >= 0 and len(value) > max_chars:
-            if max_chars <= 3:
-                return value[:max_chars]
-            return value[: max_chars - 3].rstrip() + "..."
-        return value
-
     by_section: dict[str, list] = {}
     for e in entries:
         by_section.setdefault(e["section"], []).append(e)
@@ -1071,7 +1064,7 @@ def format_entries(
     for section, items in by_section.items():
         lines.append(f"## {section.capitalize()}")
         for item in items:
-            content = _truncate(str(item.get("content", "")))
+            content = clip_text(str(item.get("content", "")), max_chars)
             tags = f" [{', '.join(item['tags'])}]" if item.get("tags") else ""
             score = item.get("score")
             score_text = f" (score: {float(score):.3f})" if include_score and isinstance(score, (int, float)) else ""

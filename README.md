@@ -233,7 +233,7 @@ The current compatibility surface is tracked explicitly in [COMPATIBILITY.md](CO
 
 Short version:
 
-- Python 3.10 to 3.12 are covered by CI
+- Python 3.11 to 3.14 are covered by CI
 - CLI contract and MCP tool schema (17 tools) have automated test coverage
 - stdio MCP is the primary documented integration path
 - SSE MCP is documented and partially tested at the route level

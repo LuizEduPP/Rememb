@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
+from rememb.config import DEFAULT_WEB_HOST, DEFAULT_WEB_PORT
 from rememb.web.routes import entries, system
 
 _STATIC_DIR = Path(__file__).parent.parent / "static"
@@ -58,7 +59,7 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def run_web(host: str = "127.0.0.1", port: int = 18181, open_browser: bool = True) -> None:
+def run_web(host: str = DEFAULT_WEB_HOST, port: int = DEFAULT_WEB_PORT, open_browser: bool = True) -> None:
     """Start the rememb web UI server."""
     import uvicorn
 

@@ -1,16 +1,22 @@
 """Utility functions for rememb."""
 
-import html
 import logging
-import os
 import re
-import warnings
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rememb.config import REMEMB_DIR, ENTRIES_FILE, ENTRIES_DB_FILE, META_FILE, CONFIG_FILE
+from rememb.config import (
+    CONFIG_FILE,
+    ENTRIES_DB_FILE,
+    ENTRIES_FILE,
+    ENTRY_ID_LENGTH,
+    ENTRY_ID_PATTERN,
+    META_FILE,
+    REMEMB_DIR,
+    TIMESTAMP_FORMAT,
+)
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 
 logger = logging.getLogger(__name__)
@@ -42,48 +48,31 @@ def _config_path(root: Path) -> Path:
 
 
 def _validate_entry_id(entry_id: str) -> bool:
-    """Validate entry ID format.
-    
-    Args:
-        entry_id: Entry ID to validate
-    
-    Returns:
-        True if entry_id matches 8 hex characters, False otherwise
-    """
-    return bool(re.match(r"^[a-f0-9]{8}$", entry_id, re.IGNORECASE))
+    """Return True when entry_id matches the store id shape."""
+    return bool(re.match(ENTRY_ID_PATTERN, entry_id, re.IGNORECASE))
 
 
-def _parse_tags(tags: str | None) -> list[str] | None:
-    """Parse comma-separated tags string into list.
-    
-    Args:
-        tags: Comma-separated tags string or None
-    
-    Returns:
-        List of tags or None if tags is None or empty
-    """
-    if not tags:
-        return None
-    return [t.strip() for t in tags.split(",")]
+def invalid_entry_id_message(entry_id: object) -> str:
+    return f"Invalid entry ID format: {entry_id}. Expected {ENTRY_ID_LENGTH} hex characters."
+
+
+def require_entry_id(entry_id: object) -> str:
+    text = str(entry_id or "")
+    if not _validate_entry_id(text):
+        raise RemembValidationError(invalid_entry_id_message(entry_id))
+    return text.lower()
 
 
 def _extract_summary(content: str) -> str:
-    """Extract summary from content, skipping frontmatter and markdown.
-    
-    Args:
-        content: File content to extract summary from
-    
-    Returns:
-        First meaningful sentence or line from content
-    """
+    """Extract summary from content, skipping frontmatter and markdown."""
     fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
     if fm_match:
         for line in fm_match.group(1).splitlines():
             key, sep, value = line.partition(":")
             if not sep:
                 continue
-            v = value.strip()
-            if len(v) > 20 and " " in v:
+            v = value.strip().strip("\"'")
+            if v:
                 return v
         content = content[fm_match.end():].strip()
 
@@ -288,7 +277,7 @@ def _read_skill_file_text(path: Path) -> str:
         data = path.read_bytes()
     except OSError:
         return ""
-    if b"\x00" in data[:1024]:
+    if b"\x00" in data:
         return ""
     return data.decode("utf-8", errors="replace")
 
@@ -355,35 +344,6 @@ def global_root() -> Path:
     return Path.home()
 
 
-def find_root(start: Path | None = None, local: bool = False) -> Path:
-    """Find the .rememb directory by searching upward from start path.
-    
-    Args:
-        start: Starting path for search (default: current directory)
-        local: If True, use current directory even if .rememb not found
-    
-    Returns:
-        Path to directory containing .rememb
-    
-    Raises:
-        RemembNotInitializedError: If .rememb not found and local=False
-        PermissionError: If local=True but directory not writable
-    """
-    current = (start or Path.cwd()).resolve()
-    for parent in [current, *current.parents]:
-        if (parent / REMEMB_DIR).is_dir():
-            logger.debug(f"Found .rememb at {parent}")
-            return parent
-
-    if local:
-        if not os.access(current, os.W_OK):
-            raise PermissionError(f"Cannot write to directory: {current}")
-        logger.debug(f"Using local mode at {current}")
-        return current
-
-    raise RemembNotInitializedError(f"No .rememb directory found. Run 'rememb init' first.")
-
-
 def is_initialized(root: Path) -> bool:
     """Check if rememb is initialized at the given root."""
     rememb_dir = _rememb_path(root)
@@ -404,7 +364,7 @@ def ensure_global_root(initializer: Callable[[Path, str, bool], object]) -> Path
 
 def _now() -> str:
     """Get current UTC timestamp."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime(TIMESTAMP_FORMAT)
 
 
 def _current_entry_version(entry: dict[str, Any]) -> int:
@@ -491,7 +451,3 @@ def _normalize_version_number(version: object) -> int:
     if parsed <= 0:
         raise RemembValidationError("version must be a positive integer.")
     return parsed
-
-def escape(text: str) -> str:
-    """Escape markup-like characters for safe terminal output."""
-    return html.escape(text)

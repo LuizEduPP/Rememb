@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from rememb.helpers import _file_lock
+from rememb.storage.locking import file_lock as _file_lock
 from rememb.config import DEFAULT_SECTIONS
 from rememb.exceptions import RemembNotInitializedError, RemembValidationError
 from rememb.store import (
@@ -401,9 +401,9 @@ def test_format_entries_summary_only_is_deprecated():
     assert "2026-06-23" in text
 
 
-def test_agent_summarize_hint_thresholds():
+def test_agent_summarize_hint_only_when_more_pages():
     assert agent_summarize_hint(3) == ""
-    assert "Agent note" in agent_summarize_hint(8)
+    assert agent_summarize_hint(80) == ""
     assert "More pages may remain" in agent_summarize_hint(3, has_more=True)
 
 

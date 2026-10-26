@@ -3,12 +3,10 @@
 import json
 import logging
 import os
-import platform
 import re
 import warnings
-from contextlib import contextmanager
 from pathlib import Path
-from typing import IO, Any, Callable, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, TypeVar
 
 from rememb.config import (
     DEFAULT_ALL_SECTION_COLOR,
@@ -20,22 +18,16 @@ from rememb.config import (
     POSITIVE_INT_CONFIG_KEYS,
     UNIT_INTERVAL_FLOAT_CONFIG_KEYS,
 )
-from rememb.utils import _rememb_path, _entries_path, _config_path, _meta_path, _now, is_initialized
+from rememb.utils import _config_path, _meta_path, _now, is_initialized
 from rememb.exceptions import (
     RemembNotInitializedError,
     RemembValidationError,
-    RemembStorageError,
 )
 
 logger = logging.getLogger(__name__)
 
 _SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
 _ModifierResult = TypeVar("_ModifierResult")
-
-
-def _requires_exclusive_lock(mode: str) -> bool:
-    """Return whether the file mode can mutate file contents."""
-    return any(flag in mode for flag in ("+", "w", "a", "x"))
 
 
 def _normalize_sections(value: object) -> list[str]:
@@ -265,87 +257,6 @@ def _validate_config_updates(
 
     return next_config
 
-@runtime_checkable
-class MemoryStore(Protocol):
-    """Abstract protocol for memory store operations."""
-    
-    def write_entry(
-        self,
-        root: Path,
-        section: str,
-        content: str,
-        tags: list[str] | None = None,
-        skip_duplicates: bool = True,
-    ) -> dict:
-        """Write a new entry to memory."""
-        ...
-
-    def write_entries(
-        self,
-        root: Path,
-        items: list[dict[str, Any]],
-        skip_duplicates: bool = True,
-    ) -> list[dict]:
-        """Write multiple entries to memory atomically."""
-        ...
-    
-    def read_entries(self, root: Path, section: str | None = None) -> list[dict]:
-        """Read entries from memory."""
-        ...
-
-    def read_entries_page(
-        self,
-        root: Path,
-        section: str | None = None,
-        *,
-        tag: str | None = None,
-        offset: int = 0,
-        limit: int = 100,
-        sort_by: str = "storage",
-        descending: bool = False,
-    ) -> dict[str, Any]:
-        """Read one page of entries from memory."""
-        ...
-
-    def get_config(self, root: Path) -> dict[str, Any]:
-        """Load the effective configuration for the given root."""
-        ...
-
-    def update_config(self, root: Path, updates: dict[str, Any]) -> dict[str, Any]:
-        """Persist validated configuration updates for the given root."""
-        ...
-    
-    def search_entries(
-        self,
-        root: Path,
-        query: str,
-        top_k: int = 5,
-        section: str | None = None,
-        tag: str | None = None,
-    ) -> list[dict]:
-        """Search entries by keyword and token overlap."""
-        ...
-    
-    def delete_entry(self, root: Path, entry_id: str) -> bool:
-        """Delete an entry by ID."""
-        ...
-
-    def delete_entries(self, root: Path, entry_ids: list[str]) -> list[str]:
-        """Delete multiple entries by ID."""
-        ...
-    
-    def edit_entry(self, root: Path, entry_id: str, content: str | None = None, section: str | None = None, tags: list[str] | None = None) -> dict | None:
-        """Edit an existing entry."""
-        ...
-
-    def edit_entries(self, root: Path, updates: list[dict[str, Any]]) -> list[dict | None]:
-        """Edit multiple entries atomically."""
-        ...
-    
-    def clear_entries(self, root: Path, *, confirm: bool = False) -> int:
-        """Clear all entries."""
-        ...
-
 
 class StoreContext:
     """Encapsulates configuration cache for store operations."""
@@ -473,27 +384,12 @@ def _assert_initialized(root) -> None:
     if not is_initialized(root):
         raise RemembNotInitializedError("rememb not initialized. Run `rememb init` first.")
 
-@contextmanager
-def _file_lock(filepath: Path, mode: str = "r+"):
-    """Backward-compatible wrapper around the shared storage file lock."""
-    from rememb.storage.locking import file_lock
-
-    with file_lock(filepath, mode=mode) as handle:
-        yield handle
-
 
 def _load_entries(root: Path) -> list[dict]:
     """Load entries from the configured storage backend."""
     from rememb.storage import get_storage_backend
 
     return get_storage_backend(root).load_entries(root)
-
-
-def _save_entries(root: Path, entries: list[dict]) -> None:
-    """Save entries through the configured storage backend."""
-    from rememb.storage import get_storage_backend
-
-    get_storage_backend(root).save_entries(root, entries)
 
 
 def _atomic_modify(root: Path, modifier: Callable[[list[dict]], _ModifierResult]) -> _ModifierResult:
@@ -537,12 +433,9 @@ def _keyword_search(
     Semantic relevance is handled by the calling agent. This function only
     performs deterministic lexical matching over section, tags, and content.
     """
-    from datetime import datetime, timezone
-
     normalized_query = _normalize_search_text(query)
     query_tokens = _search_tokens(query)
     texts = [_search_document(e) for e in entries]
-    now_ts = datetime.now(timezone.utc).timestamp()
     scored: list[tuple[float, int]] = []
 
     for i, entry in enumerate(entries):
@@ -551,30 +444,19 @@ def _keyword_search(
         score = 0.0
 
         if normalized_query and normalized_query in document:
-            score += 0.18
+            score += 1.0
 
         if query_tokens and document_tokens:
-            overlap_ratio = len(query_tokens & document_tokens) / len(query_tokens)
-            score += overlap_ratio * 0.22
+            score += len(query_tokens & document_tokens) / len(query_tokens)
 
         tag_tokens: set[str] = set()
         for tag in entry.get("tags", []):
             tag_tokens.update(_search_tokens(tag))
         if query_tokens and tag_tokens:
-            tag_overlap_ratio = len(query_tokens & tag_tokens) / len(query_tokens)
-            score += tag_overlap_ratio * 0.12
+            score += len(query_tokens & tag_tokens) / len(query_tokens)
 
         if score <= 0.0:
             continue
-
-        try:
-            entry_timestamp = str(entry.get("updated_at") or entry.get("created_at") or "")
-            pts = datetime.strptime(entry_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
-            days_old = (now_ts - pts) / 86400.0
-            decay = max(0.92, 1.0 - (days_old * 0.0006))
-            score *= decay
-        except Exception:
-            pass
 
         scored.append((score, i))
 

@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-import warnings
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_SECTIONS
+from rememb.config import (
+    DEFAULT_MCP_SECTION,
+    DEFAULT_MESSAGE_PATH,
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_RECENT_LIMIT,
+    DEFAULT_SEARCH_TOP_K,
+    DEFAULT_SECTIONS,
+    DEFAULT_SSE_HOST,
+    DEFAULT_SSE_PATH,
+    DEFAULT_SSE_PORT,
+    DEFAULT_TAG_LIMIT,
+    ENTRY_ID_LENGTH,
+)
 from rememb.store import (
     agent_summarize_hint,
     clear_entries,
@@ -35,38 +46,19 @@ from rememb.exceptions import RemembError, rememb_error_response_text
 from rememb.utils import (
     _validate_entry_id,
     ensure_global_root,
-    global_root,
-    is_initialized,
+    invalid_entry_id_message,
     list_skill_definitions,
     load_skill_definition,
 )
 
 
-DEFAULT_SSE_HOST = "127.0.0.1"
-DEFAULT_SSE_PORT = 8765
-DEFAULT_SSE_PATH = "/sse"
-DEFAULT_MESSAGE_PATH = "/messages/"
-
-
 class MCPContext:
-    """Encapsulates MCP-specific cache and state.
-
-    Manages MCP module imports and root cache for MCP server operations.
-    """
+    """Lazy import cache for the MCP SDK."""
 
     def __init__(self):
         self._mcp_modules = None
-        self._root_cache: dict[str, Any] = {}
 
     def get_mcp_modules(self):
-        """Get or load MCP modules.
-
-        Returns:
-            Dictionary with Server, stdio_server, Tool, TextContent classes
-
-        Raises:
-            ImportError: If mcp package not installed
-        """
         if self._mcp_modules is None:
             try:
                 from mcp.server import Server
@@ -85,58 +77,26 @@ class MCPContext:
                 ) from e
         return self._mcp_modules
 
-    def get_root_cache(self) -> dict[str, Any]:
-        """Get root cache dictionary.
-        
-        Returns:
-            Root cache dictionary
-        """
-        return self._root_cache
-
-    def clear_root_cache(self):
-        """Clear root cache dictionary."""
-        self._root_cache.clear()
-
 
 _mcp_context = MCPContext()
 
 
 def _get_root() -> Path:
-    """Get global root path with cache invalidation.
-
-    Returns:
-        Global root path
-    """
-    root = global_root()
-
-    if not is_initialized(root):
-        init(root, project_name="global", global_mode=True)
-
-    if not is_initialized(root):
-        raise RemembError("Global rememb not initialized.")
-
-    root_cache = _mcp_context.get_root_cache()
-    if "root" in root_cache and root_cache["root"] != root:
-        _mcp_context.clear_root_cache()
-        root_cache = _mcp_context.get_root_cache()
-
-    root_cache["root"] = root
-    return root
+    return ensure_global_root(init)
 
 
 def _get_mcp_sections() -> list[str]:
     """Return the current section list for MCP schemas, with safe fallback."""
     try:
-        root = _get_root()
-        return list(get_config(root)["sections"])
+        return list(get_config(_get_root())["sections"])
     except Exception:
         return list(DEFAULT_SECTIONS)
 
 
 def _get_default_mcp_section() -> str:
     sections = _get_mcp_sections()
-    if "context" in sections:
-        return "context"
+    if DEFAULT_MCP_SECTION in sections:
+        return DEFAULT_MCP_SECTION
     return sections[0]
 
 
@@ -144,6 +104,31 @@ def _tool_error_text(exc: Exception) -> str:
     if isinstance(exc, RemembError):
         return f"Error: {rememb_error_response_text(exc)}"
     return f"Unexpected error: {exc}"
+
+
+def _text(TextContent, text: str):
+    return [TextContent(type="text", text=text)]
+
+
+def _need_id(entry_id, TextContent):
+    if entry_id is None or not _validate_entry_id(str(entry_id)):
+        return _text(TextContent, invalid_entry_id_message(entry_id))
+    return None
+
+
+def _memory_text(
+    TextContent,
+    entries,
+    *,
+    include_score: bool = False,
+    max_chars=None,
+    header: str | None = None,
+    has_more: bool = False,
+):
+    body = format_entries(entries, include_id=True, include_score=include_score, max_chars=max_chars)
+    hint = agent_summarize_hint(len(entries), has_more=has_more)
+    payload = f"{header}\n\n{body}{hint}" if header else f"{body}{hint}"
+    return _text(TextContent, payload)
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
@@ -161,18 +146,17 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_get():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if err := _need_id(entry_id, TextContent):
+            return err
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
         entry = await asyncio.to_thread(get_entry, root, entry_id, include_deleted=include_deleted)
         if entry is None:
-            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
-        body = format_entries([entry], include_id=True, max_chars=max_chars)
-        return [TextContent(type="text", text=body)]
+            return _text(TextContent, f"Entry {entry_id} not found")
+        return _memory_text(TextContent, [entry], max_chars=max_chars)
 
     async def rememb_recent():
-        limit = arguments.get("limit", 10)
+        limit = arguments.get("limit", DEFAULT_RECENT_LIMIT)
         section = arguments.get("section")
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
@@ -183,35 +167,31 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             section=section,
             include_deleted=include_deleted,
         )
-        body = format_entries(entries, include_id=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(entries))
-        return [TextContent(type="text", text=f"{body}{hint}")]
+        return _memory_text(TextContent, entries, max_chars=max_chars)
 
     async def rememb_list_tags():
-        limit = arguments.get("limit", 50)
+        limit = arguments.get("limit", DEFAULT_TAG_LIMIT)
         include_deleted = arguments.get("include_deleted", False)
         tags = await asyncio.to_thread(list_entry_tags, root, include_deleted=include_deleted, limit=limit)
         if not tags:
-            return [TextContent(type="text", text="No tags found.")]
+            return _text(TextContent, "No tags found.")
         lines = ["Tags (count):"]
         lines.extend(f"- {item['tag']}: {item['count']}" for item in tags)
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text(TextContent, "\n".join(lines))
 
     async def rememb_read():
         section = arguments.get("section")
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
         entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
-        body = format_entries(entries, include_id=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(entries))
-        return [TextContent(type="text", text=f"{body}{hint}")]
+        return _memory_text(TextContent, entries, max_chars=max_chars)
 
     async def rememb_read_page():
         section = arguments.get("section")
         tag = arguments.get("tag")
         include_deleted = arguments.get("include_deleted", False)
         offset = arguments.get("offset", 0)
-        limit = arguments.get("limit", 100)
+        limit = arguments.get("limit", DEFAULT_PAGE_LIMIT)
         sort_by = arguments.get("sort_by", "storage")
         descending = arguments.get("descending", False)
         max_chars = arguments.get("max_chars")
@@ -230,30 +210,32 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Page {page['offset']}..{page['next_offset']} of {page['total']} "
             f"(limit={page['limit']}, has_more={page['has_more']})"
         )
-        body = format_entries(page["items"], include_id=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(page["items"]), has_more=page["has_more"])
-        return [TextContent(type="text", text=f"{header}\n\n{body}{hint}")]
+        return _memory_text(
+            TextContent,
+            page["items"],
+            max_chars=max_chars,
+            header=header,
+            has_more=page["has_more"],
+        )
 
     async def rememb_search():
         query = arguments["query"]
-        top_k = arguments.get("top_k", 5)
+        top_k = arguments.get("top_k", DEFAULT_SEARCH_TOP_K)
         section = arguments.get("section")
         tag = arguments.get("tag")
         include_deleted = arguments.get("include_deleted", False)
         max_chars = arguments.get("max_chars")
         entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
-        body = format_entries(entries, include_id=True, include_score=True, max_chars=max_chars)
-        hint = agent_summarize_hint(len(entries))
-        return [TextContent(type="text", text=f"{body}{hint}")]
+        return _memory_text(TextContent, entries, include_score=True, max_chars=max_chars)
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if err := _need_id(entry_id, TextContent):
+            return err
         include_deleted = arguments.get("include_deleted", True)
         versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
         if not versions:
-            return [TextContent(type="text", text=f"Entry {entry_id} not found")]
+            return _text(TextContent, f"Entry {entry_id} not found")
         lines = [f"Versions for {entry_id} ({len(versions)} total):"]
         for revision in versions:
             deleted_marker = " [deleted]" if str(revision.get("deleted_at", "")).strip() else ""
@@ -262,34 +244,34 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 f"- v{revision['version']} section={revision.get('section', '')}{deleted_marker}"
                 f" tags=[{tags}] updated={revision.get('updated_at', '')}"
             )
-        return [TextContent(type="text", text="\n".join(lines))]
+        return _text(TextContent, "\n".join(lines))
 
     async def rememb_restore():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if err := _need_id(entry_id, TextContent):
+            return err
         version = arguments.get("version")
         if version is None:
             restored = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
             if restored is None:
-                return [TextContent(type="text", text=f"Deleted entry {entry_id} not found")]
-            return [TextContent(type="text", text=f"Restored deleted entry {entry_id} (now v{restored['version']})")]
+                return _text(TextContent, f"Deleted entry {entry_id} not found")
+            return _text(TextContent, f"Restored deleted entry {entry_id} (now v{restored['version']})")
         restored = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
         if restored is None:
-            return [TextContent(type="text", text=f"Entry {entry_id} or version {version} not found")]
-        return [TextContent(type="text", text=f"Restored {entry_id} to version {version} (now v{restored['version']})")]
+            return _text(TextContent, f"Entry {entry_id} or version {version} not found")
+        return _text(TextContent, f"Restored {entry_id} to version {version} (now v{restored['version']})")
 
     async def rememb_diff():
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if err := _need_id(entry_id, TextContent):
+            return err
         from_version = arguments["from_version"]
         to_version = arguments["to_version"]
         result = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
         if result is None:
-            return [TextContent(type="text", text=f"Entry {entry_id} or requested versions not found")]
+            return _text(TextContent, f"Entry {entry_id} or requested versions not found")
         diff_text = result["diff"] or "(no content changes)"
-        return [TextContent(type="text", text=f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")]
+        return _text(TextContent, f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")
 
     async def rememb_write():
         entries = arguments.get("entries")
@@ -338,8 +320,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 if not isinstance(update, dict):
                     return [TextContent(type="text", text="Each batch update must be an object.")]
                 entry_id = update.get("entry_id")
-                if entry_id is None or not _validate_entry_id(entry_id):
-                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+                if err := _need_id(entry_id, TextContent):
+                    return err
                 if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
                     return [TextContent(type="text", text=f"Provide at least one field to update for {entry_id}: content, section, or tags.")]
             results = await asyncio.to_thread(edit_entries, root, updates)
@@ -354,8 +336,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text=f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))]
 
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if err := _need_id(entry_id, TextContent):
+            return err
         content = arguments.get("content")
         section = arguments.get("section")
         tags = arguments.get("tags")
@@ -379,8 +361,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             if not isinstance(entry_ids, list) or not entry_ids:
                 return [TextContent(type="text", text="Provide a non-empty entry_ids array.")]
             for entry_id in entry_ids:
-                if not _validate_entry_id(entry_id):
-                    return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+                if err := _need_id(entry_id, TextContent):
+                    return err
             deleted_ids = await asyncio.to_thread(delete_entries, root, entry_ids)
             deleted_set = set(deleted_ids)
             lines = []
@@ -392,8 +374,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             return [TextContent(type="text", text=f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))]
 
         entry_id = arguments["entry_id"]
-        if not _validate_entry_id(entry_id):
-            return [TextContent(type="text", text=f"Invalid entry ID format: {entry_id}. Expected 8 hex characters.")]
+        if err := _need_id(entry_id, TextContent):
+            return err
         if await asyncio.to_thread(delete_entry, root, entry_id):
             return [TextContent(type="text", text=f"Deleted {entry_id}")]
         return [TextContent(type="text", text=f"Entry {entry_id} not found")]
@@ -536,7 +518,7 @@ def _build_tools(Tool):
             properties={
                 "entry_id": {
                     "type": "string",
-                    "description": "Entry ID (8 hex characters)",
+                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
                 },
                 "include_deleted": {
                     "type": "boolean",
@@ -556,7 +538,7 @@ def _build_tools(Tool):
             properties={
                 "limit": {
                     "type": "integer",
-                    "default": 10,
+                    "default": DEFAULT_RECENT_LIMIT,
                     "description": "Maximum number of entries to return",
                 },
                 "section": {
@@ -581,7 +563,7 @@ def _build_tools(Tool):
             properties={
                 "limit": {
                     "type": "integer",
-                    "default": 50,
+                    "default": DEFAULT_TAG_LIMIT,
                     "description": "Maximum number of tags to return",
                 },
                 "include_deleted": {
@@ -636,7 +618,7 @@ def _build_tools(Tool):
                 },
                 "limit": {
                     "type": "integer",
-                    "default": 100,
+                    "default": DEFAULT_PAGE_LIMIT,
                     "description": "Maximum entries to return",
                 },
                 "sort_by": {
@@ -680,7 +662,7 @@ def _build_tools(Tool):
                 },
                 "top_k": {
                     "type": "integer",
-                    "default": 5,
+                    "default": DEFAULT_SEARCH_TOP_K,
                     "description": "Maximum number of results",
                 },
                 "max_chars": {
@@ -696,7 +678,7 @@ def _build_tools(Tool):
             properties={
                 "entry_id": {
                     "type": "string",
-                    "description": "Entry ID (8 hex characters)",
+                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
                 },
                 "include_deleted": {
                     "type": "boolean",
@@ -712,7 +694,7 @@ def _build_tools(Tool):
             properties={
                 "entry_id": {
                     "type": "string",
-                    "description": "Entry ID (8 hex characters)",
+                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
                 },
                 "version": {
                     "type": "integer",
@@ -727,7 +709,7 @@ def _build_tools(Tool):
             properties={
                 "entry_id": {
                     "type": "string",
-                    "description": "Entry ID (8 hex characters)",
+                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
                 },
                 "from_version": {
                     "type": "integer",
@@ -791,7 +773,7 @@ def _build_tools(Tool):
             properties={
                 "entry_id": {
                     "type": "string",
-                    "description": "Entry ID (8 hex characters)",
+                    "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
                 },
                 "updates": {
                     "type": "array",
@@ -801,7 +783,7 @@ def _build_tools(Tool):
                         "properties": {
                             "entry_id": {
                                 "type": "string",
-                                "description": "Entry ID (8 hex characters)",
+                                "description": f"Entry ID ({ENTRY_ID_LENGTH} hex characters)",
                             },
                             "content": {
                                 "type": "string",

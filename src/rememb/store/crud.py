@@ -8,12 +8,17 @@ from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
-from rememb.config import DEFAULT_CONFIG
+from rememb.config import (
+    DEFAULT_CONFIG,
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_RECENT_LIMIT,
+    DEFAULT_SEARCH_TOP_K,
+    DEFAULT_TAG_LIMIT,
+    ENTRY_ID_LENGTH,
+)
 from rememb.exceptions import (
     RemembConfigError,
-    RemembError,
     RemembNotInitializedError,
-    RemembStorageError,
     RemembValidationError,
 )
 from rememb.helpers import (
@@ -35,7 +40,6 @@ from rememb.utils import (
     _apply_revision,
     _config_path,
     _current_entry_version,
-    _deleted_at,
     _entries_db_path,
     _entries_path,
     _entry_history,
@@ -49,25 +53,18 @@ from rememb.utils import (
     _now,
     _rememb_path,
     _revision_label,
-    _validate_entry_id,
+    require_entry_id,
 )
 
 logger = logging.getLogger(__name__)
 
 
 def _generate_entry_id(existing_ids: set[str]) -> str:
-    new_id = str(uuid.uuid4())[:8]
-    max_attempts = 100
-    attempts = 0
-    while new_id in existing_ids and attempts < max_attempts:
-        new_id = str(uuid.uuid4())[:8]
-        attempts += 1
-
-    if new_id in existing_ids:
-        raise RemembStorageError("Failed to generate unique ID after 100 attempts. Too many entries.")
-
-    existing_ids.add(new_id)
-    return new_id
+    while True:
+        new_id = uuid.uuid4().hex[:ENTRY_ID_LENGTH]
+        if new_id not in existing_ids:
+            existing_ids.add(new_id)
+            return new_id
 
 
 def write_entries(
@@ -231,7 +228,6 @@ def write_entry(
         RemembNotInitializedError: If rememb not initialized
         RemembValidationError: If section invalid or duplicate detected
         RemembConfigError: If max entries limit reached
-        RemembStorageError: If ID generation fails
     """
     logger.info(f"Writing entry to section '{section}'")
     return write_entries(
@@ -628,7 +624,7 @@ def read_entries_page(
     tag: str | None = None,
     include_deleted: bool = False,
     offset: int = 0,
-    limit: int = 100,
+    limit: int = DEFAULT_PAGE_LIMIT,
     sort_by: str = "storage",
     descending: bool = False,
 ) -> dict:
@@ -715,7 +711,7 @@ def read_entries_page(
 def search_entries(
     root: Path,
     query: str,
-    top_k: int = 5,
+    top_k: int = DEFAULT_SEARCH_TOP_K,
     section: str | None = None,
     tag: str | None = None,
     *,
@@ -835,10 +831,7 @@ def export_entries(
 ) -> dict[str, Any] | None:
     _assert_initialized(root)
     if entry_id is not None:
-        if not _validate_entry_id(entry_id):
-            raise RemembValidationError(
-                f"Invalid entry ID format: {entry_id}. Expected 8 hex characters."
-            )
+        require_entry_id(entry_id)
         source = _find_entry(_load_entries(root), entry_id.lower())
         if source is None:
             return None
@@ -934,19 +927,56 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
     }
 
 
-AGENT_SUMMARIZE_THRESHOLD = 8
-
-
 def agent_summarize_hint(entry_count: int, *, has_more: bool = False) -> str:
-    """Return guidance for the calling agent when a read payload is large."""
-    if entry_count < AGENT_SUMMARIZE_THRESHOLD and not has_more:
+    """Return guidance when pagination says more entries remain."""
+    if not has_more:
         return ""
-    more = " More pages may remain." if has_more else ""
     return (
-        f"\n---\nAgent note: {entry_count} entries returned.{more} "
+        f"\n---\nAgent note: {entry_count} entries returned. More pages may remain. "
         "Summarize task-relevant facts in your working context. "
         "Narrow with section, tag, rememb_search, or smaller rememb_read_page limits when needed."
     )
+
+
+def get_entry(root: Path, entry_id: str, *, include_deleted: bool = False) -> dict[str, Any] | None:
+    """Return one entry by ID."""
+    normalized = require_entry_id(entry_id)
+    _assert_initialized(root)
+    entries = _filter_deleted(_load_entries(root), include_deleted=include_deleted)
+    return _find_entry(entries, normalized)
+
+
+def list_entry_tags(root: Path, *, include_deleted: bool = False, limit: int = DEFAULT_TAG_LIMIT) -> list[dict[str, Any]]:
+    """Return tags with usage counts, sorted by frequency."""
+    _assert_initialized(root)
+    counts: dict[str, int] = {}
+    for entry in _filter_deleted(_load_entries(root), include_deleted=include_deleted):
+        for tag in entry.get("tags", []):
+            if isinstance(tag, str) and tag.strip():
+                normalized = tag.strip().lower()
+                counts[normalized] = counts.get(normalized, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    if limit > 0:
+        ranked = ranked[:limit]
+    return [{"tag": tag, "count": count} for tag, count in ranked]
+
+
+def read_recent_entries(
+    root: Path,
+    *,
+    limit: int = DEFAULT_RECENT_LIMIT,
+    section: str | None = None,
+    include_deleted: bool = False,
+) -> list[dict[str, Any]]:
+    """Return recently updated entries."""
+    if limit <= 0:
+        raise RemembValidationError("limit must be > 0")
+    entries = read_entries(root, section, include_deleted=include_deleted)
+    entries.sort(
+        key=lambda entry: str(entry.get("updated_at") or entry.get("created_at") or ""),
+        reverse=True,
+    )
+    return entries[:limit]
 
 
 def format_entries(

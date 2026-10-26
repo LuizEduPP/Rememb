@@ -1,0 +1,15 @@
+name: Docs
+description: A gap or error in the README or docs.
+labels: [documentation]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong or missing
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: File
+      placeholder: README.md

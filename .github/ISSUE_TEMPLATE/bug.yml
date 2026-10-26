@@ -1,0 +1,28 @@
+name: Bug
+description: Something is broken in the store, MCP, CLI, or web UI.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      placeholder: Command, error text, and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      placeholder: Steps, MCP client or web UI, store path if relevant.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: rememb --version, git sha, or install path
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: OS, Python version, JSON or SQLite, stdio or SSE

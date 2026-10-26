@@ -1,0 +1,16 @@
+name: Change
+description: A change to the system or the repository.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What should change
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+    validations:
+      required: true

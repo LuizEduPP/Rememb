@@ -2,57 +2,351 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 import warnings
+from collections.abc import Callable
+from datetime import UTC, datetime
 from difflib import unified_diff
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from rememb.config import (
     DEFAULT_CONFIG,
     DEFAULT_MCP_SECTION,
     DEFAULT_PAGE_LIMIT,
     DEFAULT_RECENT_LIMIT,
+    DEFAULT_REMOVED_SECTION_NAME,
     DEFAULT_SEARCH_TOP_K,
+    DEFAULT_SECTIONS,
     DEFAULT_STORAGE_BACKEND,
     DEFAULT_TAG_LIMIT,
     ENTRY_ID_LENGTH,
+    META_FILE,
+    NON_NEGATIVE_INT_CONFIG_KEYS,
+    POSITIVE_INT_CONFIG_KEYS,
     STORAGE_BACKEND_SQLITE,
+    TIMESTAMP_FORMAT,
 )
 from rememb.exceptions import (
     RemembConfigError,
+    RemembNotInitializedError,
     RemembValidationError,
 )
 from rememb.helpers import (
-    _assert_initialized,
-    _atomic_modify,
     _config_path,
-    _get_sections,
-    _keyword_search,
-    _load_entries,
-    _migrate_entries_to_section,
-    _normalize_search_text,
-    _now,
+    _is_hex_color,
+    _normalize_section_colors,
+    _normalize_sections,
     _read_json_dict,
-    _restore_migrated_entries,
-    _sanitize_content,
-    _sanitize_tags,
     _store_context,
-    _sync_meta_sections,
-    _validate_config_updates,
-    _validate_section,
     _write_json,
 )
 from rememb.utils import (
     _entries_db_path,
     _entries_path,
     _rememb_path,
+    _store_file,
     clip_text,
+    is_initialized,
     parse_int,
     require_entry_id,
 )
 
 logger = logging.getLogger(__name__)
+
+_SEARCH_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
+_ModifierResult = TypeVar("_ModifierResult")
+
+
+def _now() -> str:
+    return datetime.now(UTC).strftime(TIMESTAMP_FORMAT)
+
+
+def _meta_path(root: Path) -> Path:
+    return _store_file(root, META_FILE)
+
+
+def _get_sections(root: Path | None = None) -> list[str]:
+    if root is None:
+        return list(DEFAULT_SECTIONS)
+    return list(_store_context.get_config(root)["sections"])
+
+
+def _validate_section(section: str, root: Path | None = None) -> str:
+    section = section.lower()
+    sections = _get_sections(root)
+    if section not in sections:
+        raise RemembValidationError(f"Invalid section '{section}'. Choose from: {', '.join(sections)}")
+    return section
+
+
+def _assert_initialized(root) -> None:
+    if not is_initialized(root):
+        raise RemembNotInitializedError("rememb not initialized. Run `rememb init` first.")
+
+
+def _backend(root: Path, backend: str | None = None):
+    from rememb.storage import get_storage_backend
+
+    return get_storage_backend(root, backend=backend)
+
+
+def _load_entries(root: Path) -> list[dict]:
+    return _backend(root).load_entries(root)
+
+
+def _atomic_modify(root: Path, modifier: Callable[[list[dict]], _ModifierResult]) -> _ModifierResult:
+    return _backend(root).atomic_modify(root, modifier)
+
+
+def _normalize_search_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.lower().split()).strip()
+
+
+def _search_tokens(value: object) -> set[str]:
+    normalized = _normalize_search_text(value)
+    if not normalized:
+        return set()
+    return {token for token in _SEARCH_TOKEN_RE.findall(normalized) if token}
+
+
+def _search_document(entry: dict[str, Any]) -> str:
+    content = _normalize_search_text(entry.get("content", ""))
+    section = _normalize_search_text(entry.get("section", ""))
+    tags = " ".join(
+        _normalize_search_text(tag)
+        for tag in entry.get("tags", [])
+        if isinstance(tag, str)
+    )
+    return " ".join(part for part in (section, tags, content) if part)
+
+
+def _keyword_search(
+    entries: list[dict],
+    query: str,
+    top_k: int,
+) -> list[dict]:
+    normalized_query = _normalize_search_text(query)
+    query_tokens = _search_tokens(query)
+    texts = [_search_document(e) for e in entries]
+    scored: list[tuple[float, int]] = []
+
+    for i, entry in enumerate(entries):
+        document = texts[i]
+        document_tokens = _search_tokens(document)
+        score = 0.0
+
+        if normalized_query and normalized_query in document:
+            score += 1.0
+
+        if query_tokens and document_tokens:
+            score += len(query_tokens & document_tokens) / len(query_tokens)
+
+        tag_tokens: set[str] = set()
+        for tag in entry.get("tags", []):
+            tag_tokens.update(_search_tokens(tag))
+        if query_tokens and tag_tokens:
+            score += len(query_tokens & tag_tokens) / len(query_tokens)
+
+        if score <= 0.0:
+            continue
+
+        scored.append((score, i))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    ranked: list[dict] = []
+    for score, index in scored[:top_k]:
+        item = dict(entries[index])
+        item["score"] = round(float(score), 4)
+        ranked.append(item)
+    return ranked
+
+
+def _sanitize_content(content: str, root: Path) -> str:
+    if not isinstance(content, str):
+        raise RemembValidationError(f"Content must be string, got {type(content).__name__}")
+
+    content = "".join(c for c in content if c == "\n" or c == "\t" or ord(c) >= 32)
+    normalized_lines = [" ".join(line.split()) for line in content.splitlines()]
+    content = "\n".join(normalized_lines).strip()
+
+    if not content.strip():
+        raise RemembValidationError("Content cannot be empty")
+
+    config = _store_context.get_config(root)
+    max_length = config["max_content_length"]
+    if len(content) > max_length:
+        raise RemembValidationError(f"Content too long ({len(content)} chars, max {max_length})")
+
+    return content
+
+
+def _sanitize_tags(tags: list[str], root: Path) -> list[str]:
+    if tags is None:
+        return []
+
+    if not isinstance(tags, list):
+        raise RemembValidationError(f"Tags must be list, got {type(tags).__name__}")
+
+    config = _store_context.get_config(root)
+    max_tags = config["max_tags_per_entry"]
+    max_tag_length = config["max_tag_length"]
+
+    if len(tags) > max_tags:
+        raise RemembValidationError(f"Too many tags ({len(tags)}, max {max_tags})")
+
+    sanitized = []
+    for tag in tags:
+        if not isinstance(tag, str):
+            warnings.warn(f"Tag is not a string (type: {type(tag).__name__}), skipping. Tag: {tag}")
+            continue
+
+        tag = tag.lower().strip()
+        tag = "".join(c for c in tag if c.isalnum() or c in "-_:")
+
+        if len(tag) > max_tag_length:
+            tag = tag[:max_tag_length]
+
+        if tag and tag not in sanitized:
+            sanitized.append(tag)
+
+    return sanitized
+
+
+def _validate_sections_config(raw_sections: object) -> list[str]:
+    if not isinstance(raw_sections, list):
+        raise RemembValidationError("sections must be a list of section names.")
+
+    for item in raw_sections:
+        if not isinstance(item, str):
+            raise RemembValidationError("sections must contain only strings.")
+
+    normalized = _normalize_sections(raw_sections)
+    if not normalized:
+        raise RemembValidationError("At least one section is required.")
+    return normalized
+
+
+def _plan_section_migration(
+    root: Path,
+    current_sections: list[str],
+    requested_sections: list[str],
+) -> tuple[list[str], set[str], str | None]:
+    entries = _load_entries(root)
+    removed_sections = set(current_sections) - set(requested_sections)
+    used_removed_sections = {
+        str(entry.get("section", "")).strip().lower()
+        for entry in entries
+        if str(entry.get("section", "")).strip().lower() in removed_sections
+    }
+
+    final_sections = list(requested_sections)
+    migration_target: str | None = None
+    if used_removed_sections:
+        migration_target = DEFAULT_REMOVED_SECTION_NAME
+        if migration_target not in final_sections:
+            final_sections.append(migration_target)
+
+    return final_sections, used_removed_sections, migration_target
+
+
+def _migrate_entries_to_section(root: Path, source_sections: set[str], target_section: str) -> dict[str, str]:
+    def migrate(entries: list[dict]) -> dict[str, str]:
+        moved_entries: dict[str, str] = {}
+        for entry in entries:
+            current_section = str(entry.get("section", "")).strip().lower()
+            if current_section in source_sections:
+                moved_entries[str(entry.get("id", ""))] = current_section
+                entry["section"] = target_section
+                entry["updated_at"] = _now()
+        return moved_entries
+
+    return _atomic_modify(root, migrate)
+
+
+def _restore_migrated_entries(root: Path, moved_entries: dict[str, str]) -> None:
+    if not moved_entries:
+        return
+
+    def restore(entries: list[dict]) -> None:
+        for entry in entries:
+            entry_id = str(entry.get("id", ""))
+            if entry_id in moved_entries:
+                entry["section"] = moved_entries[entry_id]
+                entry["updated_at"] = _now()
+        return None
+
+    _atomic_modify(root, restore)
+
+
+def _sync_meta_sections(root: Path, sections: list[str], *, project_name: str | None = None) -> None:
+    meta_file = _meta_path(root)
+    meta = dict(_read_json_dict(meta_file) or {})
+    meta["version"] = str(meta.get("version") or "1")
+    meta["project"] = str(meta.get("project") or project_name or root.name)
+    meta["created_at"] = str(meta.get("created_at") or _now())
+    meta["sections"] = list(sections)
+    _write_json(meta_file, meta)
+
+
+def _validate_config_updates(
+    root: Path,
+    current_config: dict[str, object],
+    updates: dict[str, object],
+) -> dict[str, object]:
+    if not isinstance(updates, dict) or not updates:
+        raise RemembValidationError("Provide at least one configuration field to update.")
+
+    next_config: dict[str, object] = dict(current_config)
+    for key, value in updates.items():
+        if key not in current_config:
+            raise RemembValidationError(f"Unknown config key: {key}")
+
+        if key in POSITIVE_INT_CONFIG_KEYS:
+            next_config[key] = parse_int(value, name=key, minimum=1)
+            continue
+
+        if key in NON_NEGATIVE_INT_CONFIG_KEYS:
+            next_config[key] = parse_int(value, name=key, minimum=0)
+            continue
+
+        if key == "sections":
+            next_config[key] = _validate_sections_config(value)
+            continue
+
+        if key == "section_colors":
+            if not isinstance(value, dict):
+                raise RemembValidationError("section_colors must be a dictionary keyed by section name.")
+            for section_name, color in value.items():
+                if not isinstance(section_name, str) or not _is_hex_color(color):
+                    raise RemembValidationError("section_colors values must be hex colors like #12abef.")
+            next_config[key] = {str(section_name): str(color).strip().lower() for section_name, color in value.items()}
+            continue
+
+        if key == "storage_backend":
+            from rememb.storage import normalize_storage_backend
+
+            next_config[key] = normalize_storage_backend(value)
+            continue
+
+        next_config[key] = value
+
+    current_sections = _validate_sections_config(current_config["sections"])
+    requested_sections = _validate_sections_config(next_config.get("sections", current_sections))
+    final_sections, used_removed_sections, migration_target = _plan_section_migration(
+        root,
+        current_sections,
+        requested_sections,
+    )
+    next_config["sections"] = final_sections
+    next_config["section_colors"] = _normalize_section_colors(next_config.get("section_colors"), final_sections)
+    next_config["_used_removed_sections"] = used_removed_sections
+    next_config["_migration_target"] = migration_target
+
+    return next_config
 
 
 def _entry_stamp(entry: dict) -> str:

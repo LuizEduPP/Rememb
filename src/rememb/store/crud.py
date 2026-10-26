@@ -51,7 +51,6 @@ from rememb.utils import (
     _entry_history,
     _entry_revision_list,
     _entry_revision_snapshot,
-    _filter_deleted,
     _find_entry,
     _find_entry_revision,
     _is_deleted_entry,
@@ -65,23 +64,16 @@ from rememb.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _entry_stamp(entry: dict) -> str:
+    return str(entry.get("updated_at") or entry.get("created_at") or "")
+
+
 def _active_entries(root: Path, *, include_deleted: bool = False) -> list[dict]:
     _assert_initialized(root)
-    return _filter_deleted(_load_entries(root), include_deleted=include_deleted)
-
-
-def _in_section(entries: list[dict], section: str | None) -> list[dict]:
-    if not section:
-        return entries
-    wanted = section.lower()
-    return [entry for entry in entries if entry.get("section") == wanted]
-
-
-def _with_tag(entries: list[dict], tag: str | None) -> list[dict]:
-    if not tag:
-        return entries
-    wanted = tag.lower().strip()
-    return [entry for entry in entries if wanted in entry.get("tags", [])]
+    entries = _load_entries(root)
+    if include_deleted:
+        return list(entries)
+    return [entry for entry in entries if not _is_deleted_entry(entry)]
 
 
 def _select_entries(
@@ -91,11 +83,14 @@ def _select_entries(
     tag: str | None = None,
     include_deleted: bool = False,
 ) -> list[dict]:
-    return _with_tag(_in_section(_active_entries(root, include_deleted=include_deleted), section), tag)
-
-
-def _entry_stamp(entry: dict) -> str:
-    return str(entry.get("updated_at") or entry.get("created_at") or "")
+    entries = _active_entries(root, include_deleted=include_deleted)
+    if section:
+        wanted = section.lower()
+        entries = [entry for entry in entries if entry.get("section") == wanted]
+    if tag:
+        wanted = tag.lower().strip()
+        entries = [entry for entry in entries if wanted in entry.get("tags", [])]
+    return entries
 
 
 def _bump_revision(entry: dict, *, now: str | None = None) -> None:
@@ -111,22 +106,12 @@ def _mutate(root: Path, modifier):
     return _atomic_modify(root, modifier)
 
 
-def _loaded_entries(root: Path) -> list[dict]:
-    _assert_initialized(root)
-    return _load_entries(root)
-
-
 def _as_int(value: object) -> int:
     return value if isinstance(value, int) else 0
 
 
 def _as_str(value: object) -> str:
     return value if isinstance(value, str) else ""
-
-
-def _require_config(root: Path) -> dict:
-    _assert_initialized(root)
-    return dict(_store_context.get_config(root))
 
 
 def _generate_entry_id(existing_ids: set[str]) -> str:
@@ -310,12 +295,13 @@ def write_entry(
 
 def get_config(root: Path) -> dict:
     """Return the effective configuration for the given root."""
-    return _require_config(root)
+    _assert_initialized(root)
+    return dict(_store_context.get_config(root))
 
 
 def update_config(root: Path, updates: dict[str, object]) -> dict:
     """Persist validated configuration updates for the given root."""
-    current_config = _require_config(root)
+    current_config = get_config(root)
     validated_config = _validate_config_updates(root, current_config, updates)
     raw_used_removed_sections = validated_config.pop("_used_removed_sections", set())
     used_removed_sections = raw_used_removed_sections if isinstance(raw_used_removed_sections, set) else set()
@@ -468,7 +454,7 @@ def delete_entry(root: Path, entry_id: str) -> bool:
     
     Args:
         root: Project root path
-        entry_id: 8-character hexadecimal entry ID
+        entry_id: Hexadecimal entry ID
     
     Returns:
         True if entry was deleted, False if not found
@@ -559,7 +545,7 @@ def edit_entry(
     
     Args:
         root: Project root path
-        entry_id: 8-character hexadecimal entry ID
+        entry_id: Hexadecimal entry ID
         content: New content (optional)
         section: New section (optional)
         tags: New tags list (optional)
@@ -806,9 +792,8 @@ def get_stats(root: Path) -> dict:
     Returns:
         Dictionary with total, by_section, size_kb, oldest, newest
     """
-    entries = _loaded_entries(root)
+    entries = _active_entries(root, include_deleted=True)
     active_entries = [entry for entry in entries if not _is_deleted_entry(entry)]
-    deleted_entries = [entry for entry in entries if _is_deleted_entry(entry)]
     total = len(active_entries)
     by_section = {s: 0 for s in _get_sections(root)}
     for e in active_entries:
@@ -827,7 +812,7 @@ def get_stats(root: Path) -> dict:
     newest = timestamps[-1][:10] if timestamps else "—"
     return {
         "total": total,
-        "deleted_total": len(deleted_entries),
+        "deleted_total": len(entries) - total,
         "by_section": by_section,
         "size_kb": size_kb,
         "storage_backend": storage_backend,
@@ -877,7 +862,7 @@ def export_entries(
 def list_entry_versions(root: Path, entry_id: str, *, include_deleted: bool = True) -> list[dict[str, Any]]:
     """List all known revisions for an entry, oldest to newest."""
     logger.debug("list_entry_versions called: entry_id=%s", entry_id)
-    entry = _find_entry(_loaded_entries(root), entry_id)
+    entry = _find_entry(_active_entries(root, include_deleted=True), entry_id)
     if entry is None:
         return []
     if _is_deleted_entry(entry) and not include_deleted:
@@ -914,7 +899,7 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
     )
     normalized_from = _normalize_version_number(from_version)
     normalized_to = _normalize_version_number(to_version)
-    entry = _find_entry(_loaded_entries(root), entry_id)
+    entry = _find_entry(_active_entries(root, include_deleted=True), entry_id)
     if entry is None:
         return None
     from_revision = _find_entry_revision(entry, normalized_from)

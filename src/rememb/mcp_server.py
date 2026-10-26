@@ -42,19 +42,18 @@ from rememb.store import (
     write_entries,
     write_entry,
 )
-from rememb.exceptions import RemembError, rememb_error_response_text
+from rememb.exceptions import RemembError, RemembValidationError, rememb_error_response_text
 from rememb.mcp_stores import (
     GLOBAL_STORE_ID,
     StoreRegistry,
     ensure_store_root,
 )
 from rememb.utils import (
-    _validate_entry_id,
-    invalid_entry_id_message,
     is_initialized,
     list_skill_definitions,
     load_skill_definition,
     parse_int,
+    require_entry_id,
 )
 
 
@@ -107,7 +106,6 @@ def _get_mcp_sections() -> list[str]:
     """Return the union of section lists across configured stores."""
     try:
         registry = _mcp_context.get_store_registry()
-        registry.ensure_configured()
         seen: list[str] = []
         for store in registry.all():
             try:
@@ -136,7 +134,6 @@ def _get_default_mcp_section() -> str:
 
 def _store_property() -> dict[str, Any]:
     registry = _mcp_context.get_store_registry()
-    registry.ensure_configured()
     return {
         "type": "string",
         "enum": registry.ids(),
@@ -166,8 +163,10 @@ def _text(cls, text: str):
 
 
 def _need_id(entry_id, reply):
-    if entry_id is None or not _validate_entry_id(str(entry_id)):
-        return reply(invalid_entry_id_message(entry_id))
+    try:
+        require_entry_id(entry_id)
+    except RemembValidationError as exc:
+        return reply(str(exc))
     return None
 
 
@@ -250,7 +249,6 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     async def rememb_list_stores():
         registry = _mcp_context.get_store_registry()
-        registry.ensure_configured()
         lines = ["Stores:"]
         for store in registry.all():
             initialized = await asyncio.to_thread(is_initialized, store.root)

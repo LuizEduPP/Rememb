@@ -430,12 +430,6 @@ def _is_deleted_entry(entry: dict[str, Any]) -> bool:
     return _deleted_at(entry) is not None
 
 
-def _filter_deleted(entries: list[dict[str, Any]], *, include_deleted: bool) -> list[dict[str, Any]]:
-    if include_deleted:
-        return list(entries)
-    return [entry for entry in entries if not _is_deleted_entry(entry)]
-
-
 def _entry_revision_list(entry: dict[str, Any]) -> list[dict[str, Any]]:
     revisions = _entry_history(entry)
     revisions.append(_entry_revision_snapshot(entry))

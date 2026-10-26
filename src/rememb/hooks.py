@@ -19,7 +19,7 @@ from rememb.config import (
     SEARCH_EXCERPT_CHARS,
     SESSION_START_MAX_BYTES,
 )
-from rememb.exceptions import RemembError, RemembValidationError
+from rememb.exceptions import RemembValidationError
 from rememb.store import (
     format_entries,
     get_stats,
@@ -242,8 +242,6 @@ def run_hook(event: str, raw: str | bytes | None = None, *, cwd: Path | None = N
             _write_hook_entry(root, format_stop_entry(payload, cwd=workdir), [HANDOFF_TAG, HOOK_TAG])
             return 0, "", ""
         return 0, format_session_start_output(build_session_start_block(root), payload), ""
-    except RemembError as exc:
-        return 1, "", f"{exc}\n"
     except Exception as exc:
         return 1, "", f"{exc}\n"
 

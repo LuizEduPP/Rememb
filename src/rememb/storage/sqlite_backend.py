@@ -11,6 +11,7 @@ from typing import Any, Callable, TypeVar
 
 from rememb.config import DEFAULT_MCP_SECTION
 from rememb.exceptions import RemembStorageError
+from rememb.helpers import _read_json
 from rememb.utils import _entries_db_path, _entries_path
 
 logger = logging.getLogger(__name__)
@@ -68,22 +69,28 @@ class SqliteEntryStorage:
             raise RemembStorageError("Invalid SQLite entry payload.")
         return payload
 
+    def _fetch_entries(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            "SELECT payload FROM entries ORDER BY updated_at ASC, created_at ASC, id ASC"
+        ).fetchall()
+        return [self._row_to_entry(row) for row in rows]
+
+    def _replace_entries(self, conn: sqlite3.Connection, entries: list[dict[str, Any]]) -> None:
+        conn.execute("DELETE FROM entries")
+        for entry in entries:
+            self._upsert_entry(conn, entry)
+
     def load_entries(self, root: Path) -> list[dict[str, Any]]:
         conn = self._connect(root)
         with self._lock:
-            rows = conn.execute(
-                "SELECT payload FROM entries ORDER BY updated_at ASC, created_at ASC, id ASC"
-            ).fetchall()
-        entries = [self._row_to_entry(row) for row in rows]
+            entries = self._fetch_entries(conn)
         logger.debug("Loaded %s entries from %s", len(entries), self._db_path(root))
         return entries
 
     def save_entries(self, root: Path, entries: list[dict[str, Any]]) -> None:
         conn = self._connect(root)
         with self._lock:
-            conn.execute("DELETE FROM entries")
-            for entry in entries:
-                self._upsert_entry(conn, entry)
+            self._replace_entries(conn, entries)
             conn.commit()
         logger.debug("Saved %s entries to %s", len(entries), self._db_path(root))
 
@@ -124,14 +131,9 @@ class SqliteEntryStorage:
         with self._lock:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                rows = conn.execute(
-                    "SELECT payload FROM entries ORDER BY updated_at ASC, created_at ASC, id ASC"
-                ).fetchall()
-                entries = [self._row_to_entry(row) for row in rows]
+                entries = self._fetch_entries(conn)
                 result = modifier(entries)
-                conn.execute("DELETE FROM entries")
-                for entry in entries:
-                    self._upsert_entry(conn, entry)
+                self._replace_entries(conn, entries)
                 conn.commit()
                 return result
             except Exception:
@@ -145,7 +147,7 @@ class SqliteEntryStorage:
         if not json_path.exists():
             return 0
         try:
-            raw_entries = json.loads(json_path.read_text(encoding="utf-8"))
+            raw_entries = _read_json(json_path)
         except json.JSONDecodeError as exc:
             raise RemembStorageError(f"Cannot migrate corrupted JSON store: {exc}") from exc
         if not isinstance(raw_entries, list):

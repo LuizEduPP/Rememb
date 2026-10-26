@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
+from fastapi import APIRouter, Query
 
-from fastapi import APIRouter, HTTPException, Query
-
+from rememb.config import DEFAULT_ENTRY_BATCH_SIZE
 from rememb.store import (
     delete_entry,
     diff_entry_versions,
@@ -17,8 +16,7 @@ from rememb.store import (
     search_entries,
     write_entry,
 )
-from rememb.web import deps
-from rememb.web.deps import raise_http_error
+from rememb.web.deps import call_store
 from rememb.web.schemas import EditRequest, WriteRequest
 
 router = APIRouter()
@@ -30,14 +28,12 @@ async def list_entries(
     tag: str | None = Query(None),
     include_deleted: bool = Query(False),
     offset: int = Query(0, ge=0),
-    limit: int = Query(24, ge=1, le=100),
+    limit: int = Query(DEFAULT_ENTRY_BATCH_SIZE, ge=1, le=100),
     sort_by: str = Query("recent"),
     descending: bool = Query(True),
 ) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    result = await asyncio.to_thread(
+    return await call_store(
         read_entries_page,
-        root,
         section,
         tag=tag,
         include_deleted=include_deleted,
@@ -46,103 +42,85 @@ async def list_entries(
         sort_by=sort_by,
         descending=descending,
     )
-    return result
 
 
 @router.post("/api/entries", status_code=201)
 async def create_entry(req: WriteRequest) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    try:
-        entry = await asyncio.to_thread(
-            write_entry,
-            root,
-            req.section,
-            req.content,
-            req.tags if req.tags else None,
-        )
-        return {"entry": entry}
-    except Exception as exc:
-        raise_http_error(exc)
+    entry = await call_store(
+        write_entry,
+        req.section,
+        req.content,
+        req.tags if req.tags else None,
+    )
+    return {"entry": entry}
 
 
 @router.put("/api/entries/{entry_id}")
 async def update_entry(entry_id: str, req: EditRequest) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    try:
-        entry = await asyncio.to_thread(
-            edit_entry,
-            root,
-            entry_id,
-            req.content,
-            req.section,
-            req.tags,
-        )
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Entry not found.")
-        return {"entry": entry}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise_http_error(exc)
+    entry = await call_store(
+        edit_entry,
+        entry_id,
+        req.content,
+        req.section,
+        req.tags,
+        not_found="Entry not found.",
+    )
+    return {"entry": entry}
 
 
 @router.delete("/api/entries/{entry_id}", status_code=204)
 async def remove_entry(entry_id: str) -> None:
-    root = await asyncio.to_thread(deps.get_root)
-    try:
-        deleted = await asyncio.to_thread(delete_entry, root, entry_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Entry not found.")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise_http_error(exc, default_status=500)
+    await call_store(
+        delete_entry,
+        entry_id,
+        default_status=500,
+        not_found="Entry not found.",
+        missing=False,
+    )
 
 
 @router.post("/api/entries/{entry_id}/restore")
 async def restore_deleted_entry_endpoint(entry_id: str) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    try:
-        entry = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Deleted entry not found.")
-        return {"entry": entry}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise_http_error(exc)
+    entry = await call_store(
+        restore_deleted_entry,
+        entry_id,
+        not_found="Deleted entry not found.",
+    )
+    return {"entry": entry}
 
 
 @router.get("/api/entries/{entry_id}/versions")
 async def entry_versions(entry_id: str, include_deleted: bool = Query(True)) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
-    if not versions:
-        raise HTTPException(status_code=404, detail="Entry not found.")
+    versions = await call_store(
+        list_entry_versions,
+        entry_id,
+        include_deleted=include_deleted,
+        not_found="Entry not found.",
+        missing=[],
+    )
     return {"versions": versions}
 
 
 @router.post("/api/entries/{entry_id}/versions/{version}/restore")
 async def restore_entry_version_endpoint(entry_id: str, version: int) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    try:
-        entry = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Entry or version not found.")
-        return {"entry": entry}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise_http_error(exc)
+    entry = await call_store(
+        restore_entry_version,
+        entry_id,
+        version,
+        not_found="Entry or version not found.",
+    )
+    return {"entry": entry}
 
 
 @router.get("/api/entries/{entry_id}/diff")
 async def entry_diff(entry_id: str, from_version: int = Query(..., ge=1), to_version: int = Query(..., ge=1)) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    diff = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
-    if diff is None:
-        raise HTTPException(status_code=404, detail="Entry or version not found.")
-    return diff
+    return await call_store(
+        diff_entry_versions,
+        entry_id,
+        from_version,
+        to_version,
+        not_found="Entry or version not found.",
+    )
 
 
 @router.get("/api/search")
@@ -153,10 +131,8 @@ async def search(
     include_deleted: bool = Query(False),
     top_k: int = Query(20, ge=1, le=100),
 ) -> dict:
-    root = await asyncio.to_thread(deps.get_root)
-    results = await asyncio.to_thread(
+    results = await call_store(
         search_entries,
-        root,
         q,
         top_k,
         section,

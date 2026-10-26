@@ -106,18 +106,18 @@ def _tool_error_text(exc: Exception) -> str:
     return f"Unexpected error: {exc}"
 
 
-def _text(TextContent, text: str):
-    return [TextContent(type="text", text=text)]
+def _text(cls, text: str):
+    return [cls(type="text", text=text)]
 
 
-def _need_id(entry_id, TextContent):
+def _need_id(entry_id, reply):
     if entry_id is None or not _validate_entry_id(str(entry_id)):
-        return _text(TextContent, invalid_entry_id_message(entry_id))
+        return reply(invalid_entry_id_message(entry_id))
     return None
 
 
 def _memory_text(
-    TextContent,
+    reply,
     entries,
     *,
     include_score: bool = False,
@@ -128,7 +128,24 @@ def _memory_text(
     body = format_entries(entries, include_id=True, include_score=include_score, max_chars=max_chars)
     hint = agent_summarize_hint(len(entries), has_more=has_more)
     payload = f"{header}\n\n{body}{hint}" if header else f"{body}{hint}"
-    return _text(TextContent, payload)
+    return reply(payload)
+
+
+def _no_update_fields(content, section, tags) -> bool:
+    return content is None and section is None and tags is None
+
+
+def _batch_status_lines(items, found, *, ok: str, missing: str, key: str | None = None) -> tuple[int, list[str]]:
+    lines: list[str] = []
+    count = 0
+    for item in items:
+        item_id = item[key] if key else item
+        if item_id in found:
+            count += 1
+            lines.append(ok.format(item_id))
+        else:
+            lines.append(missing.format(item_id))
+    return count, lines
 
 
 async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
@@ -143,99 +160,97 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         List of TextContent responses
     """
     root = await asyncio.to_thread(_get_root)
+    reply = lambda text: _text(TextContent, text)
+    arg = arguments.get
+
+    def need_id(entry_id):
+        return _need_id(entry_id, reply)
+
+    def memory(entries, **kwargs):
+        return _memory_text(reply, entries, **kwargs)
+
+    def not_found(entry_id, extra=""):
+        return reply(f"Entry {entry_id}{extra} not found")
 
     async def rememb_get():
         entry_id = arguments["entry_id"]
-        if err := _need_id(entry_id, TextContent):
+        if err := need_id(entry_id):
             return err
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
-        entry = await asyncio.to_thread(get_entry, root, entry_id, include_deleted=include_deleted)
+        entry = await asyncio.to_thread(
+            get_entry, root, entry_id, include_deleted=arg("include_deleted", False)
+        )
         if entry is None:
-            return _text(TextContent, f"Entry {entry_id} not found")
-        return _memory_text(TextContent, [entry], max_chars=max_chars)
+            return not_found(entry_id)
+        return memory([entry], max_chars=arg("max_chars"))
 
     async def rememb_recent():
-        limit = arguments.get("limit", DEFAULT_RECENT_LIMIT)
-        section = arguments.get("section")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
         entries = await asyncio.to_thread(
             read_recent_entries,
             root,
-            limit=limit,
-            section=section,
-            include_deleted=include_deleted,
+            limit=arg("limit", DEFAULT_RECENT_LIMIT),
+            section=arg("section"),
+            include_deleted=arg("include_deleted", False),
         )
-        return _memory_text(TextContent, entries, max_chars=max_chars)
+        return memory(entries, max_chars=arg("max_chars"))
 
     async def rememb_list_tags():
-        limit = arguments.get("limit", DEFAULT_TAG_LIMIT)
-        include_deleted = arguments.get("include_deleted", False)
-        tags = await asyncio.to_thread(list_entry_tags, root, include_deleted=include_deleted, limit=limit)
+        tags = await asyncio.to_thread(
+            list_entry_tags,
+            root,
+            include_deleted=arg("include_deleted", False),
+            limit=arg("limit", DEFAULT_TAG_LIMIT),
+        )
         if not tags:
-            return _text(TextContent, "No tags found.")
+            return reply("No tags found.")
         lines = ["Tags (count):"]
         lines.extend(f"- {item['tag']}: {item['count']}" for item in tags)
-        return _text(TextContent, "\n".join(lines))
+        return reply("\n".join(lines))
 
     async def rememb_read():
-        section = arguments.get("section")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
-        entries = await asyncio.to_thread(read_entries, root, section, include_deleted=include_deleted)
-        return _memory_text(TextContent, entries, max_chars=max_chars)
+        entries = await asyncio.to_thread(
+            read_entries, root, arg("section"), include_deleted=arg("include_deleted", False)
+        )
+        return memory(entries, max_chars=arg("max_chars"))
 
     async def rememb_read_page():
-        section = arguments.get("section")
-        tag = arguments.get("tag")
-        include_deleted = arguments.get("include_deleted", False)
-        offset = arguments.get("offset", 0)
-        limit = arguments.get("limit", DEFAULT_PAGE_LIMIT)
-        sort_by = arguments.get("sort_by", "storage")
-        descending = arguments.get("descending", False)
-        max_chars = arguments.get("max_chars")
         page = await asyncio.to_thread(
             read_entries_page,
             root,
-            section,
-            tag=tag,
-            include_deleted=include_deleted,
-            offset=offset,
-            limit=limit,
-            sort_by=sort_by,
-            descending=descending,
+            arg("section"),
+            tag=arg("tag"),
+            include_deleted=arg("include_deleted", False),
+            offset=arg("offset", 0),
+            limit=arg("limit", DEFAULT_PAGE_LIMIT),
+            sort_by=arg("sort_by", "storage"),
+            descending=arg("descending", False),
         )
         header = (
             f"Page {page['offset']}..{page['next_offset']} of {page['total']} "
             f"(limit={page['limit']}, has_more={page['has_more']})"
         )
-        return _memory_text(
-            TextContent,
-            page["items"],
-            max_chars=max_chars,
-            header=header,
-            has_more=page["has_more"],
-        )
+        return memory(page["items"], max_chars=arg("max_chars"), header=header, has_more=page["has_more"])
 
     async def rememb_search():
-        query = arguments["query"]
-        top_k = arguments.get("top_k", DEFAULT_SEARCH_TOP_K)
-        section = arguments.get("section")
-        tag = arguments.get("tag")
-        include_deleted = arguments.get("include_deleted", False)
-        max_chars = arguments.get("max_chars")
-        entries = await asyncio.to_thread(search_entries, root, query, top_k, section, tag, include_deleted=include_deleted)
-        return _memory_text(TextContent, entries, include_score=True, max_chars=max_chars)
+        entries = await asyncio.to_thread(
+            search_entries,
+            root,
+            arguments["query"],
+            arg("top_k", DEFAULT_SEARCH_TOP_K),
+            arg("section"),
+            arg("tag"),
+            include_deleted=arg("include_deleted", False),
+        )
+        return memory(entries, include_score=True, max_chars=arg("max_chars"))
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
-        if err := _need_id(entry_id, TextContent):
+        if err := need_id(entry_id):
             return err
-        include_deleted = arguments.get("include_deleted", True)
-        versions = await asyncio.to_thread(list_entry_versions, root, entry_id, include_deleted=include_deleted)
+        versions = await asyncio.to_thread(
+            list_entry_versions, root, entry_id, include_deleted=arg("include_deleted", True)
+        )
         if not versions:
-            return _text(TextContent, f"Entry {entry_id} not found")
+            return not_found(entry_id)
         lines = [f"Versions for {entry_id} ({len(versions)} total):"]
         for revision in versions:
             deleted_marker = " [deleted]" if str(revision.get("deleted_at", "")).strip() else ""
@@ -244,47 +259,47 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 f"- v{revision['version']} section={revision.get('section', '')}{deleted_marker}"
                 f" tags=[{tags}] updated={revision.get('updated_at', '')}"
             )
-        return _text(TextContent, "\n".join(lines))
+        return reply("\n".join(lines))
 
     async def rememb_restore():
         entry_id = arguments["entry_id"]
-        if err := _need_id(entry_id, TextContent):
+        if err := need_id(entry_id):
             return err
-        version = arguments.get("version")
+        version = arg("version")
         if version is None:
             restored = await asyncio.to_thread(restore_deleted_entry, root, entry_id)
             if restored is None:
-                return _text(TextContent, f"Deleted entry {entry_id} not found")
-            return _text(TextContent, f"Restored deleted entry {entry_id} (now v{restored['version']})")
+                return reply(f"Deleted entry {entry_id} not found")
+            return reply(f"Restored deleted entry {entry_id} (now v{restored['version']})")
         restored = await asyncio.to_thread(restore_entry_version, root, entry_id, version)
         if restored is None:
-            return _text(TextContent, f"Entry {entry_id} or version {version} not found")
-        return _text(TextContent, f"Restored {entry_id} to version {version} (now v{restored['version']})")
+            return not_found(entry_id, extra=f" or version {version}")
+        return reply(f"Restored {entry_id} to version {version} (now v{restored['version']})")
 
     async def rememb_diff():
         entry_id = arguments["entry_id"]
-        if err := _need_id(entry_id, TextContent):
+        if err := need_id(entry_id):
             return err
         from_version = arguments["from_version"]
         to_version = arguments["to_version"]
         result = await asyncio.to_thread(diff_entry_versions, root, entry_id, from_version, to_version)
         if result is None:
-            return _text(TextContent, f"Entry {entry_id} or requested versions not found")
+            return not_found(entry_id, extra=" or requested versions")
         diff_text = result["diff"] or "(no content changes)"
-        return _text(TextContent, f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")
+        return reply(f"Diff {entry_id} v{from_version} -> v{to_version}\n\n{diff_text}")
 
     async def rememb_write():
-        entries = arguments.get("entries")
+        entries = arg("entries")
+        default_section = _get_default_mcp_section()
         if entries is not None:
             if not isinstance(entries, list) or not entries:
-                return _text(TextContent, "Provide a non-empty entries array.")
-            default_section = _get_default_mcp_section()
+                return reply("Provide a non-empty entries array.")
             prepared_entries: list[dict[str, Any]] = []
             for item in entries:
                 if not isinstance(item, dict):
-                    return _text(TextContent, "Each batch entry must be an object.")
+                    return reply("Each batch entry must be an object.")
                 if item.get("content") is None:
-                    return _text(TextContent, "Each batch entry must include content.")
+                    return reply("Each batch entry must include content.")
                 prepared_entries.append(
                     {
                         "content": item["content"],
@@ -294,98 +309,78 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
                 )
             created = await asyncio.to_thread(write_entries, root, prepared_entries, True)
             summary = "\n".join(f"- Saved [{entry['section']}] id={entry['id']}" for entry in created)
-            return _text(TextContent, f"Saved {len(created)} entries\n{summary}")
+            return reply(f"Saved {len(created)} entries\n{summary}")
 
-        content = arguments.get("content")
+        content = arg("content")
         if content is None:
-            return _text(TextContent, "Provide content for a single entry or entries for batch write.")
-        section = arguments.get("section", _get_default_mcp_section())
-        tags = arguments.get("tags", [])
+            return reply("Provide content for a single entry or entries for batch write.")
         entry = await asyncio.to_thread(
             write_entry,
             root,
-            section,
+            arg("section", default_section),
             content,
-            tags,
+            arg("tags", []),
             True,
         )
-        return _text(TextContent, f"Saved [{entry['section']}] id={entry['id']}")
+        return reply(f"Saved [{entry['section']}] id={entry['id']}")
 
     async def rememb_edit():
-        updates = arguments.get("updates")
+        updates = arg("updates")
         if updates is not None:
             if not isinstance(updates, list) or not updates:
-                return _text(TextContent, "Provide a non-empty updates array.")
+                return reply("Provide a non-empty updates array.")
             for update in updates:
                 if not isinstance(update, dict):
-                    return _text(TextContent, "Each batch update must be an object.")
+                    return reply("Each batch update must be an object.")
                 entry_id = update.get("entry_id")
-                if err := _need_id(entry_id, TextContent):
+                if err := need_id(entry_id):
                     return err
-                if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
-                    return _text(TextContent, f"Provide at least one field to update for {entry_id}: content, section, or tags.")
+                if _no_update_fields(update.get("content"), update.get("section"), update.get("tags")):
+                    return reply(f"Provide at least one field to update for {entry_id}: content, section, or tags.")
             results = await asyncio.to_thread(edit_entries, root, updates)
-            lines = []
-            updated_count = 0
-            for update, result in zip(updates, results):
-                if result:
-                    updated_count += 1
-                    lines.append(f"- Updated {update['entry_id']}")
-                else:
-                    lines.append(f"- Entry {update['entry_id']} not found")
-            return _text(TextContent, f"Processed {len(updates)} updates ({updated_count} updated)\n" + "\n".join(lines))
+            found = {update["entry_id"] for update, result in zip(updates, results) if result}
+            count, lines = _batch_status_lines(
+                updates, found, ok="- Updated {}", missing="- Entry {} not found", key="entry_id"
+            )
+            return reply(f"Processed {len(updates)} updates ({count} updated)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
-        if err := _need_id(entry_id, TextContent):
+        if err := need_id(entry_id):
             return err
-        content = arguments.get("content")
-        section = arguments.get("section")
-        tags = arguments.get("tags")
-        if content is None and section is None and tags is None:
-            return _text(TextContent, "Provide at least one field to update: content, section, or tags.")
-        result = await asyncio.to_thread(
-            edit_entry,
-            root,
-            entry_id,
-            content,
-            section,
-            tags,
-        )
+        content, section, tags = arg("content"), arg("section"), arg("tags")
+        if _no_update_fields(content, section, tags):
+            return reply("Provide at least one field to update: content, section, or tags.")
+        result = await asyncio.to_thread(edit_entry, root, entry_id, content, section, tags)
         if result:
-            return _text(TextContent, f"Updated {entry_id}")
-        return _text(TextContent, f"Entry {entry_id} not found")
+            return reply(f"Updated {entry_id}")
+        return not_found(entry_id)
 
     async def rememb_delete():
-        entry_ids = arguments.get("entry_ids")
+        entry_ids = arg("entry_ids")
         if entry_ids is not None:
             if not isinstance(entry_ids, list) or not entry_ids:
-                return _text(TextContent, "Provide a non-empty entry_ids array.")
+                return reply("Provide a non-empty entry_ids array.")
             for entry_id in entry_ids:
-                if err := _need_id(entry_id, TextContent):
+                if err := need_id(entry_id):
                     return err
-            deleted_ids = await asyncio.to_thread(delete_entries, root, entry_ids)
-            deleted_set = set(deleted_ids)
-            lines = []
-            for entry_id in entry_ids:
-                if entry_id in deleted_set:
-                    lines.append(f"- Deleted {entry_id}")
-                else:
-                    lines.append(f"- Entry {entry_id} not found")
-            return _text(TextContent, f"Processed {len(entry_ids)} deletions ({len(deleted_ids)} deleted)\n" + "\n".join(lines))
+            deleted_ids = set(await asyncio.to_thread(delete_entries, root, entry_ids))
+            count, lines = _batch_status_lines(
+                entry_ids, deleted_ids, ok="- Deleted {}", missing="- Entry {} not found"
+            )
+            return reply(f"Processed {len(entry_ids)} deletions ({count} deleted)\n" + "\n".join(lines))
 
         entry_id = arguments["entry_id"]
-        if err := _need_id(entry_id, TextContent):
+        if err := need_id(entry_id):
             return err
         if await asyncio.to_thread(delete_entry, root, entry_id):
-            return _text(TextContent, f"Deleted {entry_id}")
-        return _text(TextContent, f"Entry {entry_id} not found")
+            return reply(f"Deleted {entry_id}")
+        return not_found(entry_id)
 
     async def rememb_clear():
-        confirm = arguments.get("confirm", False)
-        if not confirm:
-            return _text(TextContent, "Clear cancelled. Set confirm=true to proceed.")
+        if not arg("confirm", False):
+            return reply("Clear cancelled. Set confirm=true to proceed.")
         count = await asyncio.to_thread(clear_entries, root, confirm=True)
-        return _text(TextContent, f"Cleared {count} entries")
+        return reply(f"Cleared {count} entries")
 
     async def rememb_stats():
         stats = await asyncio.to_thread(get_stats, root)
@@ -397,50 +392,39 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"Newest entry: {stats['newest']}",
             "",
         ] + [f"{sec}: {count}" for sec, count in stats["by_section"].items()]
-        return _text(TextContent, "\n".join(lines))
+        return reply("\n".join(lines))
 
     async def rememb_consolidate():
-        section = arguments.get("section")
-        result = await asyncio.to_thread(
-            consolidate_entries,
-            root,
-            section,
-        )
+        result = await asyncio.to_thread(consolidate_entries, root, arg("section"))
         target = result["section"] if result["section"] else "all sections"
-        return _text(
-            TextContent,
-            (
-                f"Consolidation completed for {target}. "
-                f"Using mode=exact. "
-                f"Removed {result['removed_count']} duplicate entries "
-                f"({result['total_before']} -> {result['total_after']})."
-            ),
+        return reply(
+            f"Consolidation completed for {target}. "
+            f"Using mode=exact. "
+            f"Removed {result['removed_count']} duplicate entries "
+            f"({result['total_before']} -> {result['total_after']})."
         )
-
 
     async def rememb_list_skills():
         skills = await asyncio.to_thread(list_skill_definitions)
         if not skills:
-            return _text(TextContent, "No bundled rememb skills found in the installed package.")
-
-        lines = []
-        for skill in skills:
-            lines.append(
-                f"- {skill['name']} (id={skill['id']})\n"
-                f"  path: {skill['path']}\n"
-                f"  description: {skill['description']}"
-            )
-        return _text(TextContent, "\n".join(lines))
+            return reply("No bundled rememb skills found in the installed package.")
+        lines = [
+            f"- {skill['name']} (id={skill['id']})\n"
+            f"  path: {skill['path']}\n"
+            f"  description: {skill['description']}"
+            for skill in skills
+        ]
+        return reply("\n".join(lines))
 
     async def rememb_use_skill():
         skill = arguments["skill"]
         loaded = await asyncio.to_thread(load_skill_definition, skill)
         if not loaded:
-            return _text(TextContent, f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills.")
-
+            return reply(
+                f"Skill '{skill}' not found or is ambiguous. Use rememb_list_skills to inspect available local skills."
+            )
         body = loaded.get("content", "").strip()
-        return _text(
-            TextContent,
+        return reply(
             (
                 f"Skill: {loaded['name']}\n"
                 f"ID: {loaded['id']}\n"
@@ -472,12 +456,12 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
 
     handler = tool_handlers.get(name)
     if not handler:
-        return _text(TextContent, f"Unknown tool: {name}")
+        return reply(f"Unknown tool: {name}")
 
     try:
         return await handler()
     except Exception as e:
-        return _text(TextContent, _tool_error_text(e))
+        return reply(_tool_error_text(e))
 
 
 def _build_tools(Tool):
@@ -538,6 +522,23 @@ def _build_tools(Tool):
     def _tags(description: str) -> dict[str, Any]:
         return {"type": "array", "items": {"type": "string"}, "description": description}
 
+    def _content(description: str) -> dict[str, Any]:
+        return {"type": "string", "description": description}
+
+    def _version(description: str) -> dict[str, Any]:
+        return {"type": "integer", "description": description}
+
+    def _array(description: str, items: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "array", "description": description, "items": items}
+
+    write_content = _content("Content to remember (1-3 sentences)")
+    write_section = _section(f"Section: {joined}")
+    write_tags = _tags("Tags to categorize this entry")
+    edit_content = _content("New content")
+    edit_section = _section("Move to different section")
+    edit_tags = _tags("Replace tags")
+    filter_section = _section(f"Optional section filter: {joined}")
+
     return [
         _tool(
             name="rememb_get",
@@ -554,7 +555,7 @@ def _build_tools(Tool):
             description="Return recently updated entries, newest first. Safe, read-only. Useful for catching up on what changed since the last session.",
             properties={
                 "limit": _limit(DEFAULT_RECENT_LIMIT, "Maximum number of entries to return"),
-                "section": _section(f"Optional section filter: {joined}"),
+                "section": filter_section,
                 "include_deleted": _include_deleted(),
                 "max_chars": _max_chars(),
             },
@@ -580,7 +581,7 @@ def _build_tools(Tool):
             name="rememb_read_page",
             description="Read a paginated slice of entries with optional section or tag filtering. Returns full entry content; summarize task-relevant facts in your working context after each page.",
             properties={
-                "section": _section(f"Optional section filter: {joined}"),
+                "section": filter_section,
                 "tag": _tag("Optional exact tag filter applied before pagination"),
                 "include_deleted": _include_deleted(description="Include soft-deleted entries in the response"),
                 "offset": _limit(0, "Zero-based page offset"),
@@ -607,7 +608,7 @@ def _build_tools(Tool):
                     "type": "string",
                     "description": "Search query - keywords or short phrases",
                 },
-                "section": _section(f"Optional section filter: {joined}"),
+                "section": filter_section,
                 "tag": _tag("Optional exact tag filter applied before keyword search"),
                 "include_deleted": _include_deleted(
                     description="Include soft-deleted entries in the search corpus and results"
@@ -634,10 +635,9 @@ def _build_tools(Tool):
             description="Restore a soft-deleted entry, or restore a specific prior version as the new current head. Restores are non-destructive: they append a new head revision rather than rewriting history.",
             properties={
                 "entry_id": _entry_id(),
-                "version": {
-                    "type": "integer",
-                    "description": "Optional historical version to restore. If omitted, restores the current soft-deleted entry.",
-                },
+                "version": _version(
+                    "Optional historical version to restore. If omitted, restores the current soft-deleted entry."
+                ),
             },
             required=["entry_id"],
         ),
@@ -646,14 +646,8 @@ def _build_tools(Tool):
             description="Show a unified diff between two revisions of the same entry. Safe, read-only operation.",
             properties={
                 "entry_id": _entry_id(),
-                "from_version": {
-                    "type": "integer",
-                    "description": "Older or source version",
-                },
-                "to_version": {
-                    "type": "integer",
-                    "description": "Newer or target version",
-                },
+                "from_version": _version("Older or source version"),
+                "to_version": _version("Newer or target version"),
             },
             required=["entry_id", "from_version", "to_version"],
         ),
@@ -661,28 +655,21 @@ def _build_tools(Tool):
             name="rememb_write",
             description="Save a new memory entry or multiple entries in one call. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID.",
             properties={
-                "content": {
-                    "type": "string",
-                    "description": "Content to remember (1-3 sentences)",
-                },
-                "entries": {
-                    "type": "array",
-                    "description": "Batch write payloads. Each item accepts content and optional section/tags.",
-                    "items": {
+                "content": write_content,
+                "entries": _array(
+                    "Batch write payloads. Each item accepts content and optional section/tags.",
+                    {
                         "type": "object",
                         "properties": {
-                            "content": {
-                                "type": "string",
-                                "description": "Content to remember (1-3 sentences)",
-                            },
-                            "section": _section(f"Section: {joined}"),
-                            "tags": _tags("Tags to categorize this entry"),
+                            "content": write_content,
+                            "section": write_section,
+                            "tags": write_tags,
                         },
                         "required": ["content"],
                     },
-                },
+                ),
                 "section": _section(f"Section: {joined}", default=default_section),
-                "tags": _tags("Tags to categorize this entry"),
+                "tags": write_tags,
             },
         ),
         _tool(
@@ -690,29 +677,22 @@ def _build_tools(Tool):
             description="Update one existing memory entry by ID or multiple entries in one call via updates[]. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove them.",
             properties={
                 "entry_id": _entry_id(),
-                "updates": {
-                    "type": "array",
-                    "description": "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
-                    "items": {
+                "updates": _array(
+                    "Batch update payloads. Each item requires entry_id and at least one of content, section, or tags.",
+                    {
                         "type": "object",
                         "properties": {
                             "entry_id": _entry_id(),
-                            "content": {
-                                "type": "string",
-                                "description": "New content",
-                            },
-                            "section": _section("Move to different section"),
-                            "tags": _tags("Replace tags"),
+                            "content": edit_content,
+                            "section": edit_section,
+                            "tags": edit_tags,
                         },
                         "required": ["entry_id"],
                     },
-                },
-                "content": {
-                    "type": "string",
-                    "description": "New content",
-                },
-                "section": _section("Move to different section"),
-                "tags": _tags("Replace tags"),
+                ),
+                "content": edit_content,
+                "section": edit_section,
+                "tags": edit_tags,
             },
         ),
         _tool(
@@ -720,13 +700,7 @@ def _build_tools(Tool):
             description="Soft-delete one memory entry by its ID or multiple entries via entry_ids[]. Deleted entries are hidden by default from reads and search, but can be restored later. Use rememb_restore to undo a deletion. Use rememb_clear to permanently delete all entries at once.",
             properties={
                 "entry_id": _entry_id("Entry ID to delete"),
-                "entry_ids": {
-                    "type": "array",
-                    "description": "Batch deletion IDs.",
-                    "items": {
-                        "type": "string",
-                    },
-                }
+                "entry_ids": _array("Batch deletion IDs.", {"type": "string"}),
             },
         ),
         _tool(
@@ -749,7 +723,7 @@ def _build_tools(Tool):
             name="rememb_consolidate",
             description="Consolidate literal duplicate entries and merge metadata (tags and access data). Exact normalized-content match only; review near-duplicates with the agent before consolidating.",
             properties={
-                "section": _section(f"Optional section filter: {joined}"),
+                "section": filter_section,
             },
         ),
         _tool(

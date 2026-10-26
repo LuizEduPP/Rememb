@@ -76,8 +76,8 @@ def _normalize_section_colors(value: object, sections: list[str]) -> dict[str, s
     return normalized
 
 
-def _json_text(data: Any) -> str:
-    return json.dumps(data, indent=2)
+def _json_text(data: Any, *, ensure_ascii: bool = True) -> str:
+    return json.dumps(data, indent=2, ensure_ascii=ensure_ascii)
 
 
 def _fsync_handle(handle) -> None:
@@ -85,11 +85,15 @@ def _fsync_handle(handle) -> None:
     os.fsync(handle.fileno())
 
 
+def _read_json(filepath: Path) -> Any:
+    return json.loads(filepath.read_text(encoding="utf-8"))
+
+
 def _read_json_dict(filepath: Path) -> dict[str, Any] | None:
     if not filepath.exists():
         return None
     try:
-        loaded = json.loads(filepath.read_text(encoding="utf-8"))
+        loaded = _read_json(filepath)
     except (json.JSONDecodeError, OSError):
         return None
     if not isinstance(loaded, dict):

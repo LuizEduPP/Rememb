@@ -39,12 +39,13 @@ STORAGE_BACKEND_JSON = "json"
 STORAGE_BACKEND_SQLITE = "sqlite"
 DEFAULT_STORAGE_BACKEND = STORAGE_BACKEND_JSON
 
+DEFAULT_ENTRY_BATCH_SIZE = 24
 _POSITIVE_INT_DEFAULTS = {
     "max_content_length": 1_000_000,
     "max_tag_length": 500,
     "max_tags_per_entry": 100,
     "max_entries": 100_000,
-    "entry_batch_size": 24,
+    "entry_batch_size": DEFAULT_ENTRY_BATCH_SIZE,
 }
 _NON_NEGATIVE_INT_DEFAULTS = {
     "entry_load_threshold": 6,

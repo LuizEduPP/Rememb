@@ -35,6 +35,7 @@ from rememb.helpers import (
     _sanitize_content,
     _sanitize_tags,
     _keyword_search,
+    _normalize_search_text,
     _store_context,
     _sync_meta_sections,
     _validate_config_updates,
@@ -121,6 +122,11 @@ def _as_int(value: object) -> int:
 
 def _as_str(value: object) -> str:
     return value if isinstance(value, str) else ""
+
+
+def _require_config(root: Path) -> dict:
+    _assert_initialized(root)
+    return dict(_store_context.get_config(root))
 
 
 def _generate_entry_id(existing_ids: set[str]) -> str:
@@ -304,14 +310,12 @@ def write_entry(
 
 def get_config(root: Path) -> dict:
     """Return the effective configuration for the given root."""
-    _assert_initialized(root)
-    return dict(_store_context.get_config(root))
+    return _require_config(root)
 
 
 def update_config(root: Path, updates: dict[str, object]) -> dict:
     """Persist validated configuration updates for the given root."""
-    _assert_initialized(root)
-    current_config = _store_context.get_config(root)
+    current_config = _require_config(root)
     validated_config = _validate_config_updates(root, current_config, updates)
     raw_used_removed_sections = validated_config.pop("_used_removed_sections", set())
     used_removed_sections = raw_used_removed_sections if isinstance(raw_used_removed_sections, set) else set()
@@ -359,8 +363,7 @@ def consolidate_entries(
 
     def _entry_key(entry: dict) -> tuple[str, str]:
         content = _as_str(entry.get("content"))
-        normalized = " ".join(content.split()).strip().lower()
-        return _as_str(entry.get("section") or DEFAULT_MCP_SECTION), normalized
+        return _as_str(entry.get("section") or DEFAULT_MCP_SECTION), _normalize_search_text(content)
 
     def _pick_timestamp(current: str, incoming: str, *, prefer_latest: bool) -> str:
         if not current:

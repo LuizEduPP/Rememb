@@ -16,6 +16,7 @@ from rememb.config import (
     DEFAULT_SSE_PORT,
     DEFAULT_TAG_LIMIT,
     ENTRY_ID_LENGTH,
+    SEARCH_EXCERPT_CHARS,
 )
 from rememb.store import (
     agent_summarize_hint,
@@ -53,6 +54,7 @@ from rememb.utils import (
     is_initialized,
     list_skill_definitions,
     load_skill_definition,
+    parse_int,
 )
 
 
@@ -182,6 +184,15 @@ def _memory_text(
     hint = agent_summarize_hint(len(entries), has_more=has_more)
     payload = f"{header}\n\n{body}{hint}" if header else f"{body}{hint}"
     return reply(payload)
+
+
+def _search_max_chars(root: Path, raw) -> int | None:
+    if raw is None:
+        return int(get_config(root).get("search_excerpt_chars", SEARCH_EXCERPT_CHARS))
+    value = parse_int(raw, name="max_chars", minimum=0)
+    if value == 0:
+        return None
+    return value
 
 
 def _no_update_fields(content, section, tags) -> bool:
@@ -316,7 +327,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             arg("tag"),
             include_deleted=arg("include_deleted", False),
         )
-        return memory(entries, include_score=True, max_chars=arg("max_chars"))
+        return memory(entries, include_score=True, max_chars=_search_max_chars(root, arg("max_chars")))
 
     async def rememb_versions():
         entry_id = arguments["entry_id"]
@@ -693,7 +704,10 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_search",
-            description="Keyword and token search over memory entries. Safe, read-only operation. Returns top_k lexical matches with full entry content; summarize task-relevant facts in your working context.",
+            description=(
+                "Keyword and token search over memory entries. Safe, read-only. "
+                "Returns id, score, tags, date, and a short excerpt. Use rememb_get for full body."
+            ),
             properties={
                 "query": {
                     "type": "string",
@@ -705,7 +719,13 @@ def _build_tools(Tool):
                     description="Include soft-deleted entries in the search corpus and results"
                 ),
                 "top_k": _limit(DEFAULT_SEARCH_TOP_K, "Maximum number of results"),
-                "max_chars": _max_chars(),
+                "max_chars": {
+                    "type": "integer",
+                    "description": (
+                        f"Excerpt length per entry. Default {SEARCH_EXCERPT_CHARS}. "
+                        "0 returns the full body."
+                    ),
+                },
             },
             required=["query"],
         ),

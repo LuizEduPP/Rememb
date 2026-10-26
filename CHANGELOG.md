@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Host door: `rememb hook post-tool` / `stop` write into `actions`; `rememb hook session-start` injects recent entries, tags, and stats. Stop tags the write `handoff` so the next host sees it first.
+- `rememb install [--host cursor|claude|codex] [--apply] [--project] [--uninstall]` writes MCP, Memory Rules, and host hooks without duplicating them.
+- Product skill `rememb` for when to write, search then get, and hand off across IDEs.
+
+### Changed
+- `rememb_search` defaults to a short excerpt (`search_excerpt_chars`, 160). `max_chars=0` returns the full body; `rememb_get` / `rememb_read` stay full-body.
+
 ## [0.4.18] - 2026-10-05
 
 ### Added

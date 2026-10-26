@@ -52,7 +52,15 @@ pip install rememb
 
 Zero friction. No CLI commands. Native IDE integration.
 
-**1. Add to your IDE's MCP config:**
+**1. Install the door, or add the MCP block by hand:**
+
+```bash
+rememb install --apply --project
+```
+
+That writes the MCP server, Memory Rules, and SessionStart / PostToolUse / Stop hooks when the host has them. Without `--apply` it only prints the plan. Use `--host cursor|claude|codex` to limit the target.
+
+Or add this to your IDE's MCP config:
 
 ```json
 {
@@ -71,7 +79,7 @@ Add repeatable `--project /path/to/repo` args for per-project stores alongside g
 
 The agent can read stored context at session start, write durable memory when something changes, and search only when targeted recall is needed.
 
-If you want rememb usage to stay consistent, add a rememb-specific instruction block in your IDE custom instructions or in the MCP client prompt that wraps the agent. The point is to make the agent route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory.
+`rememb install` writes the Memory Rules where the host reads them. You can still paste the same block by hand into IDE custom instructions or the MCP client prompt. The point is to make the agent route reads, writes, search, recovery, and maintenance through rememb instead of ad hoc prompt memory.
 
 You can place that block in either of these places:
 
@@ -148,13 +156,14 @@ Search uses **keyword and token matching** over entry content and tags. rememb r
   },
   "entry_batch_size": 24,
   "entry_load_threshold": 6,
+  "search_excerpt_chars": 160,
   "storage_backend": "json"
 }
 ```
 
 Set `storage_backend` to `sqlite` for larger stores. The Web UI and MCP migrate existing JSON entries automatically when you switch backends.
 
-`entry_batch_size` and `entry_load_threshold` control pagination in the web UI — how many cards load at once and when to trigger "load more".
+`entry_batch_size` and `entry_load_threshold` control pagination in the web UI — how many cards load at once and when to trigger "load more". `search_excerpt_chars` is the default excerpt length for `rememb_search`; pass `max_chars=0` for the full body.
 
 Section names are normalized to lowercase, duplicates are ignored after normalization, and removing a section with existing entries automatically migrates those entries to `uncategorized`. `meta.json` is kept in sync with the current effective section list.
 
@@ -208,7 +217,7 @@ Views:
 - **Memory** — browse, keyword search, filter by section, sort, and include deleted entries
 - **Stats** — totals, backend, section bars, oldest/newest timestamps, and recent entries
 - **Settings** — edit limits, storage backend, section colors, consolidate duplicates, and save runtime config
-- **Skills** — browse bundled agent skills (60 skills shipped in the package)
+- **Skills** — browse bundled agent skills (61 skills shipped in the package)
 
 Entry inspection from the UI includes version history and side-by-side diff. Restore is available through MCP (`rememb_restore`); the Web UI is read-only for entry mutations.
 
@@ -223,6 +232,11 @@ rememb                                                      # Open the web UI (h
 rememb --host 0.0.0.0 --port 18181 --no-browser            # Custom bind, no auto-open
 rememb mcp                                                  # Start MCP server over stdio
 rememb mcp --transport sse --host 127.0.0.1 --port 8765    # One persistent local MCP process
+rememb hook session-start                                   # Inject recent + tags + stats
+rememb hook post-tool                                       # Write a PostToolUse event from stdin
+rememb hook stop                                            # Write a Stop/handoff entry from stdin
+rememb install                                              # Show MCP + rules + hooks plan
+rememb install --apply --project                            # Write them for the current directory
 rememb --version, -v                                        # Show version
 rememb --help, -h                                           # Show help
 ```
@@ -257,7 +271,7 @@ Core capabilities:
 - non-destructive versioning, diff, restore, and soft delete
 - duplicate consolidation (exact content) and store stats
 - config and maintenance via Web UI (settings only; entry writes via MCP)
-- 60 bundled agent skills via Web UI and MCP
+- 61 bundled agent skills via Web UI and MCP
 
 ---
 
@@ -267,11 +281,11 @@ The store is done. The door is not. Today every rememb call is opt-in: if the ag
 
 The next release pulls the agent. Same `~/.rememb`. The hook calls the binary we already have.
 
-- [ ] **Hooks that write** — `PostToolUse` / `Stop` call `rememb_write` (or a thin wrapper) with what just happened.
-- [ ] **Inject on SessionStart** — the start hook runs `rememb_recent` (last N) + `rememb_list_tags` + a short `rememb_stats` and puts that text in the prompt before the first user message. The store already returns this; what is missing is who fires it.
-- [ ] **Cheap index, expensive body** — `rememb_search` returns id + score + a short excerpt by default. Full body only via `rememb_get` / `rememb_read` on the ids the agent picked. Keyword search stays; only the first-call payload changes.
-- [ ] **Skill + installer** — one product `SKILL.md` (“use rememb when…”) plus an installer that (1) writes the MCP block, (2) pastes Memory Rules where the host reads them, and (3) registers SessionStart / PostToolUse / Stop when the host has hooks.
-- [ ] **Handoff** — one store, any IDE. On start: `rememb_list_stores` → `rememb_recent` on the cwd store. On stop: a short write of where we stopped / what failed / what is open. The file is the handoff.
+- [x] **Hooks that write** — `PostToolUse` / `Stop` call `rememb hook post-tool` / `rememb hook stop` and write into `actions`.
+- [x] **Inject on SessionStart** — `rememb hook session-start` prints recent + tags + stats before the first user message.
+- [x] **Cheap index, expensive body** — `rememb_search` returns id + score + a short excerpt by default. Full body only via `rememb_get` / `rememb_read` on the ids the agent picked.
+- [x] **Skill + installer** — product skill `rememb` plus `rememb install --apply` writes MCP, Memory Rules, and host hooks.
+- [x] **Handoff** — Stop writes a `handoff` entry; Start injects it first. Same store, any IDE.
 
 ---
 

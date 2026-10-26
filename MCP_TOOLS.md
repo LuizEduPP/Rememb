@@ -21,27 +21,20 @@ If you want rememb to run as a strictly agent-driven memory layer, use this rule
 
 Use rememb as the authoritative local memory layer for this project.
 
+SessionStart already injects recent entries, tags, and a short stats block. Call rememb_recent, rememb_list_tags, or rememb_stats only when that block is not enough.
+
 ## Targeted Reads
 
-* Use `rememb_get` when you already know an entry ID from search or recent reads.
+* Use `rememb_get` when you already know an entry ID from search or the injected block.
 * Use `rememb_list_stores` when multiple `--project` stores are configured; pass `store` on memory tools (`global` by default).
-* Use `rememb_recent` to catch up on what changed since the last session.
-* Use `rememb_list_tags` to discover tag filters before search or paginated reads.
-* Use `rememb_stats` for store size and section totals at session start.
+* Use `rememb_read` for broad section loads or when you need full entry content.
+* Use `rememb_read_page` when browsing large stores without flooding the context window.
 
 ## Read vs Search
 
-* Use `rememb_search` when you know specific keywords, tags, or short phrases to match.
-* Use `rememb_read` for broad section loads or when you need full entry content.
-* Use `rememb_read_page` when browsing large stores without flooding the context window.
-* Apply your own semantic relevance judgment after reads or keyword search; rememb no longer ranks search with local embedding models.
-
-## Summarization
-
-* rememb returns full entry content from read/search tools; it does not generate semantic summaries.
-* After large reads, summarize task-relevant facts in your working context before continuing.
-* Use `max_chars` only as an optional mechanical cap, not as a substitute for semantic summarization.
-* Prefer narrower reads (`section`, `tag`, `rememb_search`, smaller `rememb_read_page` limits) before relying on broad compaction.
+* `rememb_search` is an index: id, score, tags, date, and a short excerpt.
+* Use `rememb_get` or `rememb_read` for the full body of the ids you picked.
+* Apply your own semantic relevance judgment after keyword search.
 
 ## Write vs Edit
 
@@ -56,7 +49,7 @@ Use rememb as the authoritative local memory layer for this project.
 
 ## Maintenance
 
-* Use `rememb_stats` for store inspection.
+* Use `rememb_stats` for store inspection when the injected block is not enough.
 * Use `rememb_consolidate` only for intentional literal duplicate cleanup (exact content match).
 * Use `rememb_clear` only when the user explicitly requests a full reset.
 
@@ -64,6 +57,10 @@ Use rememb as the authoritative local memory layer for this project.
 
 * Use `rememb_list_skills` and `rememb_use_skill` when bundled rememb operational instructions are needed.
 * Do not substitute skills for core memory read/write/search behavior.
+
+## Handoff
+
+One `~/.rememb` (or the project `.rememb`). Any IDE. Stop already wrote where we stopped / what failed / what is open. SessionStart already injected it.
 
 ## Critical Behavioral Rules
 
@@ -135,7 +132,7 @@ Key parameters:
 
 ### rememb_search
 
-Keyword and token search over entries with optional section or tag filtering. Safe and read-only. Returns full content; agent summarizes semantically.
+Keyword and token search over entries with optional section or tag filtering. Safe and read-only. Search is an index: it returns id, score, tags, date, and a short excerpt. Use `rememb_get` / `rememb_read` / `rememb_read_page` for the full body.
 
 Key parameters:
 - query (required)
@@ -143,7 +140,7 @@ Key parameters:
 - tag
 - include_deleted
 - top_k
-- max_chars (optional mechanical cap)
+- max_chars (default `search_excerpt_chars` / 160; `0` returns the full body)
 
 ### rememb_write
 

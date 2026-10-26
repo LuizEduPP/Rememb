@@ -23,6 +23,7 @@ It is intentionally conservative. Anything listed here should be read as one of 
 |-----------|--------|-------|
 | Web UI via `rememb` | Documented | FastAPI + SPA; default `http://127.0.0.1:18181` |
 | CLI version/help output | Tested | Covered by pytest |
+| CLI `hook` / `install` | Tested | Host write/inject hooks and installer dry-run/apply |
 | JSON storage backend | Tested | Default `~/.rememb/entries.json` (home-first) |
 | SQLite storage backend | Tested | Optional `storage_backend: sqlite`; auto-migrates from JSON |
 
@@ -34,14 +35,14 @@ It is intentionally conservative. Anything listed here should be read as one of 
 | SSE MCP via `rememb mcp --transport sse` | Tested at app level | pytest verifies SSE route wiring; default port `8765` |
 | MCP tool set (18 tools) | Tested at schema level | pytest verifies the public tool list and key schema defaults |
 
-Public tools: `rememb_get`, `rememb_recent`, `rememb_list_tags`, `rememb_read`, `rememb_read_page`, `rememb_search`, `rememb_versions`, `rememb_restore`, `rememb_diff`, `rememb_write`, `rememb_edit`, `rememb_delete`, `rememb_clear`, `rememb_stats`, `rememb_consolidate`, `rememb_list_skills`, `rememb_use_skill`.
+Public tools: `rememb_list_stores`, `rememb_get`, `rememb_recent`, `rememb_list_tags`, `rememb_read`, `rememb_read_page`, `rememb_search`, `rememb_versions`, `rememb_restore`, `rememb_diff`, `rememb_write`, `rememb_edit`, `rememb_delete`, `rememb_clear`, `rememb_stats`, `rememb_consolidate`, `rememb_list_skills`, `rememb_use_skill`.
 
 ## Registry and Packaging Surfaces
 
 | Surface | Status | Notes |
 |---------|--------|-------|
 | PyPI package `rememb` | Active | Public package metadata maintained in `pyproject.toml` |
-| Bundled skills in `rememb_skills` | Active | 60 skills shipped inside the core `rememb` wheel |
+| Bundled skills in `rememb_skills` | Active | 61 skills shipped inside the core `rememb` wheel |
 | MCP registry metadata in `server.json` | Documented | Public metadata file exists in repository |
 | Docker container for MCP | Tested | Dockerfile build and `rememb mcp --help` smoke test covered in CI |
 

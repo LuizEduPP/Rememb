@@ -34,6 +34,18 @@ def test_cli_help_lists_current_commands():
     assert "-P" in output
 
 
+def test_cli_hook_and_install_help():
+    hook = runner.invoke(app, ["hook", "--help"])
+    install = runner.invoke(app, ["install", "--help"])
+
+    assert hook.exit_code == 0
+    assert "session-start" in _strip_ansi(hook.stdout)
+    assert "post-tool" in _strip_ansi(hook.stdout)
+    assert install.exit_code == 0
+    assert "--apply" in _strip_ansi(install.stdout)
+    assert "--uninstall" in _strip_ansi(install.stdout)
+
+
 def test_cli_mcp_rejects_invalid_transport():
     result = runner.invoke(app, ["mcp", "--transport", "invalid"])
 

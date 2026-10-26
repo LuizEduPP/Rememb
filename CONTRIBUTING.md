@@ -62,7 +62,7 @@ src/rememb/
     │   └── system.py
     └── static/          # SPA (index.html, app.js, style.css)
 
-src/rememb_skills/       # 60 bundled agent skills (SKILL.md per skill)
+src/rememb_skills/       # 61 bundled agent skills (SKILL.md per skill)
 tests/                   # pytest suite
 ```
 

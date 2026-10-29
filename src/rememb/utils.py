@@ -135,14 +135,16 @@ def _read_file_content(path: Path) -> str:
             return ""
     if path.suffix.lower() == ".pdf":
         try:
-            import pypdf
-            reader = pypdf.PdfReader(str(path))
-            return " ".join(page.extract_text() or "" for page in reader.pages)
+            from pypdf import PdfReader
+            from pypdf.errors import PdfReadError, PdfStreamError
         except ImportError:
             return ""
+        try:
+            reader = PdfReader(str(path))
+            return " ".join(page.extract_text() or "" for page in reader.pages)
         except (OSError, PermissionError):
             return ""
-        except (pypdf.PdfReadError, pypdf.PdfStreamError, ValueError):
+        except (PdfReadError, PdfStreamError, ValueError):
             return ""
     return ""
 

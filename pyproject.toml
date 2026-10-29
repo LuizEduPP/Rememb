@@ -42,8 +42,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "typer>=0.27.3",
-    "rich>=13.0.0",
+"typer>=0.27.3",
+    "rich>=15.0.0",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
     "pypdf>=4.0.0",
@@ -54,7 +54,7 @@ dependencies = [
 rememb = "rememb.cli:app"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pytest>=8.0.0", "httpx2>=2.0.0", "ruff>=0.11"]
+dev = ["build", "twine", "pytest>=8.0.0", "httpx2>=2.0.0", "ruff>=0.17.2"]
 
 [tool.ruff]
 target-version = "py311"

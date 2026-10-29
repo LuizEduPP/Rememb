@@ -2,7 +2,7 @@
 
 This repository publishes releases through GitHub Actions with PyPI Trusted Publishing.
 
-Current release: [v0.4.19](https://github.com/LuizEduPP/Rememb/releases/tag/v0.4.19) (host door).
+Current release: [v0.4.20](https://github.com/LuizEduPP/Rememb/releases/tag/v0.4.20).
 
 ## Goals
 

@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-10-29
+
 ### Changed
 - Package, MCP registry, and CLI description/keywords: local-first long-term memory, MCP, hooks, IDE handoff. No cloud, no API keys.
+- Dependency floors raised: `typer>=0.27.3`, `rich>=15.0.0`, `pypdf>=6.21.2` (runtime) and `ruff>=0.17.2` (dev).
+- Dev extra uses `httpx>=0.27` instead of `httpx2`: FastAPI/Starlette `TestClient` needs the official `httpx` package, which was previously only pulled in transitively via `mcp`.
+
+### Fixed
+- Malformed-PDF fallback in `_read_file_content`: import `PdfReadError`/`PdfStreamError` from `pypdf.errors`, since pypdf 6.x removed the top-level re-exports and the old handler raised `AttributeError` instead of returning an empty string.
 
 ## [0.4.19] - 2026-10-26
 

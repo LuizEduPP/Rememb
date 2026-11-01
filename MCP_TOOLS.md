@@ -94,7 +94,7 @@ Key parameters:
 
 ### rememb_recent
 
-Recently updated entries, newest first. Safe and read-only.
+Recently updated entries, newest first. Safe and read-only. Use for session catch-up; `rememb_search` for keywords, `rememb_read_page` to walk a large store.
 
 Key parameters:
 - limit
@@ -112,7 +112,7 @@ Key parameters:
 
 ### rememb_read
 
-Read all entries or filter by section. Safe and read-only.
+Read all entries or filter by section. Safe and read-only. Prefer `rememb_get` for a known ID, `rememb_read_page` for large stores, `rememb_search` for keywords.
 
 Key parameters:
 - section
@@ -121,7 +121,7 @@ Key parameters:
 
 ### rememb_read_page
 
-Read a paginated slice of entries with optional section or tag filtering. Safe and read-only. Returns full content; agent summarizes semantically.
+Read a paginated slice of full entries (`offset`/`limit`; `sort_by` storage|recent). Safe and read-only. Use instead of `rememb_read` on large stores; `rememb_search` for keywords, `rememb_recent` for newest-first.
 
 Key parameters:
 - section
@@ -147,7 +147,7 @@ Key parameters:
 
 ### rememb_write
 
-Create one entry or a batch of entries. Existing entries are never overwritten.
+Create one entry or a batch of entries. Existing entries are never overwritten. Pass `content` for one entry, or `entries[]` for a batch (`entries` wins if both are set). Returns saved id(s).
 
 Key parameters:
 - content
@@ -157,7 +157,7 @@ Key parameters:
 
 ### rememb_edit
 
-Update one entry or multiple entries in batch. Non-destructive: creates a new head revision.
+Update one entry or multiple entries in batch (`updates` wins if both are set). Non-destructive: appends a new head revision. Use `rememb_delete` to soft-delete; `rememb_clear` to wipe a store.
 
 Key parameters:
 - entry_id
@@ -176,10 +176,11 @@ Key parameters:
 
 ### rememb_clear
 
-Delete all entries after explicit confirmation.
+Permanently delete all entries in the selected store (`store` defaults to `global`). Irreversible. Requires `confirm=true`.
 
 Key parameters:
 - confirm (required)
+- store
 
 ### rememb_stats
 
@@ -187,7 +188,7 @@ Return totals, size, oldest/newest timestamps, and count by section.
 
 ### rememb_consolidate
 
-Consolidate literal duplicate entries in exact mode.
+Consolidate literal duplicate entries in exact mode. Losing entries are removed and not restorable. Review near-duplicates with `rememb_search` first.
 
 Key parameters:
 - section
@@ -196,7 +197,7 @@ Key parameters:
 
 ### rememb_versions
 
-List revisions for a single entry.
+List revisions for a single entry. Use before `rememb_diff` or `rememb_restore`; `rememb_get` is the current head only.
 
 Key parameters:
 - entry_id (required)
@@ -212,7 +213,7 @@ Key parameters:
 
 ### rememb_diff
 
-Show a unified diff between two revisions of the same entry.
+Show a unified diff between two revisions of the same entry. Call `rememb_versions` first; `from_version` and `to_version` may be in either order.
 
 Key parameters:
 - entry_id (required)

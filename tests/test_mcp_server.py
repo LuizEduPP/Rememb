@@ -19,6 +19,7 @@ class FakeTool:
     name: str
     description: str
     inputSchema: dict
+    annotations: dict | None = None
 
 
 @dataclass
@@ -46,6 +47,40 @@ EXPECTED_TOOLS = {
     "rememb_consolidate",
     "rememb_list_skills",
     "rememb_use_skill",
+}
+
+READ_ONLY = {"readOnlyHint": True, "openWorldHint": False}
+ADDITIVE = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": False,
+}
+DESTRUCTIVE = {
+    "readOnlyHint": False,
+    "destructiveHint": True,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+EXPECTED_ANNOTATIONS = {
+    "rememb_list_stores": READ_ONLY,
+    "rememb_get": READ_ONLY,
+    "rememb_recent": READ_ONLY,
+    "rememb_list_tags": READ_ONLY,
+    "rememb_read": READ_ONLY,
+    "rememb_read_page": READ_ONLY,
+    "rememb_search": READ_ONLY,
+    "rememb_versions": READ_ONLY,
+    "rememb_diff": READ_ONLY,
+    "rememb_stats": READ_ONLY,
+    "rememb_list_skills": READ_ONLY,
+    "rememb_use_skill": READ_ONLY,
+    "rememb_restore": ADDITIVE,
+    "rememb_write": ADDITIVE,
+    "rememb_edit": ADDITIVE,
+    "rememb_delete": DESTRUCTIVE,
+    "rememb_clear": DESTRUCTIVE,
+    "rememb_consolidate": DESTRUCTIVE,
 }
 
 
@@ -78,6 +113,31 @@ def test_build_tools_exposes_current_contract():
     assert "short excerpt" in by_name["rememb_search"].description
     assert "0 returns the full body" in by_name["rememb_search"].inputSchema["properties"]["max_chars"]["description"]
     assert str(SEARCH_EXCERPT_CHARS) in by_name["rememb_search"].inputSchema["properties"]["max_chars"]["description"]
+    assert {name: tool.annotations for name, tool in by_name.items()} == EXPECTED_ANNOTATIONS
+    assert "rememb_read_page to walk a large store" in by_name["rememb_recent"].description
+    assert "Prefer rememb_get" in by_name["rememb_read"].description
+    assert "Use instead of rememb_read" in by_name["rememb_read_page"].description
+    assert "Use before rememb_diff or rememb_restore" in by_name["rememb_versions"].description
+    assert "from_version and to_version (either order)" in by_name["rememb_diff"].description
+    assert "entries wins if both are set" in by_name["rememb_write"].description
+    assert "Returns saved id(s)" in by_name["rememb_write"].description
+    assert "soft-delete" in by_name["rememb_edit"].description
+    assert "permanently remove" not in by_name["rememb_edit"].description
+    assert "selected store" in by_name["rememb_clear"].description
+    assert "not restorable" in by_name["rememb_consolidate"].description
+
+
+def test_build_tools_skips_annotations_on_legacy_tool():
+    @dataclass
+    class LegacyTool:
+        name: str
+        description: str
+        inputSchema: dict
+
+    configure_mcp_stores([])
+    tools = _build_tools(LegacyTool)
+    assert {tool.name for tool in tools} == EXPECTED_TOOLS
+    assert all(not hasattr(tool, "annotations") for tool in tools)
 
 
 def test_handle_read_tools(handle, store: Path):

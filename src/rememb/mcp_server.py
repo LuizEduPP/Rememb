@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -564,6 +565,30 @@ def _build_tools(Tool):
             schema["required"] = required
         return schema
 
+    def _accepts_annotations() -> bool:
+        fields = getattr(Tool, "model_fields", None)
+        if isinstance(fields, dict):
+            return "annotations" in fields
+        try:
+            return "annotations" in inspect.signature(Tool).parameters
+        except (TypeError, ValueError):
+            return False
+
+    accepts_annotations = _accepts_annotations()
+    read_only = {"readOnlyHint": True, "openWorldHint": False}
+    additive = {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False,
+    }
+    destructive = {
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+
     def _tool(
         name: str,
         description: str,
@@ -571,15 +596,19 @@ def _build_tools(Tool):
         required: list[str] | None = None,
         *,
         include_store: bool = True,
+        annotations: dict[str, bool] | None = None,
     ):
         props = dict(properties or {})
         if include_store:
             props = {"store": _store_property(), **props}
-        return Tool(
-            name=name,
-            description=description,
-            inputSchema=_schema(props, required),
-        )
+        kwargs: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "inputSchema": _schema(props, required),
+        }
+        if annotations is not None and accepts_annotations:
+            kwargs["annotations"] = annotations
+        return Tool(**kwargs)
 
     sections = _get_mcp_sections()
     default_section = _get_default_mcp_section()
@@ -639,6 +668,7 @@ def _build_tools(Tool):
             ),
             properties={},
             include_store=False,
+            annotations=read_only,
         ),
         _tool(
             name="rememb_get",
@@ -649,16 +679,22 @@ def _build_tools(Tool):
                 "max_chars": _max_chars(per_entry=False),
             },
             required=["entry_id"],
+            annotations=read_only,
         ),
         _tool(
             name="rememb_recent",
-            description="Return recently updated entries, newest first. Safe, read-only. Useful for catching up on what changed since the last session.",
+            description=(
+                "Return recently updated entries, newest first. Safe, read-only. "
+                "Use for session catch-up; rememb_search for keywords, rememb_read_page to walk a large store. "
+                "Soft-deleted entries are omitted unless include_deleted=true."
+            ),
             properties={
                 "limit": _limit(DEFAULT_RECENT_LIMIT, "Maximum number of entries to return"),
                 "section": filter_section,
                 "include_deleted": _include_deleted(),
                 "max_chars": _max_chars(),
             },
+            annotations=read_only,
         ),
         _tool(
             name="rememb_list_tags",
@@ -667,19 +703,29 @@ def _build_tools(Tool):
                 "limit": _limit(DEFAULT_TAG_LIMIT, "Maximum number of tags to return"),
                 "include_deleted": _include_deleted(description="Include tags from soft-deleted entries"),
             },
+            annotations=read_only,
         ),
         _tool(
             name="rememb_read",
-            description="Read all memory entries or filter by section. Safe, read-only operation with no side effects. Returns full entry content; summarize task-relevant facts in your working context after large reads.",
+            description=(
+                "Read all memory entries or filter by section. Safe, read-only. "
+                "Prefer rememb_get for a known ID, rememb_read_page for large stores, rememb_search for keywords. "
+                "Soft-deleted entries are omitted unless include_deleted=true."
+            ),
             properties={
                 "section": _section(f"Filter by section: {joined}"),
                 "include_deleted": _include_deleted(description="Include soft-deleted entries in the response"),
                 "max_chars": _max_chars(),
             },
+            annotations=read_only,
         ),
         _tool(
             name="rememb_read_page",
-            description="Read a paginated slice of entries with optional section or tag filtering. Returns full entry content; summarize task-relevant facts in your working context after each page.",
+            description=(
+                "Read a paginated slice of full entries (offset/limit; sort_by storage|recent). Safe, read-only. "
+                "Use instead of rememb_read on large stores; rememb_search for keywords, rememb_recent for newest-first. "
+                "Soft-deleted entries are omitted unless include_deleted=true."
+            ),
             properties={
                 "section": filter_section,
                 "tag": _tag("Optional exact tag filter applied before pagination"),
@@ -699,6 +745,7 @@ def _build_tools(Tool):
                 },
                 "max_chars": _max_chars(),
             },
+            annotations=read_only,
         ),
         _tool(
             name="rememb_search",
@@ -726,10 +773,15 @@ def _build_tools(Tool):
                 },
             },
             required=["query"],
+            annotations=read_only,
         ),
         _tool(
             name="rememb_versions",
-            description="List all revisions known for an entry, including prior content snapshots and deleted states when requested. Safe, read-only operation.",
+            description=(
+                "List an entry's revisions, including prior snapshots. Safe, read-only. "
+                "Deleted revisions stay visible unless include_deleted=false. "
+                "Use before rememb_diff or rememb_restore; rememb_get is the current head only."
+            ),
             properties={
                 "entry_id": _entry_id(),
                 "include_deleted": _include_deleted(
@@ -738,6 +790,7 @@ def _build_tools(Tool):
                 ),
             },
             required=["entry_id"],
+            annotations=read_only,
         ),
         _tool(
             name="rememb_restore",
@@ -749,20 +802,30 @@ def _build_tools(Tool):
                 ),
             },
             required=["entry_id"],
+            annotations=additive,
         ),
         _tool(
             name="rememb_diff",
-            description="Show a unified diff between two revisions of the same entry. Safe, read-only operation.",
+            description=(
+                "Show a unified diff between two revisions of the same entry. Safe, read-only. "
+                "Call rememb_versions first to pick from_version and to_version (either order). "
+                "Missing entry or version returns not found."
+            ),
             properties={
                 "entry_id": _entry_id(),
                 "from_version": _version("Older or source version"),
                 "to_version": _version("Newer or target version"),
             },
             required=["entry_id", "from_version", "to_version"],
+            annotations=read_only,
         ),
         _tool(
             name="rememb_write",
-            description="Save a new memory entry or multiple entries in one call. Existing entries are never overwritten. Use rememb_edit to update an existing entry by ID.",
+            description=(
+                "Save a new memory entry. Existing entries are never overwritten. "
+                "Pass content for one entry, or entries[] for a batch (entries wins if both are set). "
+                "Returns saved id(s). Use rememb_edit to update an existing entry by ID."
+            ),
             properties={
                 "content": write_content,
                 "entries": _array(
@@ -780,10 +843,15 @@ def _build_tools(Tool):
                 "section": _section(f"Section: {joined}", default=default_section),
                 "tags": write_tags,
             },
+            annotations=additive,
         ),
         _tool(
             name="rememb_edit",
-            description="Update one existing memory entry by ID or multiple entries in one call via updates[]. Modifies only the fields provided (content, section, or tags) — omitted fields are unchanged. Non-destructive: entries are updated, not deleted and recreated. Use rememb_write to create new entries, rememb_delete to permanently remove them.",
+            description=(
+                "Update one existing entry by ID, or pass updates[] for a batch (updates wins if both are set). "
+                "Only provided fields change. Non-destructive: appends a new head revision. "
+                "Use rememb_write to create, rememb_delete to soft-delete, rememb_clear to wipe a store."
+            ),
             properties={
                 "entry_id": _entry_id(),
                 "updates": _array(
@@ -803,18 +871,24 @@ def _build_tools(Tool):
                 "section": edit_section,
                 "tags": edit_tags,
             },
+            annotations=additive,
         ),
         _tool(
             name="rememb_delete",
-            description="Soft-delete one memory entry by its ID or multiple entries via entry_ids[]. Deleted entries are hidden by default from reads and search, but can be restored later. Use rememb_restore to undo a deletion. Use rememb_clear to permanently delete all entries at once.",
+            description="Soft-delete one memory entry by its ID or multiple entries via entry_ids[]. Deleted entries are hidden by default from reads and search, but can be restored later. Use rememb_restore to undo a deletion. Use rememb_clear to permanently wipe the selected store.",
             properties={
                 "entry_id": _entry_id("Entry ID to delete"),
                 "entry_ids": _array("Batch deletion IDs.", {"type": "string"}),
             },
+            annotations=destructive,
         ),
         _tool(
             name="rememb_clear",
-            description="Permanently delete ALL memory entries at once. Irreversible — no recovery is possible after this operation. Requires confirm=true as a safety guard. Use rememb_delete to remove a single entry by ID instead. Only use this to fully reset the memory store.",
+            description=(
+                "Permanently delete ALL entries in the selected store (store defaults to global). "
+                "Irreversible — rememb_restore cannot recover them. Requires confirm=true. "
+                "Use rememb_delete to soft-delete individual entries."
+            ),
             properties={
                 "confirm": {
                     "type": "boolean",
@@ -822,24 +896,32 @@ def _build_tools(Tool):
                 }
             },
             required=["confirm"],
+            annotations=destructive,
         ),
         _tool(
             name="rememb_stats",
             description="Return memory usage statistics: total entries, size in KB, oldest and newest entry dates, and count per section. Safe, read-only operation with no side effects. Use to give the user an overview of their memory store or to decide if cleanup is needed.",
             properties={},
+            annotations=read_only,
         ),
         _tool(
             name="rememb_consolidate",
-            description="Consolidate literal duplicate entries and merge metadata (tags and access data). Exact normalized-content match only; review near-duplicates with the agent before consolidating.",
+            description=(
+                "Consolidate literal duplicate entries (exact normalized content) and merge tags/access onto the keeper. "
+                "Losing entries are removed and not restorable. "
+                "Review near-duplicates with rememb_search before calling; use rememb_edit plus rememb_delete for manual cleanup."
+            ),
             properties={
                 "section": filter_section,
             },
+            annotations=destructive,
         ),
         _tool(
             name="rememb_list_skills",
             description="List bundled rememb skills discovered from the installed package contents. Safe, read-only operation.",
             properties={},
             include_store=False,
+            annotations=read_only,
         ),
         _tool(
             name="rememb_use_skill",
@@ -852,6 +934,7 @@ def _build_tools(Tool):
             },
             required=["skill"],
             include_store=False,
+            annotations=read_only,
         ),
     ]
 

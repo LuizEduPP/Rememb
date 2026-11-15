@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- MCP tool contract: `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint` on all 18 tools; sibling routing on `rememb_read`, `rememb_read_page`, `rememb_recent`, `rememb_versions`, `rememb_diff`, and `rememb_consolidate`; `rememb_write` documents `content` vs `entries[]` (entries wins) and returned ids.
+
+### Fixed
+- `rememb_edit` no longer tells agents to use `rememb_delete` for a permanent wipe. Delete is soft; `rememb_clear` wipes the selected store.
+- `rememb_clear` description now says it wipes the selected store (default `global`), not every configured store.
+
 ## [0.4.20] - 2026-10-29
 
 ### Changed

@@ -16,15 +16,22 @@ from rememb.helpers import _json_text
 MCP_COMMAND = "rememb"
 MCP_ARGS = ["mcp"]
 MCP_ID = MCP_COMMAND
-HOOK_COMMANDS = {event: f"{MCP_COMMAND} hook {event}" for event in ("session-start", "post-tool", "stop")}
+HOOK_COMMANDS = {
+    event: f"{MCP_COMMAND} hook {event}"
+    for event in ("session-start", "post-tool", "stop", "pre-compact", "session-end")
+}
 CURSOR_HOOK_EVENTS = {
     "sessionStart": HOOK_COMMANDS["session-start"],
+    "sessionEnd": HOOK_COMMANDS["session-end"],
     "postToolUse": HOOK_COMMANDS["post-tool"],
+    "postToolUseFailure": HOOK_COMMANDS["post-tool"],
+    "preCompact": HOOK_COMMANDS["pre-compact"],
     "stop": HOOK_COMMANDS["stop"],
 }
 CLAUDE_HOOK_EVENTS = {
     "SessionStart": HOOK_COMMANDS["session-start"],
     "PostToolUse": HOOK_COMMANDS["post-tool"],
+    "PostToolUseFailure": HOOK_COMMANDS["post-tool"],
     "Stop": HOOK_COMMANDS["stop"],
 }
 CODEX_MCP_BEGIN = f"# {MCP_ID}-mcp"

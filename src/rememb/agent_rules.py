@@ -13,7 +13,7 @@ SessionStart already injects recent entries, tags, and a short stats block. Call
 
 ## Targeted Reads
 
-* Use `rememb_get` when you already know an entry ID from search or the injected block.
+* Use `rememb_get` when you already know an entry ID from search or the injected block; pass `entry_ids[]` to fetch several in one call.
 * Use `rememb_list_stores` when multiple `--project` stores are configured; pass `store` on memory tools (`global` by default).
 * Use `rememb_read` for broad section loads or when you need full entry content.
 * Use `rememb_read_page` when browsing large stores without flooding the context window.
@@ -39,6 +39,7 @@ SessionStart already injects recent entries, tags, and a short stats block. Call
 
 * Use `rememb_stats` for store inspection when the injected block is not enough.
 * Use `rememb_consolidate` only for intentional literal duplicate cleanup (exact content match).
+* Use `rememb_prune` to soft-delete old host-hook noise (`hook`+`auto` in `actions`) while keeping the newest entries.
 * Use `rememb_clear` only when the user explicitly requests a full reset.
 
 ## Skills

@@ -10,7 +10,7 @@ import rememb.mcp_server as mcp_server
 from rememb.config import SEARCH_EXCERPT_CHARS
 from rememb.mcp_server import _build_tools, configure_mcp_stores
 from rememb.mcp_stores import GLOBAL_STORE_ID, normalize_project_root
-from rememb.store import delete_entries, edit_entry, read_entries, write_entry
+from rememb.store import delete_entries, edit_entry, get_entry, read_entries, write_entry
 from rememb.utils import list_skill_definitions
 
 
@@ -45,6 +45,7 @@ EXPECTED_TOOLS = {
     "rememb_clear",
     "rememb_stats",
     "rememb_consolidate",
+    "rememb_prune",
     "rememb_list_skills",
     "rememb_use_skill",
 }
@@ -81,6 +82,7 @@ EXPECTED_ANNOTATIONS = {
     "rememb_delete": DESTRUCTIVE,
     "rememb_clear": DESTRUCTIVE,
     "rememb_consolidate": DESTRUCTIVE,
+    "rememb_prune": DESTRUCTIVE,
 }
 
 
@@ -100,13 +102,15 @@ def test_build_tools_exposes_current_contract():
     by_name = {tool.name: tool for tool in _build_tools(FakeTool)}
 
     assert set(by_name) == EXPECTED_TOOLS
-    assert by_name["rememb_get"].inputSchema["required"] == ["entry_id"]
+    assert "required" not in by_name["rememb_get"].inputSchema
+    assert "entry_ids" in by_name["rememb_get"].inputSchema["properties"]
     assert by_name["rememb_search"].inputSchema["required"] == ["query"]
     assert by_name["rememb_diff"].inputSchema["required"] == ["entry_id", "from_version", "to_version"]
     assert by_name["rememb_use_skill"].inputSchema["required"] == ["skill"]
     assert {"store", "content", "entries"} <= set(by_name["rememb_write"].inputSchema["properties"])
     assert {"store", "entry_id", "updates"} <= set(by_name["rememb_edit"].inputSchema["properties"])
     assert "entry_ids" in by_name["rememb_delete"].inputSchema["properties"]
+    assert "tags" in by_name["rememb_prune"].inputSchema["properties"]
     assert "store" not in by_name["rememb_list_stores"].inputSchema["properties"]
     assert "store" not in by_name["rememb_list_skills"].inputSchema["properties"]
     assert by_name["rememb_stats"].inputSchema["properties"]["store"]["default"] == GLOBAL_STORE_ID
@@ -125,6 +129,7 @@ def test_build_tools_exposes_current_contract():
     assert "permanently remove" not in by_name["rememb_edit"].description
     assert "selected store" in by_name["rememb_clear"].description
     assert "not restorable" in by_name["rememb_consolidate"].description
+    assert "Soft-delete older entries matching tags" in by_name["rememb_prune"].description
 
 
 def test_build_tools_skips_annotations_on_legacy_tool():
@@ -142,14 +147,23 @@ def test_build_tools_skips_annotations_on_legacy_tool():
 
 def test_handle_read_tools(handle, store: Path):
     entry = write_entry(store, "project", "Tagged note about auth.", ["alpha"])
+    other = write_entry(store, "actions", "Second note.", ["beta"])
 
     assert entry["id"] in handle("rememb_get", {"entry_id": entry["id"]})
+    batch = handle("rememb_get", {"entry_ids": [entry["id"], "deadbeef", other["id"]]})
+    assert "Fetched 2/3" in batch
+    assert entry["id"] in batch and other["id"] in batch
+    assert "deadbeef" in batch
     assert "Invalid entry ID" in handle("rememb_get", {"entry_id": "bad"})
+    assert "Provide entry_id or entry_ids" in handle("rememb_get", {})
     assert "alpha: 1" in handle("rememb_list_tags")
     assert "Tagged note about auth." in handle("rememb_recent")
     assert "Tagged note about auth." in handle("rememb_read")
     assert "Tagged note about auth." in handle("rememb_search", {"query": "auth"})
     assert "Page 0" in handle("rememb_read_page", {"limit": 1})
+    pruned = handle("rememb_prune", {"tags": ["beta"], "section": "actions", "keep": 0, "require_all_tags": True})
+    assert "removed=1" in pruned
+    assert get_entry(store, other["id"]) is None
 
 
 def test_search_defaults_to_excerpt_and_get_returns_body(handle, store: Path):

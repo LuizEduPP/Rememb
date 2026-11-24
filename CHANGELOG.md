@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `rememb_prune`: soft-delete older tag-matched entries (default `hook`+`auto` in `actions`), keeping the newest `keep`.
+- `rememb_get` batch via `entry_ids[]`.
+- Host hook events: `pre-compact`, `session-end`; Cursor also wires `postToolUseFailure`, `sessionEnd`, `preCompact`.
+
 ### Changed
-- MCP tool contract: `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint` on all 18 tools; sibling routing on `rememb_read`, `rememb_read_page`, `rememb_recent`, `rememb_versions`, `rememb_diff`, and `rememb_consolidate`; `rememb_write` documents `content` vs `entries[]` (entries wins) and returned ids.
+- MCP tool contract: annotations on all 19 tools; sibling routing on `rememb_read`, `rememb_read_page`, `rememb_recent`, `rememb_versions`, `rememb_diff`, and `rememb_consolidate`; `rememb_write` documents `content` vs `entries[]` (entries wins) and returned ids.
 - Default memory sections match the agent contract: `project`, `actions`, `systems`, `user`, `environment`, `outcomes`, `knowledge`, `feedback`, `rules`, `uncategorized` (replaces legacy `requests` / `context`). Default write section is `uncategorized`.
-- Host post-tool hooks skip additional read-only Cursor tools (search/fetch/await/todo/lints/etc.) so `actions` grows less from noise.
+- Host post-tool hooks use a mutating-tool allowlist plus a skip list; failures always record (tag `failed`). Stop/session-end auto-prunes excess `hook`+`auto` entries.
+- SessionStart / PreCompact inject handoff first, then `canonical`/`proibição` from priority sections, then recent (4 KiB budget).
 
 ### Fixed
 - `rememb_edit` no longer tells agents to use `rememb_delete` for a permanent wipe. Delete is soft; `rememb_clear` wipes the selected store.

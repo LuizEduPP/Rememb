@@ -17,6 +17,10 @@ from rememb.config import (
     DEFAULT_SSE_PORT,
     DEFAULT_TAG_LIMIT,
     ENTRY_ID_LENGTH,
+    HOOK_AUTO_TAG,
+    HOOK_KEEP_AUTO,
+    HOOK_SECTION,
+    HOOK_TAG,
     SEARCH_EXCERPT_CHARS,
 )
 from rememb.exceptions import RemembError, RemembValidationError, rememb_error_response_text
@@ -36,10 +40,12 @@ from rememb.store import (
     edit_entry,
     format_entries,
     get_config,
+    get_entries,
     get_entry,
     get_stats,
     list_entry_tags,
     list_entry_versions,
+    prune_entries,
     read_entries,
     read_entries_page,
     read_recent_entries,
@@ -258,15 +264,42 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return reply("\n".join(lines))
 
     async def rememb_get():
+        entry_ids = arg("entry_ids")
+        include_deleted = arg("include_deleted", False)
+        max_chars = arg("max_chars")
+        if entry_ids is not None:
+            if not isinstance(entry_ids, list) or not entry_ids:
+                return reply("Provide a non-empty entry_ids array.")
+            normalized_ids: list[str] = []
+            for raw_id in entry_ids:
+                normalized, err = need_id(raw_id)
+                if err:
+                    return err
+                normalized_ids.append(normalized)
+            results = await asyncio.to_thread(
+                get_entries, root, normalized_ids, include_deleted=include_deleted
+            )
+            found = [entry for entry in results if entry is not None]
+            missing = [
+                entry_id for entry_id, entry in zip(normalized_ids, results) if entry is None
+            ]
+            header = f"Fetched {len(found)}/{len(normalized_ids)} entries"
+            if missing:
+                header += f" (missing: {', '.join(missing)})"
+            if not found:
+                return reply(header)
+            return memory(found, max_chars=max_chars, header=header)
+        if "entry_id" not in arguments:
+            return reply("Provide entry_id or entry_ids.")
         entry_id, err = need_id(arguments["entry_id"])
         if err:
             return err
         entry = await asyncio.to_thread(
-            get_entry, root, entry_id, include_deleted=arg("include_deleted", False)
+            get_entry, root, entry_id, include_deleted=include_deleted
         )
         if entry is None:
             return not_found(entry_id)
-        return memory([entry], max_chars=arg("max_chars"))
+        return memory([entry], max_chars=max_chars)
 
     async def rememb_recent():
         entries = await asyncio.to_thread(
@@ -494,6 +527,27 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
             f"({result['total_before']} -> {result['total_after']})."
         )
 
+    async def rememb_prune():
+        tags = arg("tags")
+        if tags is None:
+            tags = [HOOK_TAG, HOOK_AUTO_TAG]
+        if not isinstance(tags, list) or not tags:
+            return reply("Provide a non-empty tags array.")
+        keep = parse_int(arg("keep", HOOK_KEEP_AUTO), name="keep", minimum=0)
+        result = await asyncio.to_thread(
+            prune_entries,
+            root,
+            tags=tags,
+            section=arg("section", HOOK_SECTION),
+            keep=keep,
+            require_all_tags=arg("require_all_tags", True),
+        )
+        return reply(
+            f"Pruned tags={result['tags']} section={result['section'] or 'all'}: "
+            f"matched={result['matched']} kept={result['kept']} "
+            f"removed={result['removed_count']}."
+        )
+
     async def rememb_list_skills():
         skills = await asyncio.to_thread(list_skill_definitions)
         if not skills:
@@ -541,6 +595,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         "rememb_clear": rememb_clear,
         "rememb_stats": rememb_stats,
         "rememb_consolidate": rememb_consolidate,
+        "rememb_prune": rememb_prune,
         "rememb_list_skills": rememb_list_skills,
         "rememb_use_skill": rememb_use_skill,
     }
@@ -676,13 +731,19 @@ def _build_tools(Tool):
         ),
         _tool(
             name="rememb_get",
-            description="Fetch one memory entry by ID with full content. Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID.",
+            description=(
+                "Fetch one memory entry by ID, or multiple via entry_ids[], with full content. "
+                "Safe, read-only. Use after rememb_search or rememb_recent when you already know the entry ID(s)."
+            ),
             properties={
                 "entry_id": _entry_id(),
+                "entry_ids": _array(
+                    "Batch fetch IDs. When set, entry_id is ignored.",
+                    _entry_id(),
+                ),
                 "include_deleted": _include_deleted(description="Include the entry even if it is soft-deleted"),
                 "max_chars": _max_chars(per_entry=False),
             },
-            required=["entry_id"],
             annotations=read_only,
         ),
         _tool(
@@ -917,6 +978,33 @@ def _build_tools(Tool):
             ),
             properties={
                 "section": filter_section,
+            },
+            annotations=destructive,
+        ),
+        _tool(
+            name="rememb_prune",
+            description=(
+                "Soft-delete older entries matching tags, keeping the newest keep count. "
+                "Default tags=hook+auto and section=actions (host hook noise). "
+                "Use after rememb_stats when actions is bloated; rememb_restore can undo."
+            ),
+            properties={
+                "tags": _tags(
+                    f"Tags to match. Default: {HOOK_TAG}, {HOOK_AUTO_TAG}."
+                ),
+                "section": _section(
+                    f"Optional section filter. Default: {HOOK_SECTION}.",
+                    default=HOOK_SECTION,
+                ),
+                "keep": _limit(
+                    HOOK_KEEP_AUTO,
+                    "Newest matching entries to keep (older ones are soft-deleted)",
+                ),
+                "require_all_tags": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "When true, entry must include every listed tag",
+                },
             },
             annotations=destructive,
         ),

@@ -77,7 +77,7 @@ Add repeatable `--project /path/to/repo` args for per-project stores alongside g
 
 SessionStart injects recent entries, tags, and a short stats block. The agent writes durable memory when something changes, and searches only when targeted recall is needed.
 
-No extra storage setup is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use. Public tools: [MCP_TOOLS.md](MCP_TOOLS.md) (18 tools).
+No extra storage setup is required. In MCP mode, rememb auto-initializes `~/.rememb` and optional `--project` stores on first use. Public tools: [MCP_TOOLS.md](MCP_TOOLS.md) (19 tools).
 
 If you want multiple MCP clients on the same machine to reuse one already-running rememb process, start a persistent local SSE transport:
 
@@ -241,7 +241,7 @@ The current compatibility surface is tracked explicitly in [COMPATIBILITY.md](CO
 Short version:
 
 - Python 3.11 to 3.14 are covered by CI
-- CLI contract and MCP tool schema (18 tools) have automated test coverage
+- CLI contract and MCP tool schema (19 tools) have automated test coverage
 - stdio MCP is the primary documented integration path
 - SSE MCP is documented and partially tested at the route level
 - release automation and Trusted Publishing are documented in [RELEASE.md](RELEASE.md)

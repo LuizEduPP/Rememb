@@ -23,14 +23,26 @@ DEFAULT_RECENT_LIMIT = 10
 DEFAULT_TAG_LIMIT = 50
 DEFAULT_PAGE_LIMIT = 100
 SEARCH_EXCERPT_CHARS = 160
-SESSION_START_MAX_BYTES = 2 * 1024
+SESSION_START_MAX_BYTES = 4 * 1024
+SESSION_START_CANONICAL_LIMIT = 8
 HOOK_FIELD_CHARS = 200
 HOOK_OUTPUT_MAX_BYTES = 8 * 1024
+HOOK_KEEP_AUTO = 120
 TEXT_ELLIPSIS = "..."
 HOOK_SECTION = "actions"
 HOOK_TAG = "hook"
 HOOK_AUTO_TAG = "auto"
+HOOK_FAILED_TAG = "failed"
 HANDOFF_TAG = "handoff"
+CANONICAL_TAG = "canonical"
+PROHIBITION_TAG = "proibição"
+SESSION_PRIORITY_SECTIONS = (
+    "rules",
+    "project",
+    "user",
+    "feedback",
+    "systems",
+)
 HOOK_SKIP_TOOLS = frozenset(
     {
         "read",
@@ -45,10 +57,29 @@ HOOK_SKIP_TOOLS = frozenset(
         "awaitshell",
         "todowrite",
         "readlints",
-        "editnotebook",
         "fetchmcpresource",
         "switchmode",
         "getdynamictools",
+        "calldynamictool",
+        "generateimage",
+        "generatevideo",
+        "creategoal",
+        "updategoal",
+    }
+)
+HOOK_RECORD_TOOLS = frozenset(
+    {
+        "write",
+        "strreplace",
+        "shell",
+        "delete",
+        "task",
+        "multiedit",
+        "editnotebook",
+        "applypatch",
+        "edit",
+        "bash",
+        "runterminalcmd",
     }
 )
 

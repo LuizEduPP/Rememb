@@ -1,6 +1,6 @@
 # MCP Tools
 
-This file documents the **18 public MCP tools** exposed by `src/rememb/mcp_server.py`.
+This file documents the **19 public MCP tools** exposed by `src/rememb/mcp_server.py`.
 
 ## Multi-store
 
@@ -85,10 +85,11 @@ List configured stores for this MCP process (global plus any `--project` stores)
 
 ### rememb_get
 
-Fetch one entry by ID with full content. Safe and read-only.
+Fetch one entry by ID, or multiple via `entry_ids[]`, with full content. Safe and read-only.
 
 Key parameters:
-- entry_id (required)
+- entry_id
+- entry_ids
 - include_deleted
 - max_chars
 
@@ -192,6 +193,16 @@ Consolidate literal duplicate entries in exact mode. Losing entries are removed 
 
 Key parameters:
 - section
+
+### rememb_prune
+
+Soft-delete older entries matching tags, keeping the newest `keep` count. Defaults to host-hook noise: tags `hook`+`auto`, section `actions`. Restorable via `rememb_restore`.
+
+Key parameters:
+- tags
+- section
+- keep
+- require_all_tags
 
 ## Versioning and recovery tools
 

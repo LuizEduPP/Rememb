@@ -75,7 +75,7 @@ def _show_help():
     cmd_table.add_column("Description", style="white")
     cmd_table.add_row("rememb", "Launch web UI (opens in browser)")
     cmd_table.add_row("mcp", "Start MCP server (stdio or local SSE)")
-    cmd_table.add_row("hook", "Host hooks: post-tool, stop, session-start")
+    cmd_table.add_row("hook", "Host hooks: post-tool, stop, session-start, pre-compact, session-end")
     cmd_table.add_row("install", "Write MCP, rules, and hooks for an IDE")
 
     console.print(Panel(

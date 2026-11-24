@@ -45,7 +45,7 @@ src/rememb/
 ├── install.py           # rememb install host registry
 ├── exceptions.py        # Custom exceptions
 ├── helpers.py           # Config cache, JSON I/O, StoreContext
-├── mcp_server.py        # MCP server (18 public tools)
+├── mcp_server.py        # MCP server (19 public tools)
 ├── mcp_stores.py        # MCP global + project store registry
 ├── utils.py             # Shared utilities and skill discovery
 ├── store/

@@ -1316,6 +1316,78 @@ def get_entry(root: Path, entry_id: str, *, include_deleted: bool = False) -> di
     return _find_entry(_active_entries(root, include_deleted=include_deleted), normalized)
 
 
+def get_entries(
+    root: Path,
+    entry_ids: list[str],
+    *,
+    include_deleted: bool = False,
+) -> list[dict[str, Any] | None]:
+    if not entry_ids:
+        raise RemembValidationError("At least one entry_id is required.")
+    normalized_ids = [require_entry_id(entry_id) for entry_id in entry_ids]
+    active = _active_entries(root, include_deleted=include_deleted)
+    by_id = {str(entry.get("id", "")): entry for entry in active}
+    return [by_id.get(entry_id) for entry_id in normalized_ids]
+
+
+def prune_entries(
+    root: Path,
+    *,
+    tags: list[str],
+    section: str | None = None,
+    keep: int = 0,
+    require_all_tags: bool = True,
+) -> dict[str, Any]:
+    _assert_initialized(root)
+    if keep < 0:
+        raise RemembValidationError("keep must be a non-negative integer.")
+    if not tags:
+        raise RemembValidationError("Provide at least one tag to prune.")
+    wanted_tags = _sanitize_tags(list(tags), root)
+    if not wanted_tags:
+        raise RemembValidationError("Provide at least one valid tag to prune.")
+    target_section = _validate_section(section, root) if section else None
+
+    def matches(entry: dict[str, Any]) -> bool:
+        if _is_deleted_entry(entry):
+            return False
+        if target_section and entry.get("section") != target_section:
+            return False
+        entry_tags = {
+            tag.strip().lower()
+            for tag in entry.get("tags", [])
+            if isinstance(tag, str) and tag.strip()
+        }
+        if require_all_tags:
+            return set(wanted_tags).issubset(entry_tags)
+        return bool(set(wanted_tags).intersection(entry_tags))
+
+    def prune(entries: list[dict]) -> dict[str, Any]:
+        matched = [entry for entry in entries if matches(entry)]
+        matched.sort(key=_entry_stamp, reverse=True)
+        keep_ids = {str(entry.get("id", "")) for entry in matched[:keep]}
+        now_str = _now()
+        removed_ids: list[str] = []
+        for entry in matched[keep:]:
+            entry_id = str(entry.get("id", ""))
+            if not entry_id or entry_id in keep_ids:
+                continue
+            _bump_revision(entry, now=now_str)
+            entry["deleted_at"] = now_str
+            removed_ids.append(entry_id)
+        return {
+            "matched": len(matched),
+            "kept": min(keep, len(matched)),
+            "removed_count": len(removed_ids),
+            "removed_ids": removed_ids,
+            "section": target_section,
+            "tags": wanted_tags,
+            "require_all_tags": require_all_tags,
+        }
+
+    return _mutate(root, prune)
+
+
 def list_entry_tags(root: Path, *, include_deleted: bool = False, limit: int = DEFAULT_TAG_LIMIT) -> list[dict[str, Any]]:
     """Return tags with usage counts, sorted by frequency."""
     counts: dict[str, int] = {}

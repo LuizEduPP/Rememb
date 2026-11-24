@@ -23,7 +23,10 @@ def test_install_apply_writes_mcp_rules_and_hooks(tmp_path: Path):
     assert RULES_BEGIN in rules and RULES_END in rules
     assert "SessionStart already injects" in rules
     assert hooks["hooks"]["sessionStart"][0]["command"] == "rememb hook session-start"
+    assert hooks["hooks"]["sessionEnd"][0]["command"] == "rememb hook session-end"
     assert hooks["hooks"]["postToolUse"][0]["command"] == "rememb hook post-tool"
+    assert hooks["hooks"]["postToolUseFailure"][0]["command"] == "rememb hook post-tool"
+    assert hooks["hooks"]["preCompact"][0]["command"] == "rememb hook pre-compact"
     assert hooks["hooks"]["stop"][0]["command"] == "rememb hook stop"
 
     second = run_install(["cursor"], apply=True, project=True, cwd=cwd, home=home)

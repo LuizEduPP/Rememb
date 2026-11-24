@@ -44,6 +44,12 @@ What you actually need is to **resume the next session with the minimum correct 
 pip install rememb
 ```
 
+For a shared user Python (for example with Hugging Face tools that pin older `typer`), prefer an isolated CLI:
+
+```bash
+pipx install rememb
+```
+
 ---
 
 ## Quick Start

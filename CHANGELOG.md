@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - MCP tool contract: `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint` on all 18 tools; sibling routing on `rememb_read`, `rememb_read_page`, `rememb_recent`, `rememb_versions`, `rememb_diff`, and `rememb_consolidate`; `rememb_write` documents `content` vs `entries[]` (entries wins) and returned ids.
+- Default memory sections match the agent contract: `project`, `actions`, `systems`, `user`, `environment`, `outcomes`, `knowledge`, `feedback`, `rules`, `uncategorized` (replaces legacy `requests` / `context`). Default write section is `uncategorized`.
+- Host post-tool hooks skip additional read-only Cursor tools (search/fetch/await/todo/lints/etc.) so `actions` grows less from noise.
 
 ### Fixed
 - `rememb_edit` no longer tells agents to use `rememb_delete` for a permanent wipe. Delete is soft; `rememb_clear` wipes the selected store.
 - `rememb_clear` description now says it wipes the selected store (default `global`), not every configured store.
+- Entry ID lookups (edit/delete/restore/versions/diff/MCP) normalize hex IDs to lowercase so mixed-case IDs resolve.
+- `init` no longer shallow-copies `DEFAULT_CONFIG` (avoids mutating shared section lists/colors).
+- SQLite backend opens with WAL + busy timeout for concurrent MCP/hook writers.
 
 ## [0.4.20] - 2026-10-29
 
@@ -23,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Malformed-PDF fallback in `_read_file_content`: import `PdfReadError`/`PdfStreamError` from `pypdf.errors`, since pypdf 6.x removed the top-level re-exports and the old handler raised `AttributeError` instead of returning an empty string.
+
+### Note
+- A later develop fix restored `httpx2` in the `dev` extra for Starlette/FastAPI `TestClient` (see Unreleased / `fd32ff7c`). Prefer that over the `httpx>=0.27` line above when installing from current develop.
 
 ## [0.4.19] - 2026-10-26
 

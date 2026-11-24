@@ -496,7 +496,8 @@ def write_entries(
     if not items:
         raise RemembValidationError("At least one entry is required.")
 
-    default_section = _get_sections(root)[0]
+    sections = _get_sections(root)
+    default_section = DEFAULT_MCP_SECTION if DEFAULT_MCP_SECTION in sections else sections[0]
     prepared_items: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -576,7 +577,14 @@ def init(root: Path, project_name: str = "", global_mode: bool = False) -> Path:
     rememb.mkdir(parents=True, exist_ok=True)
 
     config_file = _config_path(root)
-    config_data = DEFAULT_CONFIG.copy()
+    config_data = {
+        key: (
+            list(value)
+            if isinstance(value, list)
+            else dict(value) if isinstance(value, dict) else value
+        )
+        for key, value in DEFAULT_CONFIG.items()
+    }
     loaded_config = _read_json_dict(config_file)
     if loaded_config is not None:
         config_data.update(loaded_config)
@@ -832,7 +840,7 @@ def delete_entries(root: Path, entry_ids: list[str]) -> list[str]:
     if not entry_ids:
         raise RemembValidationError("At least one entry_id is required.")
 
-    target_ids = {entry_id for entry_id in entry_ids}
+    target_ids = {require_entry_id(entry_id) for entry_id in entry_ids}
 
     def remove_entries(entries: list[dict]) -> list[str]:
         deleted_ids: list[str] = []
@@ -860,8 +868,10 @@ def restore_deleted_entry(root: Path, entry_id: str) -> dict | None:
     """Restore a soft-deleted entry by ID."""
     logger.debug("restore_deleted_entry called: entry_id=%s", entry_id)
 
+    normalized_id = require_entry_id(entry_id)
+
     def restore(entries: list[dict]) -> dict | None:
-        entry = _find_entry(entries, entry_id)
+        entry = _find_entry(entries, normalized_id)
         if entry is None or not _is_deleted_entry(entry):
             return None
         _bump_revision(entry)
@@ -942,9 +952,7 @@ def edit_entries(root: Path, updates: list[dict[str, Any]]) -> list[dict | None]
     for update in updates:
         if not isinstance(update, dict):
             raise RemembValidationError("Each batch update must be an object.")
-        entry_id = str(update.get("entry_id", "")).strip()
-        if not entry_id:
-            raise RemembValidationError("Each batch update must include entry_id.")
+        entry_id = require_entry_id(update.get("entry_id"))
         if update.get("content") is None and update.get("section") is None and update.get("tags") is None:
             raise RemembValidationError(
                 f"Provide at least one field to update for entry {entry_id}: content, section, or tags."
@@ -1225,7 +1233,8 @@ def export_entries(
 def list_entry_versions(root: Path, entry_id: str, *, include_deleted: bool = True) -> list[dict[str, Any]]:
     """List all known revisions for an entry, oldest to newest."""
     logger.debug("list_entry_versions called: entry_id=%s", entry_id)
-    entry = _find_entry(_active_entries(root, include_deleted=True), entry_id)
+    normalized_id = require_entry_id(entry_id)
+    entry = _find_entry(_active_entries(root, include_deleted=True), normalized_id)
     if entry is None:
         return []
     if _is_deleted_entry(entry) and not include_deleted:
@@ -1236,10 +1245,11 @@ def list_entry_versions(root: Path, entry_id: str, *, include_deleted: bool = Tr
 def restore_entry_version(root: Path, entry_id: str, version: int) -> dict | None:
     """Restore an entry to a previous version as a new head revision."""
     logger.debug("restore_entry_version called: entry_id=%s, version=%s", entry_id, version)
+    normalized_id = require_entry_id(entry_id)
     normalized_version = _normalize_version_number(version)
 
     def restore(entries: list[dict]) -> dict | None:
-        entry = _find_entry(entries, entry_id)
+        entry = _find_entry(entries, normalized_id)
         if entry is None:
             return None
         revision = _find_entry_revision(entry, normalized_version)
@@ -1260,9 +1270,10 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
         from_version,
         to_version,
     )
+    normalized_id = require_entry_id(entry_id)
     normalized_from = _normalize_version_number(from_version)
     normalized_to = _normalize_version_number(to_version)
-    entry = _find_entry(_active_entries(root, include_deleted=True), entry_id)
+    entry = _find_entry(_active_entries(root, include_deleted=True), normalized_id)
     if entry is None:
         return None
     from_revision = _find_entry_revision(entry, normalized_from)
@@ -1273,13 +1284,13 @@ def diff_entry_versions(root: Path, entry_id: str, from_version: int, to_version
         unified_diff(
             str(from_revision.get("content", "")).splitlines(),
             str(to_revision.get("content", "")).splitlines(),
-            fromfile=_revision_label(entry_id, normalized_from),
-            tofile=_revision_label(entry_id, normalized_to),
+            fromfile=_revision_label(normalized_id, normalized_from),
+            tofile=_revision_label(normalized_id, normalized_to),
             lineterm="",
         )
     )
     return {
-        "entry_id": entry_id,
+        "entry_id": normalized_id,
         "from_version": normalized_from,
         "to_version": normalized_to,
         "from_revision": from_revision,

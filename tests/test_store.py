@@ -86,10 +86,10 @@ def test_write_entries_batch_and_default_section(store: Path):
     )
     stored = read_entries(store)
 
-    assert created[0]["section"] == "project"
+    assert created[0]["section"] == "uncategorized"
     assert [entry["content"] for entry in stored] == ["No section given.", "Second batch memory."]
     with pytest.raises(RemembValidationError, match="Duplicate"):
-        write_entry(store, "project", "No section given.")
+        write_entry(store, "uncategorized", "No section given.")
 
 
 def test_edit_and_delete_batches(store: Path):
@@ -104,9 +104,9 @@ def test_edit_and_delete_batches(store: Path):
             {"entry_id": "deadbeef", "content": "Missing"},
         ],
     )
-    deleted_ids = delete_entries(store, [first["id"], "deadbeef"])
+    deleted_ids = delete_entries(store, [first["id"].upper(), "deadbeef"])
     remaining = read_entries(store)
-    hidden = get_entry(store, first["id"], include_deleted=True)
+    hidden = get_entry(store, first["id"].upper(), include_deleted=True)
 
     assert results[0]["content"] == "Updated first."
     assert results[1]["section"] == "actions"

@@ -31,18 +31,41 @@ HOOK_SECTION = "actions"
 HOOK_TAG = "hook"
 HOOK_AUTO_TAG = "auto"
 HANDOFF_TAG = "handoff"
-HOOK_SKIP_TOOLS = frozenset({"read", "grep", "glob", "ls"})
+HOOK_SKIP_TOOLS = frozenset(
+    {
+        "read",
+        "grep",
+        "glob",
+        "ls",
+        "semanticsearch",
+        "webfetch",
+        "websearch",
+        "xsearch",
+        "await",
+        "awaitshell",
+        "todowrite",
+        "readlints",
+        "editnotebook",
+        "fetchmcpresource",
+        "switchmode",
+        "getdynamictools",
+    }
+)
 
 DEFAULT_SECTION_COLORS = {
     "project": "#d84848",
     "actions": "#d08020",
     "systems": "#d4c430",
-    "requests": "#40c040",
     "user": "#20d4c4",
-    "context": "#c060f0",
+    "environment": "#9900ff",
+    "outcomes": "#40c040",
+    "knowledge": "#00b3ff",
+    "feedback": "#5559dd",
+    "rules": "#f28482",
+    "uncategorized": "#95a5a6",
 }
 DEFAULT_SECTIONS = list(DEFAULT_SECTION_COLORS)
-DEFAULT_MCP_SECTION = "context"
+DEFAULT_MCP_SECTION = "uncategorized"
 DEFAULT_REMOVED_SECTION_NAME = "uncategorized"
 DEFAULT_ALL_SECTION_COLOR = "#95a5a6"
 STORAGE_BACKEND_JSON = "json"

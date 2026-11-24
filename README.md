@@ -130,14 +130,18 @@ Search uses **keyword and token matching** over entry content and tags. `rememb_
   "max_tag_length": 500,
   "max_tags_per_entry": 100,
   "max_entries": 100000,
-  "sections": ["project", "actions", "systems", "requests", "user", "context"],
+  "sections": ["project", "actions", "systems", "user", "environment", "outcomes", "knowledge", "feedback", "rules", "uncategorized"],
   "section_colors": {
     "project": "#d84848",
     "actions": "#d08020",
     "systems": "#d4c430",
-    "requests": "#40c040",
     "user": "#20d4c4",
-    "context": "#c060f0"
+    "environment": "#9900ff",
+    "outcomes": "#40c040",
+    "knowledge": "#00b3ff",
+    "feedback": "#5559dd",
+    "rules": "#f28482",
+    "uncategorized": "#95a5a6"
   },
   "entry_batch_size": 24,
   "entry_load_threshold": 6,
@@ -161,11 +165,15 @@ Older stores may still contain legacy embedding-related config keys; they are dr
 | Section | What to store |
 |---------|---------------|
 | `project` | Tech stack, architecture, goals |
-| `actions` | What was done, decisions made |
+| `actions` | What was done, changelog, handoff |
 | `systems` | Services, modules, integrations |
-| `requests` | User preferences, recurring asks |
 | `user` | Name, style, expertise, preferences |
-| `context` | Anything else relevant |
+| `environment` | Machine, OS, paths, runtime |
+| `outcomes` | Results, pitfalls, regressions |
+| `knowledge` | Durable facts and how-tos |
+| `feedback` | Corrections to agent behavior |
+| `rules` | Permanent norms and prohibitions |
+| `uncategorized` | Default catch-all when section is omitted |
 
 ---
 

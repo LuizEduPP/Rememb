@@ -165,10 +165,9 @@ def _text(cls, text: str):
 
 def _need_id(entry_id, reply):
     try:
-        require_entry_id(entry_id)
+        return require_entry_id(entry_id), None
     except RemembValidationError as exc:
-        return reply(str(exc))
-    return None
+        return None, reply(str(exc))
 
 
 def _memory_text(
@@ -259,8 +258,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return reply("\n".join(lines))
 
     async def rememb_get():
-        entry_id = arguments["entry_id"]
-        if err := need_id(entry_id):
+        entry_id, err = need_id(arguments["entry_id"])
+        if err:
             return err
         entry = await asyncio.to_thread(
             get_entry, root, entry_id, include_deleted=arg("include_deleted", False)
@@ -329,8 +328,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return memory(entries, include_score=True, max_chars=_search_max_chars(root, arg("max_chars")))
 
     async def rememb_versions():
-        entry_id = arguments["entry_id"]
-        if err := need_id(entry_id):
+        entry_id, err = need_id(arguments["entry_id"])
+        if err:
             return err
         versions = await asyncio.to_thread(
             list_entry_versions, root, entry_id, include_deleted=arg("include_deleted", True)
@@ -348,8 +347,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return reply("\n".join(lines))
 
     async def rememb_restore():
-        entry_id = arguments["entry_id"]
-        if err := need_id(entry_id):
+        entry_id, err = need_id(arguments["entry_id"])
+        if err:
             return err
         version = arg("version")
         if version is None:
@@ -363,8 +362,8 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         return reply(f"Restored {entry_id} to version {version} (now v{restored['version']})")
 
     async def rememb_diff():
-        entry_id = arguments["entry_id"]
-        if err := need_id(entry_id):
+        entry_id, err = need_id(arguments["entry_id"])
+        if err:
             return err
         from_version = arguments["from_version"]
         to_version = arguments["to_version"]
@@ -415,23 +414,25 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         if updates is not None:
             if not isinstance(updates, list) or not updates:
                 return reply("Provide a non-empty updates array.")
+            prepared_updates: list[dict[str, Any]] = []
             for update in updates:
                 if not isinstance(update, dict):
                     return reply("Each batch update must be an object.")
-                entry_id = update.get("entry_id")
-                if err := need_id(entry_id):
+                entry_id, err = need_id(update.get("entry_id"))
+                if err:
                     return err
                 if _no_update_fields(update.get("content"), update.get("section"), update.get("tags")):
                     return reply(f"Provide at least one field to update for {entry_id}: content, section, or tags.")
-            results = await asyncio.to_thread(edit_entries, root, updates)
-            found = {update["entry_id"] for update, result in zip(updates, results) if result}
+                prepared_updates.append({**update, "entry_id": entry_id})
+            results = await asyncio.to_thread(edit_entries, root, prepared_updates)
+            found = {update["entry_id"] for update, result in zip(prepared_updates, results) if result}
             count, lines = _batch_status_lines(
-                updates, found, ok="- Updated {}", missing="- Entry {} not found", key="entry_id"
+                prepared_updates, found, ok="- Updated {}", missing="- Entry {} not found", key="entry_id"
             )
-            return reply(f"Processed {len(updates)} updates ({count} updated)\n" + "\n".join(lines))
+            return reply(f"Processed {len(prepared_updates)} updates ({count} updated)\n" + "\n".join(lines))
 
-        entry_id = arguments["entry_id"]
-        if err := need_id(entry_id):
+        entry_id, err = need_id(arguments["entry_id"])
+        if err:
             return err
         content, section, tags = arg("content"), arg("section"), arg("tags")
         if _no_update_fields(content, section, tags):
@@ -446,17 +447,20 @@ async def _handle_tool(name: str, arguments: dict[str, Any], TextContent):
         if entry_ids is not None:
             if not isinstance(entry_ids, list) or not entry_ids:
                 return reply("Provide a non-empty entry_ids array.")
+            normalized_ids: list[str] = []
             for entry_id in entry_ids:
-                if err := need_id(entry_id):
+                normalized, err = need_id(entry_id)
+                if err:
                     return err
-            deleted_ids = set(await asyncio.to_thread(delete_entries, root, entry_ids))
+                normalized_ids.append(normalized)
+            deleted_ids = set(await asyncio.to_thread(delete_entries, root, normalized_ids))
             count, lines = _batch_status_lines(
-                entry_ids, deleted_ids, ok="- Deleted {}", missing="- Entry {} not found"
+                normalized_ids, deleted_ids, ok="- Deleted {}", missing="- Entry {} not found"
             )
-            return reply(f"Processed {len(entry_ids)} deletions ({count} deleted)\n" + "\n".join(lines))
+            return reply(f"Processed {len(normalized_ids)} deletions ({count} deleted)\n" + "\n".join(lines))
 
-        entry_id = arguments["entry_id"]
-        if err := need_id(entry_id):
+        entry_id, err = need_id(arguments["entry_id"])
+        if err:
             return err
         if await asyncio.to_thread(delete_entry, root, entry_id):
             return reply(f"Deleted {entry_id}")

@@ -61,6 +61,11 @@ def test_noisy_read_is_skipped_unless_error(tmp_path: Path):
         json.dumps({"tool_name": "Read", "cwd": str(root), "tool_output": "ok"}),
         cwd=root,
     )
+    skipped_todo = run_hook(
+        "post-tool",
+        json.dumps({"tool_name": "TodoWrite", "cwd": str(root), "tool_output": "ok"}),
+        cwd=root,
+    )
     failed = run_hook(
         "post-tool",
         json.dumps({"tool_name": "grep", "cwd": str(root), "is_error": True, "tool_output": "boom"}),
@@ -68,6 +73,7 @@ def test_noisy_read_is_skipped_unless_error(tmp_path: Path):
     )
 
     assert skipped[0] == 0
+    assert skipped_todo[0] == 0
     assert failed[0] == 0
     contents = [entry["content"] for entry in _entries(root)]
     assert contents == [contents[0]]
